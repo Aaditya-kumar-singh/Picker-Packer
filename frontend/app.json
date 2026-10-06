@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "ybm-picker-packer",
+    "slug": "ybm-picker-packer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "ybm-picker-packer",
+    "userInterfaceStyle": "light",
+  "plugins": [
+    [
+      "expo-camera",
+      {
+        "cameraPermission": "Allow YBM Picker & Packer to use the camera to scan warehouse barcodes."
+      }
+    ]
+  ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

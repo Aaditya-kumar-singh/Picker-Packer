@@ -1,0 +1,159 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const root = path.resolve(import.meta.dirname, "..");
+const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
+
+test("production migration has balanced SQL dollar quoting and one commit", () => {
+  const sql = read("supabase/migrations/0001_harden_workflow.sql");
+  assert.equal((sql.match(/CREATE OR REPLACE FUNCTION/g) ?? []).length, (sql.match(/\$\$/g) ?? []).length / 2);
+  assert.equal((sql.match(/\bCOMMIT;/g) ?? []).length, 1);
+  assert.doesNotMatch(sql, /AS \$(?:\r?\n)/);
+  assert.doesNotMatch(sql, /^\s*\d+\t/m);
+});
+
+test("RLS and warehouse isolation are defined for operational data", () => {
+  const sql = read("supabase/migrations/0001_harden_workflow.sql");
+  for (const table of ["users","orders","order_items","scan_events","exceptions","packages","audit_events","idempotency_keys","riders","exception_evidence"]) {
+    assert.match(sql, new RegExp("ALTER TABLE public\\." + table + " ENABLE ROW LEVEL SECURITY"));
+  }
+  assert.match(sql, /warehouse_id = public\.current_warehouse\(\)/);
+  assert.match(sql, /REVOKE INSERT, UPDATE, DELETE ON public\.users, public\.orders/);
+});
+
+test("workflow mutations are server RPCs", () => {
+  const client = read("frontend/src/api/client.ts");
+  for (const rpc of ["picker_start_order","picker_pick_item","picker_complete_order","packer_start_order","packer_confirm_item","packer_create_package","packer_complete_order","assign_rider","create_exception","sync_scan_event"]) {
+    assert.match(client, new RegExp("rpc\\(\\\"" + rpc + "\\\""));
+  }
+  assert.doesNotMatch(client, /from\(["'](?:orders|order_items|scan_events|exceptions|packages)["']\)\.\s*(?:insert|update|upsert|delete)/);
+});
+
+test("offline replay handles every defined event type", () => {
+  const client = read("frontend/src/api/client.ts");
+  for (const eventType of ["ORDER_STARTED","LOCATION_SCANNED","SKU_SCANNED","QTY_CONFIRMED","EXCEPTION_RAISED","ORDER_COMPLETED"]) {
+    assert.match(client, new RegExp("event\\.eventType === \\\"" + eventType + "\\\""));
+  }
+  const offline = read("frontend/src/sync/offlineApi.ts");
+  assert.match(offline, /payload: \{ qty, uom, sku: line\.skuBarcode \}/);
+});
+
+test("packer, dispatch and evidence routes exist", () => {
+  for (const file of [
+    "frontend/src/app/(tabs)/packer-dashboard.tsx",
+    "frontend/src/app/pack/order/[id].tsx",
+    "frontend/src/app/(tabs)/dispatch.tsx",
+    "frontend/src/screens/PackerDashboardScreen.tsx",
+    "frontend/src/screens/PackerOrderScreen.tsx",
+    "frontend/src/screens/DispatchScreen.tsx",
+  ]) assert.equal(fs.existsSync(path.join(root, file)), true, file);
+  const api = read("frontend/src/services/supabasePickerApi.ts");
+  assert.match(api, /grantEvidenceUpload/);
+});
+
+test("legacy worker and hardcoded login credentials are gone", () => {
+  const files = [
+    "frontend/src/api/client.ts",
+    "frontend/src/navigation/AppProvider.tsx",
+    "frontend/src/screens/LoginScreen.tsx",
+  ].map(read).join("\n");
+  assert.doesNotMatch(files, /8788|wrangler|EXPO_PUBLIC_API_URL/);
+  assert.doesNotMatch(files, /admin@example\.com|test@example\.com|password123|test1234/);
+});
+
+test("role separation is enforced by every picker/packer RPC", () => {
+  const sql = read("supabase/migrations/0001_harden_workflow.sql");
+  for (const rpc of ["picker_start_order","picker_pick_item","picker_complete_order"]) {
+    const body = sql.slice(sql.indexOf("FUNCTION public." + rpc), sql.indexOf("END;", sql.indexOf("FUNCTION public." + rpc)) + 4);
+    assert.match(body, /v_user\.role <> 'PICKER'/);
+  }
+  for (const rpc of ["packer_start_order","packer_pack_item","packer_create_package","packer_complete_order"]) {
+    const body = sql.slice(sql.indexOf("FUNCTION public." + rpc), sql.indexOf("END;", sql.indexOf("FUNCTION public." + rpc)) + 4);
+    assert.match(body, /v_user\.role <> 'PACKER'/);
+  }
+});
+
+test("packing confirmation enforces packer role and item verification", () => {
+  const packing = read("supabase/migrations/0007_role_separated_packing_verification.sql");
+  assert.match(packing, /packer_confirm_item/);
+  assert.match(packing, /v_user\.role <> 'PACKER'/);
+  assert.match(packing, /Product type does not match/);
+  assert.match(packing, /Product barcode does not match/);
+});
+
+test("app routes are role separated", () => {
+  const layout = read("frontend/src/app/_layout.tsx");
+  assert.match(layout, /picker\.role === "PICKER" && packerRoots\.has/);
+  assert.match(layout, /picker\.role === "PACKER" && pickerRoots\.has/);
+  assert.match(layout, /router\.replace\("\/dashboard"/);
+  assert.match(layout, /router\.replace\("\/packer-dashboard"/);
+});
+
+test("picker and packer operations are warehouse scoped", () => {
+  const sql = read("supabase/migrations/0001_harden_workflow.sql");
+  assert.match(sql, /v_order\.warehouse_id <> v_user\.warehouse_id/);
+  assert.match(sql, /warehouse_id=v_user\.warehouse_id/);
+});
+
+test("wrong SKU, over-picking and over-packing are rejected server-side", () => {
+  const sql = read("supabase/migrations/0001_harden_workflow.sql");
+  assert.match(sql, /SKU does not match/);
+  assert.match(sql, /Picked quantity cannot exceed required quantity/);
+  assert.match(sql, /Packed quantity cannot exceed picked quantity/);
+});
+
+test("wrong location is rejected by scan RPC", () => {
+  const sql = read("supabase/migrations/0003_harden_scan_idempotency.sql");
+  assert.match(sql, /WHEN upper\(p_scan_type\)='LOCATION' THEN v_item\.location/);
+  assert.match(sql, /Scan does not match expected value/);
+});
+
+test("rider assignment rejects inactive and cross-warehouse riders", () => {
+  const sql = read("supabase/migrations/0001_harden_workflow.sql");
+  assert.match(sql, /warehouse_id=v_user\.warehouse_id AND active=true/);
+  assert.match(sql, /Rider not found or inactive/);
+});
+
+test("offline scan event is idempotent", () => {
+  const sql = read("supabase/migrations/0003_harden_scan_idempotency.sql");
+  assert.match(sql, /operation='sync_scan_event'/);
+  assert.match(sql, /RETURN jsonb_build_object\('ok',true,'duplicate',true\)/);
+  assert.match(sql, /idempotency_keys/);
+});
+
+test("unauthenticated workflow access is rejected", () => {
+  const sql = read("supabase/migrations/0001_harden_workflow.sql") + read("supabase/migrations/0003_harden_scan_idempotency.sql");
+  assert.match(sql, /auth\.uid\(\)/);
+  assert.match(sql, /Authentication required/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.sync_scan_event/);
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public/);
+});
+
+test("test order generator creates bounded randomized barcode-ready orders", () => {
+  const sql = read("supabase/migrations/0004_test_order_generator.sql");
+  assert.match(sql, /v_item_count := 1 \+ floor\(random\(\) \* 6\)/);
+  assert.match(sql, /sku_barcode/);
+  assert.match(sql, /location_barcode/);
+  assert.match(sql, /product_specs/);
+  assert.match(sql, /cron\.schedule\(\s*'ybm-test-order-generator'/);
+  assert.match(sql, /'30 seconds'/);
+});
+
+test("barcode scanning is persisted and required before picking", () => {
+  const sql = read("supabase/migrations/0005_barcode_scan_workflow.sql");
+  assert.match(sql, /COALESCE\(v_item\.location_barcode, v_item\.location\)/);
+  assert.match(sql, /COALESCE\(v_item\.sku_barcode, v_item\.sku\)/);
+  assert.match(sql, /Location barcode must be scanned first/);
+  assert.match(sql, /Product barcode must be scanned first/);
+});
+
+test("test order generator caps the picker backlog at 30", () => {
+  const sql = read("supabase/migrations/0006_test_order_backlog_cap.sql");
+  assert.match(sql, /v_max_active_orders constant integer := 30/);
+  assert.match(sql, /status IN \('ASSIGNED','PICKING'\)/);
+  assert.match(sql, /v_active_orders >= v_max_active_orders/);
+  assert.match(sql, /PICKER_BACKLOG_LIMIT/);
+  assert.match(sql, /'maxActiveOrders',v_max_active_orders/);
+});
