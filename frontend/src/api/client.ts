@@ -63,6 +63,8 @@ export type OrderSummary = {
   pickedCount?: number;
   packedCount?: number;
   packageCount?: number;
+  /** Lightweight item payload used by list screens to avoid N+1 detail requests. */
+  items?: OrderItem[];
 };
 
 export type PackingConfirmation = {
@@ -128,13 +130,35 @@ async function profile() {
   return data;
 }
 
-async function mapOrderSummary(o: any): Promise<OrderSummary> {
-  const { count } = await supabase.from("order_items").select("*", { count: "exact", head: true }).eq("order_id", o.id);
+function mapItem(i: any): OrderItem {
+  return {
+    id: i.id,
+    sku: i.sku,
+    productName: i.product_name,
+    productSpecs: i.product_specs ?? "",
+    productType: i.product_type ?? "STANDARD",
+    skuBarcode: i.sku_barcode ?? i.sku,
+    location: i.location,
+    locationBarcode: i.location_barcode ?? i.location,
+    requiredQty: Number(i.required_qty ?? 0),
+    pickedQty: Number(i.picked_qty ?? 0),
+    packedQty: Number(i.packed_qty ?? 0),
+    lineStatus: i.picked_qty >= i.required_qty
+      ? "PICKED"
+      : (i.line_status ?? "PENDING"),
+  };
+}
+
+function mapOrderSummary(o: any, items: OrderItem[] = []): OrderSummary {
+  const pickedCount = items.filter(i => i.pickedQty >= i.requiredQty).length;
   return {
     id: o.id, customer: o.customer, warehouseId: o.warehouse_id, priority: o.priority,
     slaMinutes: o.sla_minutes, status: o.status, pickerId: o.picker_id, packerId: o.packer_id,
     riderId: o.rider_id ?? null, riderName: o.rider_name ?? null,
-    createdAt: o.created_at, updatedAt: o.updated_at, itemCount: count ?? 0,
+    createdAt: o.created_at, updatedAt: o.updated_at,
+    itemCount: items.length || Number(o.item_count ?? 0),
+    pickedCount,
+    items,
   };
 }
 
@@ -217,7 +241,28 @@ async function listOrders(statuses: string[], role: Role) {
   }
   const { data, error: e } = await q;
   if (e) error(e.message);
-  return Promise.all((data ?? []).map(mapOrderSummary));
+
+  const rows = data ?? [];
+  if (rows.length === 0) return [];
+
+  // One item query for the whole list instead of one count query per order.
+  // This removes the list-screen N+1 request pattern.
+  const ids = rows.map((o: any) => o.id);
+  const { data: itemRows, error: ie } = await supabase
+    .from("order_items")
+    .select("id,order_id,sku,product_name,product_specs,product_type,sku_barcode,location,location_barcode,required_qty,picked_qty,packed_qty")
+    .in("order_id", ids);
+
+  if (ie) error(ie.message);
+
+  const byOrder = new Map<string, OrderItem[]>();
+  for (const row of itemRows ?? []) {
+    const list = byOrder.get(row.order_id) ?? [];
+    list.push(mapItem(row));
+    byOrder.set(row.order_id, list);
+  }
+
+  return rows.map((o: any) => mapOrderSummary(o, byOrder.get(o.id) ?? []));
 }
 
 export function setAccessToken(_token: string | null) {}

@@ -23,14 +23,14 @@ function toLine(l: client.OrderItem, idx = 0): OrderLine {
   };
 }
 
-function toOrder(o: client.OrderDetail): Order {
+function toOrder(o: client.OrderSummary): Order {
   return {
     id: o.id, externalId: o.id, status: mapStatus(o.status),
     priority: o.priority === "URGENT" ? 2 : o.priority === "HIGH" ? 1 : 0,
     slaDueAt: new Date(new Date(o.createdAt).getTime() + o.slaMinutes * 60000).toISOString(),
-    totalLines: o.items.length, version: 1, assignedPickerCode: o.pickerId ?? null,
+    totalLines: o.itemCount ?? o.items?.length ?? 0, version: 1, assignedPickerCode: o.pickerId ?? null,
     assignedDeviceId: null, assignedAt: o.createdAt, startedAt: o.updatedAt ?? null,
-    cancelledAt: null, lines: o.items.map((x, i) => toLine(x, i)), wmsStatus: "SYNCED",
+    cancelledAt: null, lines: (o.items ?? []).map((x, i) => toLine(x, i)), wmsStatus: "SYNCED",
     completedAt: o.status === "READY_FOR_PACKING" ? o.updatedAt ?? null : null,
   };
 }
@@ -44,6 +44,7 @@ function err(e: unknown): Result<any> {
 
 class SupabasePickerApi {
   private picker: PickerProfile | null = null;
+  private orderCache = new Map<string, client.OrderDetail>();
   private wmsMode: WmsMode = "WMS_SUCCESS";
 
   restoreSession(accessToken: string, _refreshToken: string, picker: PickerProfile) {
@@ -72,8 +73,7 @@ class SupabasePickerApi {
     try {
       const [metrics, me, orders] = await Promise.all([client.pickerMetrics(), client.me(), client.pickerOrders()]);
       const active = orders.orders.find(o => o.status === "PICKING");
-      let activeOrder: Order | null = null;
-      if (active) activeOrder = toOrder((await client.pickerOrder(active.id)).order);
+      const activeOrder = active ? toOrder(active) : null;
       return { ok: true, data: {
         pickerName: me.user.name, pickerCode: me.user.email, warehouseName: me.user.warehouseId,
         pendingCount: orders.orders.filter(o => o.status === "ASSIGNED").length,
@@ -85,7 +85,7 @@ class SupabasePickerApi {
   async getOrders() {
     try {
       const orders = await client.pickerOrders();
-      const data = await Promise.all(orders.orders.map(async o => toOrder((await client.pickerOrder(o.id)).order)));
+      const data = orders.orders.map(o => toOrder(o));
       return { ok: true, data };
     } catch (e) { return err(e); }
   }
