@@ -7,7 +7,6 @@ import {
   ErrorBanner,
   LoadingState,
   ProgressIndicator,
-  ScanInput,
   ScanTarget,
   Screen,
   SecondaryButton,
@@ -92,9 +91,14 @@ export function SkuScanScreen() {
         <Text style={ss.productName}>{line.skuName}</Text>
         <Text style={ss.productSpecs}>{line.productSpecs}</Text>
         <BarcodeDisplay
-          label="PRODUCT BARCODE"
+          label="EXPECTED PRODUCT BARCODE"
           value={line.skuBarcode}
           scanTitle="Scan product barcode"
+          inputValue={manual}
+          onInputChange={setManual}
+          onSubmit={() => void scan(manual)}
+          inputPlaceholder="Type or scan item barcode"
+          match={manual.trim() ? manual.trim().toUpperCase() === line.skuBarcode.trim().toUpperCase() : null}
           onScanned={(value) => {
             setManual(value);
             void scan(value);
@@ -105,13 +109,6 @@ export function SkuScanScreen() {
       <ScanTarget label="EXPECTED SKU" value={line.skuCode} />
       <ErrorBanner message={error} />
       <SuccessFeedback message={line.status === "LOCATION_VALIDATED" ? "Location OK — now scan item" : null} />
-      <ScanInput
-        value={manual}
-        onChange={setManual}
-        onSubmit={() => void scan(manual)}
-        busy={busy}
-        placeholder="Type or scan item barcode"
-      />
       {DEV && (
         <>
           <SecondaryButton label="Scan correct SKU (dev)" onPress={() => scan(correctSkuScan(line.skuBarcode).value)} />

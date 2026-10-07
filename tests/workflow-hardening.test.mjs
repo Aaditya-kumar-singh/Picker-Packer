@@ -131,14 +131,19 @@ test("unauthenticated workflow access is rejected", () => {
   assert.match(sql, /GRANT EXECUTE ON FUNCTION public/);
 });
 
-test("test order generator creates bounded randomized barcode-ready orders", () => {
-  const sql = read("supabase/migrations/0004_test_order_generator.sql");
-  assert.match(sql, /v_item_count := 1 \+ floor\(random\(\) \* 6\)/);
+test("test order generator uses the warehouse product catalog and barcodes", () => {
+  const sql = read("supabase/migrations/0009_product_catalog_and_realistic_order_generator.sql");
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.product_catalog/);
+  assert.match(sql, /product_type text NOT NULL/);
+  assert.match(sql, /barcode text NOT NULL UNIQUE/);
+  assert.match(sql, /100000000106/);
+  assert.match(sql, /100000000131/);
+  assert.match(sql, /100000000123/);
+  assert.match(sql, /v_item_count := 3 \+ floor\(random\(\) \* 5\)/);
+  assert.match(sql, /FROM public\.product_catalog/);
   assert.match(sql, /sku_barcode/);
   assert.match(sql, /location_barcode/);
   assert.match(sql, /product_specs/);
-  assert.match(sql, /cron\.schedule\(\s*'ybm-test-order-generator'/);
-  assert.match(sql, /'30 seconds'/);
 });
 
 test("barcode scanning is persisted and required before picking", () => {

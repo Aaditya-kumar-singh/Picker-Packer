@@ -8,7 +8,6 @@ import {
   LoadingState,
   PrimaryButton,
   ProgressIndicator,
-  ScanInput,
   ScanTarget,
   Screen,
   SecondaryButton,
@@ -107,9 +106,14 @@ export function LocationScanScreen() {
         <Text style={ls.locationTitle}>Pick Location</Text>
         <Text style={ls.locationCode}>{line.locationCode}</Text>
         <BarcodeDisplay
-          label="LOCATION BARCODE"
+          label="EXPECTED LOCATION BARCODE"
           value={line.locationBarcode}
           scanTitle="Scan location barcode"
+          inputValue={manual}
+          onInputChange={setManual}
+          onSubmit={() => void scan(manual, false)}
+          inputPlaceholder="Type or scan location barcode"
+          match={manual.trim() ? manual.trim().toUpperCase() === line.locationBarcode.trim().toUpperCase() : null}
           onScanned={(value) => {
             setManual(value);
             void scan(value, false);
@@ -120,13 +124,6 @@ export function LocationScanScreen() {
       <OfflineBanner />
       <ErrorBanner message={error} />
       <SuccessFeedback message={ok} />
-      <ScanInput
-        value={manual}
-        onChange={setManual}
-        onSubmit={() => void scan(manual, false)}
-        busy={busy}
-        placeholder="Type or scan location barcode"
-      />
       {/* DEV-ONLY mock scanner (hidden in production builds) */}
       {DEV && (
         <>

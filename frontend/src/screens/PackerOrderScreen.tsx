@@ -197,9 +197,17 @@ export function PackerOrderScreen() {
                   <Text style={s.label}>Expected type</Text>
                   <Text style={s.value}>{item.productType}</Text>
                   <BarcodeDisplay
-                    label="EXPECTED BARCODE"
+                    label="EXPECTED PRODUCT BARCODE"
                     value={item.skuBarcode}
                     scanTitle="Scan product barcode"
+                    inputValue={productBarcode[item.id] ?? ""}
+                    onInputChange={value => setProductBarcode(prev => ({ ...prev, [item.id]: value }))}
+                    inputPlaceholder="Type or scan product barcode"
+                    match={
+                      (productBarcode[item.id] ?? "").trim()
+                        ? (productBarcode[item.id] ?? "").trim().toUpperCase() === item.skuBarcode.trim().toUpperCase()
+                        : null
+                    }
                     onScanned={(value) => setProductBarcode(prev => ({ ...prev, [item.id]: value }))}
                     disabled={busy !== null}
                   />
@@ -218,16 +226,6 @@ export function PackerOrderScreen() {
                         value={productType[item.id] ?? ""}
                         onChangeText={v => setProductType(prev => ({ ...prev, [item.id]: v }))}
                         placeholder="Enter product type"
-                        editable={busy === null}
-                        style={s.input}
-                      />
-
-                      <TextInput
-                        value={productBarcode[item.id] ?? ""}
-                        onChangeText={v => setProductBarcode(prev => ({ ...prev, [item.id]: v }))}
-                        placeholder="Scan / enter product barcode"
-                        autoCapitalize="none"
-                        autoCorrect={false}
                         editable={busy === null}
                         style={s.input}
                       />
