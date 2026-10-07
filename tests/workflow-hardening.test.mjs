@@ -146,6 +146,18 @@ test("test order generator uses the warehouse product catalog and barcodes", () 
   assert.match(sql, /product_specs/);
 });
 
+test("expanded product catalog has unique warehouse barcodes and six-line generator cap", () => {
+  const sql = read("supabase/migrations/0010_expand_product_catalog_and_cap_generator.sql");
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.generate_test_order/);
+  assert.match(sql, /v_item_count := 1 \+ floor\(random\(\) \* 6\)/);
+  assert.match(sql, /FROM public\.product_catalog/);
+  assert.match(sql, /status IN \('ASSIGNED','PICKING'\)/);
+  assert.match(sql, /v_max_active_orders constant integer := 30/);
+  assert.match(sql, /100000000191/);
+  assert.match(sql, /100000000152/);
+  assert.match(sql, /ON CONFLICT \(sku\) DO UPDATE/);
+});
+
 test("barcode scanning is persisted and required before picking", () => {
   const sql = read("supabase/migrations/0005_barcode_scan_workflow.sql");
   assert.match(sql, /COALESCE\(v_item\.location_barcode, v_item\.location\)/);
