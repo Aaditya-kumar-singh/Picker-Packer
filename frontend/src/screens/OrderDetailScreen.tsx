@@ -49,23 +49,8 @@ export function OrderDetailScreen() {
     }, [load])
   );
 
-  // Step 1: PENDING → ASSIGNED (claim). Binds picker + device.
-  async function onClaim() {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await pickerRepository.startOrder(String(id), newIdemKey(), getDeviceId(), order?.version);
-      if (!r.ok) {
-        setError(r.apiError.message);
-        return;
-      }
-      setOrder(r.data);
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  // Step 2: ASSIGNED → IN_PROGRESS (device confirmed). Same picker + device only.
+  // ASSIGNED -> IN_PROGRESS. Same picker + device only.
   async function onBegin() {
     setBusy(true);
     setError(null);
@@ -130,13 +115,6 @@ export function OrderDetailScreen() {
       <ProgressIndicator done={done} total={order.lines.length} />
       <ErrorBanner message={error} />
 
-      {/* Status banner for unassigned */}
-      {order.status === "PENDING" ? (
-        <View style={od.statusBanner}>
-          <Text style={od.statusBannerLabel}>STATUS</Text>
-          <Text style={od.statusBannerValue}>UNASSIGNED</Text>
-        </View>
-      ) : null}
 
       {/* Picking Manifest */}
       <SectionHeader title="Picking Manifest" hint={`${order.lines.length} items in route order`} />
@@ -172,14 +150,12 @@ export function OrderDetailScreen() {
       ))}
 
       <Divider />
-      {order.status === "PENDING" ? (
-        <PrimaryButton label={busy ? "Claiming…" : "CLAIM ORDER & BEGIN"} onPress={onClaim} disabled={busy} />
-      ) : order.status === "ASSIGNED" ? (
+      {order.status === "ASSIGNED" ? (
         order.assignedPickerCode !== picker?.id ? (
           <ErrorBanner message={`Assigned to ${order.assignedPickerCode}. Pick another order.`} />
         ) : (
           <PrimaryButton
-            label={busy ? "Starting…" : "BEGIN PICK SESSION"}
+            label={busy ? "Starting…" : "START PICKING"}
             onPress={onBegin}
             disabled={busy}
           />

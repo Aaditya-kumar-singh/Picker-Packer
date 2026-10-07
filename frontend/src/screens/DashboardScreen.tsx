@@ -1,22 +1,18 @@
-// Screen 3 — Dashboard. Stitch design: picker profile header, active pick run
-// hero card with progress, 4-metric grid, sync status banner, quick actions.
+// Picker Dashboard — screenshot-aligned compact warehouse dashboard.
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import {
-  AppHeader,
   EmptyState,
   ErrorState,
   LoadingState,
   MetricCard,
   PrimaryButton,
   Screen,
-  SecondaryButton,
   SectionHeader,
   StatusBadge,
   theme,
 } from "@/components/ui";
-import { OfflineBanner, ConflictList, SyncBadge } from "@/components/SyncBadge";
 import { useAuth } from "@/navigation/AppProvider";
 import { pickerRepository } from "@/repositories/pickerRepository";
 import { useSyncStatus } from "@/sync/SyncContext";
@@ -35,7 +31,9 @@ export function DashboardScreen() {
     if (r.ok) {
       setData(r.data);
       setError(null);
-    } else setError(r.apiError.message);
+    } else {
+      setError(r.apiError.message);
+    }
     setLoading(false);
   }, []);
 
@@ -45,65 +43,26 @@ export function DashboardScreen() {
     }, [load])
   );
 
-  const resume = data?.activeOrder
-    ? () => router.push(`/order/${data.activeOrder!.id}` as never)
-    : null;
-
   return (
     <Screen>
-      {/* Picker profile header */}
-      <View style={ds.profileRow}>
-        <View style={ds.profileLeft}>
-          <View style={ds.avatar}>
-            <Text style={ds.avatarText}>
-              {(data?.pickerName ?? picker?.name ?? "P").charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <View>
-            <Text style={ds.profileName} numberOfLines={1} ellipsizeMode="tail">{data?.pickerName ?? picker?.name ?? ""}</Text>
-            <Text style={ds.profileMeta} numberOfLines={1} ellipsizeMode="tail">
-              {data?.pickerCode ?? ""} • {data?.warehouseName ?? ""}
-            </Text>
-          </View>
-        </View>
-      </View>
-      <View style={ds.syncRow}>
-        <SyncBadge />
-      </View>
-
-      <OfflineBanner />
-
       {loading && !data ? (
         <LoadingState label="Loading dashboard…" />
       ) : error && !data ? (
         <ErrorState message={error} onRetry={() => void load()} />
       ) : !data ? (
-        <EmptyState title="No dashboard data" body="Pull back in with a connection to load your shift." actionLabel="Retry" onAction={() => void load()} />
+        <EmptyState
+          title="No dashboard data"
+          body="Reconnect to load your assigned work."
+          actionLabel="Retry"
+          onAction={() => void load()}
+        />
       ) : (
         <>
-          {/* Active pick run hero card */}
-          {data.activeOrder ? (
-            <View style={ds.heroCard}>
-              <View style={ds.heroHeader}>
-                <Text style={ds.heroLabel}>ACTIVE PICK RUN</Text>
-                <StatusBadge text="IN PROGRESS" tone="warn" />
-              </View>
-              <Text style={ds.heroOrderId}>{data.activeOrder.externalId}</Text>
-              <View style={ds.heroProgressRow}>
-                <View style={ds.heroProgressTrack}>
-                  <View style={[ds.heroProgressFill, { width: "33%" }]} />
-                </View>
-                <Text style={ds.heroProgressText}>Active</Text>
-              </View>
-              <PrimaryButton
-                label={`RESUME PICKING`}
-                onPress={() => router.push(`/order/${data.activeOrder!.id}` as never)}
-              />
-            </View>
-          ) : null}
+          <SectionHeader
+            title="Picker Dashboard"
+            hint={data.warehouseName || picker?.name || undefined}
+          />
 
-          {/* Metrics grid */}
-          <SectionHeader title="Shift Performance" hint={sync.lastSyncAt ? `Last sync ${new Date(sync.lastSyncAt).toLocaleTimeString()}` : "Never synced"} />
           <View style={ds.grid}>
             <View style={ds.cell}>
               <MetricCard
@@ -121,42 +80,42 @@ export function DashboardScreen() {
             </View>
             <View style={ds.cell}>
               <MetricCard
-                value={String(sync.pending)}
-                label="Queued Sync"
-                tone={sync.pending > 0 ? "warn" : "ok"}
-              />
-            </View>
-            <View style={ds.cell}>
-              <MetricCard
-                value={data.activeOrder ? "1" : "0"}
-                label="In Progress"
-                tone={data.activeOrder ? "warn" : undefined}
+                value={String(data.metrics.totalPickedQty)}
+                label="Items Picked Today"
+                tone={data.metrics.totalPickedQty > 0 ? "info" : undefined}
               />
             </View>
           </View>
 
-          {/* Sync status banner */}
-          <View style={ds.syncBanner}>
-            <View style={[ds.syncDot, sync.connectivity === "ONLINE" ? ds.syncDotOk : ds.syncDotBad]} />
-            <Text style={ds.syncText}>
-              {sync.connectivity === "ONLINE"
-                ? `Online • ${sync.pending === 0 ? "All scans synced with WMS" : `${sync.pending} events queued`}`
-                : "Offline — changes queued locally"}
-            </Text>
-          </View>
+          {data.activeOrder ? (
+            <View style={ds.activeCard}>
+              <View style={ds.activeHeader}>
+                <View>
+                  <Text style={ds.activeLabel}>ACTIVE ORDER</Text>
+                  <Text style={ds.orderId}>{data.activeOrder.externalId}</Text>
+                </View>
+                <StatusBadge text="IN PROGRESS" tone="warn" />
+              </View>
+              <Text style={ds.activeMeta}>
+                {data.activeOrder.lines.length} pick lines · {data.activeOrder.priority >= 2 ? "High priority" : "Standard priority"}
+              </Text>
+              <PrimaryButton
+                label="RESUME PICKING"
+                onPress={() => router.push(`/order/${data.activeOrder!.id}` as never)}
+              />
+            </View>
+          ) : null}
 
           {error ? <Text style={ds.stale}>Showing last loaded data — {error}</Text> : null}
-          <ConflictList />
 
-          {/* Quick actions */}
-          <SectionHeader title="Quick Actions" />
-          {!resume ? (
-            <PrimaryButton label="View Orders" onPress={() => router.push("/orders" as never)} />
-          ) : (
-            <>
-              <SecondaryButton label="View Orders" onPress={() => router.push("/orders" as never)} />
-            </>
-          )}
+          {sync.connectivity !== "ONLINE" ? (
+            <View style={ds.offlineBanner}>
+              <View style={ds.offlineDot} />
+              <Text style={ds.offlineText}>
+                {sync.connectivity === "CHECKING" ? "Checking connection…" : "Offline — changes will sync when connection returns"}
+              </Text>
+            </View>
+          ) : null}
         </>
       )}
     </Screen>
@@ -164,101 +123,50 @@ export function DashboardScreen() {
 }
 
 const ds = StyleSheet.create({
-  profileRow: {
+  grid: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: theme.space.sm,
+    marginHorizontal: -4,
+    marginTop: theme.space.sm,
   },
-  profileLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.space.sm,
+  cell: {
     flex: 1,
-    minWidth: 0,
+    paddingHorizontal: 4,
   },
-  profileInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  syncRow: {
-    alignItems: "flex-start",
-    marginBottom: theme.space.xs,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.color.primaryContainer,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarText: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: theme.color.onPrimary,
-  },
-  profileName: {
-    ...(theme.type.section as object),
-    color: theme.color.ink,
-  },
-  profileMeta: {
-    ...(theme.type.secondary as object),
-    color: theme.color.secondary,
-    letterSpacing: 0.4,
-  },
-  heroCard: {
+  activeCard: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
-    padding: theme.space.md,
-    marginTop: theme.space.sm,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: theme.color.primaryContainer,
-    shadowColor: theme.color.ink,
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    padding: theme.space.md,
+    marginTop: theme.space.md,
   },
-  heroHeader: {
+  activeHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: theme.space.xs,
+    alignItems: "flex-start",
+    gap: theme.space.sm,
   },
-  heroLabel: {
-    ...(theme.type.labelMd as object),
+  activeLabel: {
+    ...(theme.type.labelSm as object),
     color: theme.color.primaryContainer,
+    letterSpacing: 0.8,
   },
-  heroOrderId: {
+  orderId: {
     ...(theme.type.codeLg as object),
     color: theme.color.ink,
-    marginBottom: theme.space.xs,
+    marginTop: 3,
   },
-  heroProgressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.space.xs,
+  activeMeta: {
+    ...(theme.type.secondary as object),
+    color: theme.color.secondary,
+    marginVertical: theme.space.sm,
   },
-  heroProgressTrack: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.color.surfaceContainerHigh,
-    overflow: "hidden",
+  stale: {
+    marginTop: theme.space.xs,
+    color: theme.color.secondary,
+    ...(theme.type.secondary as object),
   },
-  heroProgressFill: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.color.primaryContainer,
-  },
-  heroProgressText: {
-    ...(theme.type.labelSm as object),
-    color: theme.color.muted,
-  },
-  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4, marginTop: 2 },
-  cell: { width: "50%", paddingHorizontal: 4 },
-  syncBanner: {
+  offlineBanner: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.space.xs,
@@ -267,9 +175,15 @@ const ds = StyleSheet.create({
     padding: theme.space.sm,
     marginTop: theme.space.sm,
   },
-  syncDot: { width: 10, height: 10, borderRadius: 5 },
-  syncDotOk: { backgroundColor: theme.color.okInk },
-  syncDotBad: { backgroundColor: theme.color.critical },
-  syncText: { ...(theme.type.secondary as object), color: theme.color.ink, flex: 1 },
-  stale: { marginTop: theme.space.xs, color: theme.color.secondary, ...(theme.type.secondary as object) },
+  offlineDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: theme.color.critical,
+  },
+  offlineText: {
+    ...(theme.type.secondary as object),
+    color: theme.color.ink,
+    flex: 1,
+  },
 });

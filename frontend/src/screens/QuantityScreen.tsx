@@ -10,11 +10,9 @@ import {
   MetricCard,
   PrimaryButton,
   Screen,
-  SecondaryButton,
 } from "@/components/ui";
 import { isShortPick, nextPendingLine, resolvePickStep } from "@/domain/order";
 import { newIdemKey, pickerRepository } from "@/repositories/pickerRepository";
-import { DEV } from "@/utils/dev";
 import type { Order } from "@/types";
 
 export function QuantityScreen() {
@@ -74,9 +72,6 @@ export function QuantityScreen() {
     }
   }
 
-  function fill(v: number) {
-    setQty(String(v));
-  }
 
   if (!line || line.status !== "SKU_VALIDATED" || step !== "quantity") {
     return (
@@ -115,14 +110,6 @@ export function QuantityScreen() {
       />
       <ErrorBanner message={error} />
       <PrimaryButton label={busy ? "Saving…" : "Confirm quantity"} onPress={confirm} disabled={busy} />
-      {/* DEV-ONLY quick fills (hidden in production builds) */}
-      {DEV && (
-        <>
-          <SecondaryButton label={`Fill correct (${line.requiredQty}) (dev)`} onPress={() => fill(line.requiredQty)} />
-          <SecondaryButton label="Fill short (dev)" onPress={() => fill(Math.max(1, line.requiredQty - 1))} />
-          <SecondaryButton label="Fill over (dev)" onPress={() => fill(line.requiredQty + 1)} />
-        </>
-      )}
     </Screen>
   );
 }

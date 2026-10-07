@@ -9,13 +9,11 @@ import {
   ProgressIndicator,
   ScanTarget,
   Screen,
-  SecondaryButton,
   SuccessFeedback,
 } from "@/components/ui";
 import { nextPendingLine, resolvePickStep } from "@/domain/order";
 import { pickerRepository } from "@/repositories/pickerRepository";
-import { beepError, beepSuccess, correctSkuScan, wrongSkuScan } from "@/services/scanner";
-import { DEV } from "@/utils/dev";
+import { beepError, beepSuccess } from "@/services/scanner";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
 import type { Order } from "@/types";
 
@@ -109,16 +107,9 @@ export function SkuScanScreen() {
       <ScanTarget label="EXPECTED SKU" value={line.skuCode} />
       <ErrorBanner message={error} />
       <SuccessFeedback message={line.status === "LOCATION_VALIDATED" ? "Location OK — now scan item" : null} />
-      {DEV && (
-        <>
-          <SecondaryButton label="Scan correct SKU (dev)" onPress={() => scan(correctSkuScan(line.skuBarcode).value)} />
-          <SecondaryButton label="Scan wrong SKU (dev)" onPress={() => scan(wrongSkuScan().value)} />
-        </>
-      )}
     </Screen>
   );
 }
-  117
 const ss = StyleSheet.create({
   productCard: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#1351b4", borderRadius: 12, padding: 16, marginTop: 12 },
   productName: { fontSize: 20, fontWeight: "700", color: "#0d1c2e" },

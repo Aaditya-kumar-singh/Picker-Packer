@@ -6,19 +6,16 @@ import {
   AppHeader,
   ErrorBanner,
   LoadingState,
-  PrimaryButton,
   ProgressIndicator,
   ScanTarget,
   Screen,
-  SecondaryButton,
   SLAIndicator,
   SuccessFeedback,
 } from "@/components/ui";
 import { nextPendingLine, resolvePickStep } from "@/domain/order";
 import { pickerRepository } from "@/repositories/pickerRepository";
-import { beepError, beepSuccess, correctLocationScan, wrongLocationScan } from "@/services/scanner";
+import { beepError, beepSuccess } from "@/services/scanner";
 import { OfflineBanner } from "@/components/SyncBadge";
-import { DEV } from "@/utils/dev";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
 import type { Order } from "@/types";
 
@@ -51,7 +48,7 @@ export function LocationScanScreen() {
     }
   }, [order, step]);
 
-  async function scan(value: string, isWrongDemo: boolean) {
+  async function scan(value: string) {
     if (!line || !order || busy) return;
     const v = value.trim();
     if (!v) {
@@ -71,14 +68,13 @@ export function LocationScanScreen() {
       beepSuccess();
       setOk(`Location ${r.data.locationCode} validated`);
       setManual("");
-      void isWrongDemo;
       router.push(`/pick/${order!.id}/sku` as never);
     } finally {
       setBusy(false);
     }
   }
 
-  if (!order || step !== "location") {
+  if (!order || !line || step !== "location") {
     return (
       <Screen>
         <AppHeader title="Location Scan" sub={!order ? "Loading…" : "Resuming correct step…"} />
@@ -86,15 +82,6 @@ export function LocationScanScreen() {
       </Screen>
     );
   }
-  if (!line) {
-    return (
-      <Screen>
-        <AppHeader title="Location Scan" sub="No pending lines — finishing" />
-        <PrimaryButton label="Go to Completion" onPress={() => router.push(`/pick/${orderId}/complete` as never)} />
-      </Screen>
-    );
-  }
-
   const done = order.lines.filter((l) => ["PICKED", "EXCEPTION", "SKIPPED"].includes(l.status)).length;
 
   return (
@@ -111,12 +98,12 @@ export function LocationScanScreen() {
           scanTitle="Scan location barcode"
           inputValue={manual}
           onInputChange={setManual}
-          onSubmit={() => void scan(manual, false)}
+          onSubmit={() => void scan(manual)}
           inputPlaceholder="Type or scan location barcode"
           match={manual.trim() ? manual.trim().toUpperCase() === line.locationBarcode.trim().toUpperCase() : null}
           onScanned={(value) => {
             setManual(value);
-            void scan(value, false);
+            void scan(value);
           }}
           disabled={busy}
         />
@@ -124,17 +111,9 @@ export function LocationScanScreen() {
       <OfflineBanner />
       <ErrorBanner message={error} />
       <SuccessFeedback message={ok} />
-      {/* DEV-ONLY mock scanner (hidden in production builds) */}
-      {DEV && (
-        <>
-          <SecondaryButton label="Scan correct location (dev)" onPress={() => scan(correctLocationScan(line.locationBarcode).value, false)} />
-          <SecondaryButton label="Scan wrong location (dev)" onPress={() => scan(wrongLocationScan().value, true)} />
-        </>
-      )}
     </Screen>
   );
 }
-  131
 const ls = StyleSheet.create({
   locationCard: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#1351b4", borderRadius: 12, padding: 16, marginTop: 12 },
   locationTitle: { fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: "#1351b4", textTransform: "uppercase" },
