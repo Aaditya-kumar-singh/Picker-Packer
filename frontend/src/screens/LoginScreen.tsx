@@ -59,7 +59,7 @@ export function LoginScreen() {
   const busy = loading;
 
   return (
-    <Screen center>
+    <Screen center backgroundColor={theme.color.bg}>
       <View style={ls.brandBox}>
         <View style={ls.monogram}>
           <Text style={ls.monogramText}>YBM</Text>
@@ -69,8 +69,10 @@ export function LoginScreen() {
       </View>
 
       <View style={ls.heroCard}>
-        <Text style={ls.heroTitle}>Staff Login</Text>
-        <Text style={ls.heroDesc}>Enter your email and password to begin your shift</Text>
+        <View style={ls.heroCopy}>
+          <Text style={ls.heroTitle}>Staff Login</Text>
+          <Text style={ls.heroDesc}>Enter your email and password to begin your shift</Text>
+        </View>
         <View style={ls.scannerBar}>
           <View style={ls.scannerDot} />
           <Text style={ls.scannerLabel}>SCANNER READY</Text>
@@ -91,7 +93,7 @@ export function LoginScreen() {
         returnKeyType="next"
         editable={!busy}
       />
-      <View style={{ height: 16 }} />
+      <View style={{ height: 8 }} />
       <FieldInput
         label="Password"
         value={password}
@@ -147,12 +149,18 @@ export function LoginScreen() {
 }
 
 const ls = StyleSheet.create({
-  brandBox: { alignItems: "center", marginBottom: theme.space.lg },
+  brandBox: {
+    alignItems: "center",
+    marginBottom: theme.space.sm,
+    paddingTop: theme.space.xs,
+  },
   monogram: {
-    backgroundColor: theme.color.surface,
+    backgroundColor: theme.brandYellow,
     borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.space.xl,
-    paddingVertical: theme.space.sm,
+    borderWidth: 2,
+    borderColor: theme.brandYellowBorder,
+    paddingHorizontal: theme.space.lg,
+    paddingVertical: theme.space.xs,
     alignItems: "center",
     shadowColor: theme.color.ink,
     shadowOpacity: 0.1,
@@ -181,29 +189,33 @@ const ls = StyleSheet.create({
   heroCard: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
-    padding: theme.space.md,
-    marginBottom: theme.space.md,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    padding: theme.space.sm,
+    marginBottom: theme.space.sm,
     shadowColor: theme.color.ink,
     shadowOpacity: 0.06,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  heroTitle: { ...(theme.type.display as object), color: theme.color.ink, marginBottom: theme.space.xxs },
-  heroDesc: { ...(theme.type.bodyMd as object), color: theme.color.muted },
+  heroCopy: { flex: 1 },
+  heroTitle: { ...(theme.type.titleMd as object), color: theme.color.ink, marginBottom: theme.space.xxs },
+  heroDesc: { ...(theme.type.secondary as object), color: theme.color.muted },
   scannerBar: {
     backgroundColor: theme.color.surfaceContainerLow,
-    borderRadius: theme.radius.lg,
-    padding: theme.space.sm,
-    marginTop: theme.space.sm,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.space.xs,
+    paddingVertical: theme.space.xxs,
+    marginTop: theme.space.xs,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.space.xs,
   },
   scannerDot: {
-    width: 36,
-    height: 36,
-    borderRadius: theme.radius.md,
+    width: 28,
+    height: 28,
+    borderRadius: theme.radius.sm,
     backgroundColor: theme.color.primary,
   },
   scannerLabel: {
@@ -232,24 +244,24 @@ const ls = StyleSheet.create({
     gap: theme.space.xs,
   },
   quickPicker: {
-    backgroundColor: "#1f7a4d",
-    minHeight: theme.touch.primary,
+    backgroundColor: theme.picker.primary,
+    minHeight: 48,
     justifyContent: "center",
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     alignItems: "center",
-    marginTop: theme.space.sm,
+    marginTop: theme.space.xs,
   },
   quickPacker: {
-    backgroundColor: "#7a4f1f",
-    minHeight: theme.touch.primary,
+    backgroundColor: theme.packer.primary,
+    minHeight: 48,
     justifyContent: "center",
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     alignItems: "center",
-    marginTop: theme.space.sm,
+    marginTop: theme.space.xs,
   },
   quickButtonText: { ...(theme.type.button as object), color: theme.color.onPrimary },
   quickDisabled: { opacity: 0.45 },
   quickPressed: { opacity: 0.88 },
-  footer: { alignItems: "center", marginTop: theme.space.md },
+  footer: { alignItems: "center", marginTop: theme.space.sm },
   footerText: { ...(theme.type.secondary as object), color: theme.color.muted },
 });

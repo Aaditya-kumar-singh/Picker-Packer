@@ -20,48 +20,48 @@ import type { TextInputProps } from "react-native";
 
 export const theme = {
   color: {
-    bg: "#f8f9ff", // surface-bright / background
+    bg: "#f6f8fc", // surface-bright / background
     surface: "#ffffff", // surface-container-lowest
-    surfaceContainerLow: "#eff4ff",
-    surfaceContainer: "#e6eeff",
-    surfaceContainerHigh: "#dce9ff",
-    surfaceContainerHighest: "#d5e3fc",
-    surfaceDim: "#ccdbf3",
-    surfaceTint: "#225abd",
+    surfaceContainerLow: "#f9fafb",
+    surfaceContainer: "#f1f5f9",
+    surfaceContainerHigh: "#eef2f6",
+    surfaceContainerHighest: "#e5e7eb",
+    surfaceDim: "#dbe2ea",
+    surfaceTint: "#0c831f",
     inverseSurface: "#233144",
-    inverseOnSurface: "#eaf1ff",
-    ink: "#0d1c2e", // on-surface
-    muted: "#434653", // on-surface-variant
-    faint: "#737784", // outline
-    line: "#c3c6d5", // outline-variant
-    primary: "#003a8c",
-    primaryContainer: "#1351b4",
-    primaryDark: "#1351b4", // alias
-    primaryFixed: "#d9e2ff",
-    primaryFixedDim: "#b0c6ff",
+    inverseOnSurface: "#ffffff",
+    ink: "#172033", // on-surface
+    muted: "#64748b", // on-surface-variant
+    faint: "#94a3b8", // outline
+    line: "#e4e9f2", // outline-variant
+    primary: "#0c831f",
+    primaryContainer: "#0c831f",
+    primaryDark: "#086b19", // alias
+    primaryFixed: "#e6f4ea",
+    primaryFixedDim: "#c8e6d0",
     onPrimary: "#ffffff",
-    onPrimaryContainer: "#b8cbff",
-    onPrimaryFixed: "#001945",
+    onPrimaryContainer: "#ffffff",
+    onPrimaryFixed: "#063b10",
     secondary: "#4e5f7a",
-    secondaryContainer: "#ccdefe",
+    secondaryContainer: "#e2e8f0",
     secondaryFixedDim: "#b6c7e7",
     onSecondary: "#ffffff",
-    onSecondaryContainer: "#51627d",
-    tertiary: "#623200",
-    tertiaryContainer: "#844600",
-    onTertiaryContainer: "#ffbe8b",
-    tertiaryFixed: "#ffdcc3",
-    tertiaryFixedDim: "#ffb77d",
-    onTertiaryFixed: "#2f1500",
-    okBg: "#c8e6c9",
-    okInk: "#1b5e20",
-    warnBg: "#ffdcc3", // tertiary-fixed
-    warnInk: "#2f1500", // on-tertiary-fixed
-    badBg: "#ffdad6", // error-container
-    badInk: "#93000a", // on-error-container
-    infoBg: "#e6eeff", // surface-container
-    infoInk: "#003a8c", // primary
-    critical: "#ba1a1a", // error
+    onSecondaryContainer: "#334155",
+    tertiary: "#2563eb",
+    tertiaryContainer: "#dbeafe",
+    onTertiaryContainer: "#1e40af",
+    tertiaryFixed: "#dbeafe",
+    tertiaryFixedDim: "#93c5fd",
+    onTertiaryFixed: "#1e3a8a",
+    okBg: "#e6f4ea",
+    okInk: "#0c831f",
+    warnBg: "#fef3c7", // tertiary-fixed
+    warnInk: "#92400e", // on-tertiary-fixed
+    badBg: "#fef2f2", // error-container
+    badInk: "#991b1b", // on-error-container
+    infoBg: "#eff6ff", // surface-container
+    infoInk: "#1e40af", // primary
+    critical: "#dc2626", // error
   },
   type: {
     // Stitch typography scale (Inter)
@@ -79,15 +79,32 @@ export const theme = {
     codeLg: { fontSize: 20, fontWeight: "700" as const, letterSpacing: 0.4 }, // code-lg (JetBrains Mono)
     codeMd: { fontSize: 15, fontWeight: "600" as const, letterSpacing: 0.15 }, // code-md
     codeDisplay: { fontSize: 32, fontWeight: "700" as const, letterSpacing: 1.28 }, // code-display
-    button: { fontSize: 14, fontWeight: "700" as const, letterSpacing: 0.28 }, // label-lg for buttons
+    button: { fontSize: 14, fontWeight: "800" as const, letterSpacing: 0.28 }, // label-lg for buttons
     badge: { fontSize: 12, fontWeight: "600" as const, letterSpacing: 0.48 }, // label-md
     caption: { fontSize: 10, fontWeight: "700" as const, letterSpacing: 0.6 },
   },
   // Stitch spacing tokens (rem → px at 16px base)
-  space: { xxs: 4, xs: 8, sm: 12, md: 16, lg: 20, xl: 24, xxl: 32 },
-  radius: { sm: 4, md: 8, lg: 12, pill: 999 },
+  space: { xxs: 3, xs: 6, sm: 9, md: 12, lg: 16, xl: 20, xxl: 24 },
+  radius: { sm: 10, md: 14, lg: 18, pill: 999 },
   // Stitch touch targets
-  touch: { min: 48, primary: 56 },
+  touch: { min: 48, primary: 50 },
+  picker: { primary: "#0c831f", light: "#e6f4ea", surface: "#f3faf5", border: "#b9dfc0", text: "#0c831f" },
+  packer: { primary: "#d97706", light: "#fef3c7", surface: "#fffbeb", border: "#fcd34d", text: "#b45309" },
+  brandYellow: "#ffc200",
+  brandYellowBorder: "#eab308",
+  colors: {
+    text: "#172033", textSecondary: "#334155", textMuted: "#64748b", textSubtle: "#94a3b8", textInverse: "#ffffff",
+    surface: "#ffffff", borderDark: "#cbd5e1", primary: "#0c831f", success: "#10b981", successDark: "#047857", successSurface: "#ecfdf5",
+    location: { bg: "#fef3c7", border: "#fde68a", text: "#92400e", icon: "#d97706" },
+    sku: { bg: "#f3e8ff", border: "#e9d5ff", text: "#6b21a8", icon: "#9333ea" },
+  },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+  radii: { sm: 10, md: 14, lg: 18, xl: 20, full: 9999 },
+  shadows: {
+    sm: { shadowColor: "#172033", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+    md: { shadowColor: "#172033", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 5, elevation: 2 },
+    lg: { shadowColor: "#172033", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 4 },
+  },
 } as const;
 
 export type Tone = "ok" | "bad" | "info" | "warn";
@@ -129,9 +146,9 @@ export function toneForLineStatus(status: string): Tone {
 // ── Layout ─────────────────────────────────────────────────────────────
 // Screen: safe area + scroll + keyboard-aware container. Every screen wraps
 // in this so small portrait phones and open keyboards never clip content.
-export function Screen({ children, center }: { children: ReactNode; center?: boolean }) {
+export function Screen({ children, center, backgroundColor }: { children: ReactNode; center?: boolean; backgroundColor?: string }) {
   return (
-    <SafeAreaView style={s.screen}>
+    <SafeAreaView style={[s.screen, backgroundColor ? { backgroundColor } : null]}>
       <KeyboardAvoidingView
         style={s.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -473,10 +490,10 @@ export function ErrorState({
 const s = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: theme.color.bg },
-  body: { flexGrow: 1, padding: theme.space.md, paddingBottom: theme.space.xxl },
+  body: { flexGrow: 1, padding: theme.space.sm, paddingBottom: theme.space.lg },
   center: { justifyContent: "center" },
   // ── Headers ──
-  header: { paddingVertical: theme.space.sm, marginBottom: theme.space.xs },
+  header: { paddingVertical: theme.space.xs, marginBottom: theme.space.xxs },
   headerTitle: { ...(theme.type.display as object), color: theme.color.ink },
   headerSub: { ...(theme.type.secondary as object), color: theme.color.secondary, marginTop: 2, letterSpacing: 0.4 },
   alertHeader: {
@@ -489,10 +506,10 @@ const s = StyleSheet.create({
   },
   alertTitle: { ...(theme.type.title as object), color: theme.color.warnInk },
   alertSub: { ...(theme.type.secondary as object), color: theme.color.warnInk, marginTop: 2 },
-  sectionHead: { marginTop: theme.space.lg, marginBottom: theme.space.xs },
+  sectionHead: { marginTop: theme.space.md, marginBottom: theme.space.xxs },
   sectionTitle: { ...(theme.type.labelLg as object), color: theme.color.ink, textTransform: "uppercase" },
   sectionHint: { ...(theme.type.secondary as object), color: theme.color.secondary, marginTop: 2 },
-  divider: { height: 1, backgroundColor: theme.color.line, marginVertical: theme.space.md },
+  divider: { height: 1, backgroundColor: theme.color.line, marginVertical: theme.space.sm },
   // ── Buttons (Stitch touch-target-primary 56px) ──
   primary: {
     backgroundColor: theme.color.primaryContainer,
@@ -528,7 +545,7 @@ const s = StyleSheet.create({
   secondaryText: { ...(theme.type.button as object), color: theme.color.primary, textTransform: "uppercase" },
   secondaryTextDisabled: { color: theme.color.faint },
   // ── Inputs (Stitch rounded-xl, surfaceContainerLow bg) ──
-  field: { marginTop: theme.space.md },
+  field: { marginTop: theme.space.sm },
   fieldLabel: { ...(theme.type.labelLg as object), color: theme.color.ink, marginBottom: 6, textTransform: "uppercase" },
   input: {
     borderWidth: 1.5,
@@ -667,7 +684,7 @@ const s = StyleSheet.create({
   metricValue: { ...(theme.type.title as object), color: theme.color.ink },
   metricLabel: { ...(theme.type.labelMd as object), color: theme.color.muted, marginTop: 2, textTransform: "uppercase" },
   // ── Async states ──
-  stateBox: { paddingVertical: theme.space.xl, alignItems: "stretch" },
+  stateBox: { paddingVertical: theme.space.lg, alignItems: "stretch" },
   stateText: { ...(theme.type.secondary as object), color: theme.color.muted, marginTop: theme.space.xs, textAlign: "center" },
   emptyGlyph: { fontSize: 48, textAlign: "center", color: theme.color.primaryFixedDim },
   emptyTitle: { ...(theme.type.section as object), textAlign: "center", marginTop: theme.space.xs, color: theme.color.ink },

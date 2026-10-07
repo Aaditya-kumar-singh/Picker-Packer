@@ -4,6 +4,7 @@ import type { ColorValue } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/navigation/AppProvider";
 import { theme } from "@/components/ui";
+import { BrandHeader } from "@/components/BrandHeader";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -21,13 +22,15 @@ export default function TabLayout() {
 
   const baseTabHeight = 62;
   const bottomInset = Math.max(insets.bottom, 0);
+  const rolePrimary = isPacker ? theme.packer.primary : theme.picker.primary;
 
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <BrandHeader />,
         tabBarHideOnKeyboard: true,
-        tabBarActiveTintColor: theme.color.primary,
+        tabBarActiveTintColor: rolePrimary,
         tabBarInactiveTintColor: theme.color.muted,
         tabBarStyle: {
           backgroundColor: theme.color.surface,
