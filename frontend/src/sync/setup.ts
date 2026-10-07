@@ -47,10 +47,18 @@ async function create(): Promise<SyncRuntime> {
 export function getSyncRuntime(): Promise<SyncRuntime> {
   if (runtime) return Promise.resolve(runtime);
   if (!initPromise) {
-    initPromise = create().then(r => {
-      runtime = r;
-      return r;
-    });
+    initPromise = create()
+      .then(r => {
+        runtime = r;
+        return r;
+      })
+      .catch(error => {
+        // Allow a later foreground attempt to rebuild the runtime after a
+        // transient native SQLite/Expo lifecycle failure.
+        initPromise = null;
+        runtime = null;
+        throw error;
+      });
   }
   return initPromise;
 }

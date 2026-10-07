@@ -16,7 +16,7 @@ import {
 import { pickerRepository } from "@/repositories/pickerRepository";
 import type { Order } from "@/types";
 
-export function OrdersScreen() {
+export function OrdersScreen({ completed = false }: { completed?: boolean }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,9 +40,11 @@ export function OrdersScreen() {
     }, [load])
   );
 
+  const completedOrders = orders.filter(o => o.status === "COMPLETED");
+  const visibleOrders = completed ? completedOrders : orders.filter(o => o.status !== "COMPLETED");
   const q = search.trim().toLowerCase();
   const filtered = q
-    ? orders.filter((o) =>
+    ? visibleOrders.filter((o) =>
         [
           o.externalId,
           ...o.lines.flatMap((l) => [l.skuCode, l.skuName, l.locationCode]),
@@ -51,13 +53,13 @@ export function OrdersScreen() {
           .toLowerCase()
           .includes(q)
       )
-    : orders;
+    : visibleOrders;
 
   return (
     <Screen>
       <SectionHeader
-        title="Assigned Orders"
-        hint={orders.length ? `${orders.length} order${orders.length === 1 ? "" : "s"}` : undefined}
+        title={completed ? "Completed Orders" : "Assigned Orders"}
+        hint={visibleOrders.length ? `${visibleOrders.length} order${visibleOrders.length === 1 ? "" : "s"}` : undefined}
       />
 
       <View style={os.searchWrap}>
@@ -80,8 +82,8 @@ export function OrdersScreen() {
         <ErrorState message={error} onRetry={() => void load()} />
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={search ? "No Matching Orders" : "No Assigned Orders"}
-          body={search ? "Try another order, SKU, product or location." : "Assigned picking work will appear here when released."}
+          title={search ? "No Matching Orders" : completed ? "No Completed Orders" : "No Assigned Orders"}
+          body={search ? "Try another order, SKU, product or location." : completed ? "Completed picking orders will appear here." : "Assigned picking work will appear here when released."}
           actionLabel="Refresh Orders"
           onAction={() => void load()}
         />

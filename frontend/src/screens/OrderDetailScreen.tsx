@@ -68,7 +68,7 @@ export function OrderDetailScreen() {
       setOrder(r.data);
       // Fresh ASSIGNED orders start at location, but route from the
       // authoritative line status so a resumed order never restarts at step 1.
-      router.push(pickStepPath(r.data.id, r.data) as never);
+      router.replace(pickStepPath(r.data.id, r.data) as never);
     } finally {
       setBusy(false);
     }
@@ -161,7 +161,7 @@ export function OrderDetailScreen() {
           />
         )
       ) : order.status === "IN_PROGRESS" ? (
-        <PrimaryButton label="Continue picking" onPress={() => router.push(pickStepPath(order.id, order) as never)} />
+        <PrimaryButton label="Continue picking" onPress={() => router.replace(pickStepPath(order.id, order) as never)} />
       ) : (
         <StatusBadge text={order.status} tone={toneForOrderStatus(order.status)} />
       )}

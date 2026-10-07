@@ -202,10 +202,10 @@ export function ExceptionScreen() {
     const r = await pickerRepository.getOrder(String(orderId));
     if (r.ok) {
       setOrder(r.data);
-      router.push(pickStepPath(r.data.id, r.data) as never);
+      router.replace(pickStepPath(r.data.id, r.data) as never);
       return;
     }
-    router.push(`/pick/${orderId}/location` as never);
+    router.replace(`/pick/${orderId}/location` as never);
   }
 
   // ── Step 2: exception saved → photo evidence + continue ──────────────

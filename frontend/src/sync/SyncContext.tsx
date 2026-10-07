@@ -29,12 +29,18 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    void getSyncRuntime().then((r) => {
-      if (!alive) return;
-      setRuntime(r);
-      unsub = r.status.subscribe(() => setStatus({ ...r.status.get() }));
-      setStatus({ ...r.status.get() });
-    });
+    void getSyncRuntime()
+      .then((r) => {
+        if (!alive) return;
+        setRuntime(r);
+        unsub = r.status.subscribe(() => setStatus({ ...r.status.get() }));
+        setStatus({ ...r.status.get() });
+      })
+      .catch(() => {
+        // Online Picker reads continue through the direct Supabase API.
+        // SQLite/sync availability must not blank or block the dashboard.
+        if (alive) setStatus({ ...IDLE_STATUS });
+      });
 
     return () => {
       alive = false;

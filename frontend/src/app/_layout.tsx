@@ -22,15 +22,10 @@ function RouteGuard() {
     }
 
     const pickerRoots = new Set(["dashboard", "orders", "order", "pick"]);
-    const packerRoots = new Set(["packer-dashboard", "pack", "dispatch"]);
+    const packerRoots = new Set(["packer-dashboard", "pack"]);
 
     // Routes inside the persistent tab group are role-gated by their child route.
     if (root === "(tabs)") {
-      if (picker.role === "PICKER" && (child === "packer-dashboard" || child === "dispatch")) {
-        router.replace("/dashboard" as never);
-        return;
-      }
-
       if (picker.role === "PACKER" && (child === "dashboard" || child === "orders")) {
         router.replace("/packer-dashboard" as never);
       }

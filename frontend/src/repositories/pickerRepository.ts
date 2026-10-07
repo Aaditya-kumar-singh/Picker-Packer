@@ -13,15 +13,24 @@ class PickerRepository implements IPickerApi {
   private api(): Promise<IPickerApi> {
     if (!IS_EXPO_RUNTIME) return Promise.resolve(supabasePickerApi);
     if (this.offline) return Promise.resolve(this.offline);
+
+    // The online API is immediately usable. SQLite/sync initialization runs
+    // independently and must never block the first dashboard/order request.
+    // Once the offline runtime is ready, all subsequent calls use it.
     if (!this.offlineInit) {
-      this.offlineInit = import("@/sync/setup").then(m =>
-        m.getSyncRuntime().then(r => {
+      this.offlineInit = import("@/sync/setup")
+        .then(m => m.getSyncRuntime())
+        .then(r => {
           this.offline = r.api;
           return r;
         })
-      );
+        .catch(error => {
+          this.offlineInit = null;
+          throw error;
+        });
     }
-    return this.offlineInit.then(r => r.api);
+
+    return Promise.resolve(supabasePickerApi);
   }
 
   requestOtp = async (p: string) => (await this.api()).requestOtp(p);

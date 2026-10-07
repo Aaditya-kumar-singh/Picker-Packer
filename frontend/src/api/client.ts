@@ -80,11 +80,19 @@ export type PackingConfirmation = {
   createdAt: string;
 };
 
+export type RecentScan = {
+  itemId: string;
+  barcode: string;
+  scanType: string;
+  createdAt: string;
+};
+
 export type OrderDetail = OrderSummary & {
   items: OrderItem[];
   exceptions: ExceptionRecord[];
   packages: PackageRecord[];
   packingConfirmations: PackingConfirmation[];
+  recentScans: RecentScan[];
 };
 
 export type PickerMetrics = {
@@ -158,6 +166,8 @@ function mapOrderSummary(o: any, items: OrderItem[] = []): OrderSummary {
     createdAt: o.created_at, updatedAt: o.updated_at,
     itemCount: items.length || Number(o.item_count ?? 0),
     pickedCount,
+    packedCount: items.reduce((sum, i) => sum + i.packedQty, 0),
+    packageCount: Number(o.package_count ?? 0),
     items,
   };
 }
@@ -172,7 +182,7 @@ async function detail(id: string): Promise<OrderDetail> {
     supabase.from("exceptions").select("*").eq("order_id", id).order("created_at", { ascending: false }),
     supabase.from("packages").select("*").eq("order_id", id).order("package_number"),
     supabase.from("scan_events")
-      .select("item_id,scan_type,result,created_at")
+      .select("item_id,scan_type,barcode,result,created_at")
       .eq("order_id", id)
       .eq("user_id", user.id)
       .eq("result", "SUCCESS")
@@ -228,6 +238,12 @@ async function detail(id: string): Promise<OrderDetail> {
       productBarcode: c.product_barcode, expectedQty: c.expected_qty,
       confirmedQty: c.confirmed_qty, condition: c.condition, createdAt: c.created_at,
     })),
+    recentScans: (scans ?? []).slice(-20).reverse().map((scan: any) => ({
+      itemId: scan.item_id,
+      barcode: scan.barcode ?? "",
+      scanType: scan.scan_type,
+      createdAt: scan.created_at,
+    })),
   };
 }
 
@@ -238,6 +254,8 @@ async function listOrders(statuses: string[], role: Role) {
     q = q.eq("picker_id", p.id);
   } else if (statuses.includes("PACKING")) {
     q = q.or(`status.eq.READY_FOR_PACKING,packer_id.eq.${p.id}`);
+  } else {
+    q = q.eq("packer_id", p.id);
   }
   const { data, error: e } = await q;
   if (e) error(e.message);
@@ -255,10 +273,46 @@ async function listOrders(statuses: string[], role: Role) {
 
   if (ie) error(ie.message);
 
+  // Scan progress is persisted in scan_events. Include it in picker order
+  // summaries so Dashboard/Orders resume from the real server step after a
+  // screen reload or app restart.
+  const scanState = new Map<string, { location: boolean; sku: boolean }>();
+  if (role === "PICKER") {
+    const { data: scans, error: se } = await supabase
+      .from("scan_events")
+      .select("item_id,scan_type")
+      .in("order_id", ids)
+      .eq("user_id", p.id)
+      .eq("result", "SUCCESS")
+      .in("scan_type", ["LOCATION", "SKU", "PICK"]);
+    if (se) error(se.message);
+
+    for (const scan of scans ?? []) {
+      if (!scan.item_id) continue;
+      const state = scanState.get(scan.item_id) ?? { location: false, sku: false };
+      if (scan.scan_type === "LOCATION") state.location = true;
+      if (scan.scan_type === "SKU" || scan.scan_type === "PICK") state.sku = true;
+      scanState.set(scan.item_id, state);
+    }
+  }
+
   const byOrder = new Map<string, OrderItem[]>();
   for (const row of itemRows ?? []) {
+    const item = mapItem(row);
+    if (role === "PICKER") {
+      const state = scanState.get(item.id);
+      if (item.pickedQty >= item.requiredQty) {
+        item.lineStatus = "PICKED";
+      } else if (state?.sku) {
+        item.lineStatus = "SKU_VALIDATED";
+      } else if (state?.location) {
+        item.lineStatus = "LOCATION_VALIDATED";
+      } else {
+        item.lineStatus = "PENDING";
+      }
+    }
     const list = byOrder.get(row.order_id) ?? [];
-    list.push(mapItem(row));
+    list.push(item);
     byOrder.set(row.order_id, list);
   }
 
@@ -304,7 +358,14 @@ export async function pickerOrders() {
   return { orders, total: orders.length, page: 1, limit: 50 };
 }
 
-export async function pickerOrder(id: string) { return { order: await detail(id) }; }
+export async function pickerOrder(id: string) {
+  // Use the same detail mapper as the rest of the workflow. Picking step
+  // state is derived from successful LOCATION/SKU scan events, not only from
+  // order_items.picked_qty. Without this, a location scan is saved correctly
+  // on the server but the next screen reload sees PENDING and redirects back
+  // to Location indefinitely.
+  return { order: await detail(id) };
+}
 
 export async function pickerStart(id: string, idempotencyKey: string) {
   const { data, error: e } = await supabase.rpc("picker_start_order", {
@@ -323,44 +384,36 @@ export async function pickerComplete(id: string, idempotencyKey: string) {
 }
 
 export async function validateLocation(id: string, itemId: string, barcode: string, key: string) {
-  const d = await detail(id);
-  const item = d.items.find(i => i.id === itemId);
-  if (!item) error("Item not found", 404);
-  const expected = item.locationBarcode;
-  if (expected.trim().toUpperCase() !== barcode.trim().toUpperCase()) error("Location barcode does not match");
   const { data, error: e } = await supabase.rpc("sync_scan_event", {
     p_id: newClientEventId(),
     p_order_id: id,
     p_item_id: itemId,
     p_scan_type: "LOCATION",
     p_barcode: barcode,
-    p_expected_value: expected,
+    p_expected_value: "",
     p_result: "SUCCESS",
     p_idempotency_key: key,
     p_device_id: null,
   });
   if (e) error(e.message);
+  const expected = String(data?.expectedValue ?? "");
   return { valid: true as const, expected, scanned: barcode, duplicate: data?.duplicate === true };
 }
 
 export async function validatePickSku(id: string, itemId: string, barcode: string, key: string) {
-  const d = await detail(id);
-  const item = d.items.find(i => i.id === itemId);
-  if (!item) error("Item not found", 404);
-  const expected = item.skuBarcode;
-  if (expected.trim().toUpperCase() !== barcode.trim().toUpperCase()) error("Product barcode does not match");
   const { data, error: e } = await supabase.rpc("sync_scan_event", {
     p_id: newClientEventId(),
     p_order_id: id,
     p_item_id: itemId,
     p_scan_type: "SKU",
     p_barcode: barcode,
-    p_expected_value: expected,
+    p_expected_value: "",
     p_result: "SUCCESS",
     p_idempotency_key: key,
     p_device_id: null,
   });
   if (e) error(e.message);
+  const expected = String(data?.expectedValue ?? "");
   return { valid: true as const, expected, scanned: barcode, duplicate: data?.duplicate === true };
 }
 
@@ -369,20 +422,122 @@ export async function pickItem(id: string, itemId: string, skuBarcode: string, q
     p_order_id: id, p_item_id: itemId, p_sku: skuBarcode, p_quantity: quantity, p_idempotency_key: idempotencyKey,
   });
   if (e) error(e.message);
-  const d = await detail(id);
-  const pickedQty = Number(data?.pickedQty ?? d.items.find(i => i.id === itemId)?.pickedQty ?? 0);
+  const pickedQty = Number(data?.pickedQty ?? 0);
   return {
     ok: true as const, pickedQty, orderStatus: "PICKING" as const,
-    remainingItems: d.items.filter(i => i.id === itemId ? pickedQty < i.requiredQty : i.pickedQty < i.requiredQty).length,
   };
 }
 
+export type PackerDashboardStats = {
+  assigned: number;
+  completed: number;
+  itemsPackedToday: number;
+};
+
+export async function packerDashboardStats(): Promise<PackerDashboardStats> {
+  const p = await profile();
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const [{ data: orders, error: oe }, { data: confirmations, error: ce }] = await Promise.all([
+    supabase
+      .from("orders")
+      .select("status")
+      .eq("warehouse_id", p.warehouse_id)
+      .eq("packer_id", p.id),
+    supabase
+      .from("packing_confirmations")
+      .select("confirmed_qty,created_at")
+      .eq("packer_id", p.id)
+      .gte("created_at", start.toISOString()),
+  ]);
+  if (oe) error(oe.message);
+  if (ce) error(ce.message);
+
+  const assigned = (orders ?? []).filter((o: any) =>
+    ["READY_FOR_PACKING", "PACKING", "PACKED"].includes(o.status),
+  ).length;
+  const completed = (orders ?? []).filter((o: any) => o.status === "RIDER_ASSIGNED").length;
+  const itemsPackedToday = (confirmations ?? []).reduce(
+    (sum: number, row: any) => sum + Number(row.confirmed_qty ?? 0),
+    0,
+  );
+
+  return { assigned, completed, itemsPackedToday };
+}
+
 export async function packerOrders() {
-  const orders = await listOrders(["READY_FOR_PACKING", "PACKING"], "PACKER");
+  const orders = await listOrders(["READY_FOR_PACKING", "PACKING", "PACKED"], "PACKER");
+  return { orders, total: orders.length, page: 1, limit: 50 };
+}
+
+export async function packerCompletedOrders() {
+  const orders = await listOrders(["PACKED", "RIDER_ASSIGNED"], "PACKER");
   return { orders, total: orders.length, page: 1, limit: 50 };
 }
 
 export async function packerOrder(id: string) { return { order: await detail(id) }; }
+
+export async function packerScanBarcode(id: string, barcode: string, key: string) {
+  const value = barcode.trim();
+  if (!value) error("Scan a product barcode");
+
+  let d = await detail(id);
+  if (d.status === "READY_FOR_PACKING") {
+    await packerStart(id, newClientEventId());
+    d = await detail(id);
+  }
+  if (d.status !== "PACKING") error("Order is not available for packing");
+
+  const normalized = value.toUpperCase();
+  const item = d.items.find(i =>
+    i.packedQty < i.pickedQty &&
+    i.skuBarcode.trim().toUpperCase() === normalized,
+  );
+  if (!item) error("Barcode does not match any remaining item in this order");
+
+  const left = item.pickedQty - item.packedQty;
+  const scanKey = newClientEventId();
+  const { error: scanError } = await supabase.rpc("sync_scan_event", {
+    p_id: newClientEventId(),
+    p_order_id: id,
+    p_item_id: item.id,
+    p_scan_type: "SKU",
+    p_barcode: value,
+    p_expected_value: item.skuBarcode,
+    p_result: "SUCCESS",
+    p_idempotency_key: scanKey,
+    p_device_id: null,
+  });
+  if (scanError) error(scanError.message);
+
+  const packed = await confirmPackItem(
+    id,
+    item.id,
+    item.productName,
+    item.productType,
+    item.skuBarcode,
+    Math.min(1, left),
+    "GOOD",
+    key,
+  );
+
+  const fresh = await detail(id);
+  const allPacked = fresh.items.every(i => i.packedQty >= i.pickedQty);
+  if (allPacked && fresh.status === "PACKING") {
+    if (fresh.packages.length === 0) {
+      await createPackage(id, "STANDARD", undefined, null, newClientEventId());
+    }
+    await packerComplete(id, newClientEventId());
+  }
+
+  const finalOrder = await detail(id);
+  const finalItem = finalOrder.items.find(i => i.id === item.id) ?? item;
+  return {
+    order: finalOrder,
+    item: finalItem,
+    allPacked: finalOrder.status === "PACKED" || finalOrder.status === "RIDER_ASSIGNED",
+  };
+}
 
 export async function packerDispatch() {
   const orders = await listOrders(["PACKED", "RIDER_ASSIGNED"], "PACKER");

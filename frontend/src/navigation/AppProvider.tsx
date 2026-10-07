@@ -51,7 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     void restore();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // getSession() above already restores INITIAL_SESSION. Avoid loading the
+      // same profile a second time when Supabase emits that event.
+      if (event === "INITIAL_SESSION") return;
       if (!mounted) return;
       if (!session) {
         setPicker(null);

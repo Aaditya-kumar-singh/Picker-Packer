@@ -44,7 +44,20 @@ function err(e: unknown): Result<any> {
 
 class SupabasePickerApi {
   private picker: PickerProfile | null = null;
-  private orderCache = new Map<string, client.OrderDetail>();
+  private orderCache = new Map<string, { detail: client.OrderDetail; cachedAt: number }>();
+  private lineOrderIndex = new Map<string, string>();
+  private ordersCache: { data: Order[]; cachedAt: number } | null = null;
+  private orderGeneration = new Map<string, number>();
+  private readonly cacheMs = 3000;
+
+  // Every workflow mutation advances the generation before and after the
+  // server write. Any older in-flight read is therefore discarded instead of
+  // restoring stale line state after the user has already moved forward.
+  private invalidateOrder(id: string) {
+    this.orderGeneration.set(id, (this.orderGeneration.get(id) ?? 0) + 1);
+    this.orderCache.delete(id);
+    this.ordersCache = null;
+  }
   private wmsMode: WmsMode = "WMS_SUCCESS";
 
   restoreSession(accessToken: string, _refreshToken: string, picker: PickerProfile) {
@@ -83,20 +96,65 @@ class SupabasePickerApi {
   }
 
   async getOrders() {
+    const now = Date.now();
+    if (this.ordersCache && now - this.ordersCache.cachedAt < this.cacheMs) {
+      return { ok: true, data: this.ordersCache.data };
+    }
     try {
       const orders = await client.pickerOrders();
-      const data = orders.orders.map(o => toOrder(o));
+      const data = orders.orders.map(o => {
+        for (const item of o.items ?? []) this.lineOrderIndex.set(item.id, o.id);
+        return toOrder(o);
+      });
+      this.ordersCache = { data, cachedAt: now };
       return { ok: true, data };
     } catch (e) { return err(e); }
   }
 
   async getOrder(id: string) {
-    try { return { ok: true, data: toOrder((await client.pickerOrder(id)).order) }; }
-    catch (e) { return err(e); }
+    const cached = this.orderCache.get(id);
+    if (cached && Date.now() - cached.cachedAt < this.cacheMs) {
+      return { ok: true, data: toOrder(cached.detail) };
+    }
+
+    // A read can overlap a scan/pick mutation. Retry once when the mutation
+    // invalidates the generation while this request is in flight.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const generation = this.orderGeneration.get(id) ?? 0;
+      try {
+        const detail = (await client.pickerOrder(id)).order;
+        if ((this.orderGeneration.get(id) ?? 0) !== generation) continue;
+
+        this.orderCache.set(id, { detail, cachedAt: Date.now() });
+        for (const item of detail.items) this.lineOrderIndex.set(item.id, id);
+        return { ok: true, data: toOrder(detail) };
+      } catch (e) {
+        return err(e);
+      }
+    }
+
+    // The order changed while both reads were racing. A final read is
+    // intentionally uncached so the caller receives the authoritative state.
+    try {
+      const detail = (await client.pickerOrder(id)).order;
+      this.orderCache.set(id, { detail, cachedAt: Date.now() });
+      for (const item of detail.items) this.lineOrderIndex.set(item.id, id);
+      return { ok: true, data: toOrder(detail) };
+    } catch (e) {
+      return err(e);
+    }
   }
 
   async startOrder(id: string, key: string) {
-    try { await client.pickerStart(id, key); return this.getOrder(id); } catch (e) { return err(e); }
+    this.invalidateOrder(id);
+    try {
+      await client.pickerStart(id, key);
+      this.invalidateOrder(id);
+      return this.getOrder(id);
+    } catch (e) {
+      this.invalidateOrder(id);
+      return err(e);
+    }
   }
 
   async beginPicking(id: string, _deviceId: string, key: string) { return this.startOrder(id, key); }
@@ -104,49 +162,77 @@ class SupabasePickerApi {
   async cancelOrder() { return err(new Error("Order cancellation is not implemented in Supabase workflow")); }
   async skipLine() { return err(new Error("Line skipping is not implemented in Supabase workflow")); }
 
+  private cachedLine(lineId: string) {
+    const orderId = this.lineOrderIndex.get(lineId);
+    const detail = orderId ? this.orderCache.get(orderId) : undefined;
+    return detail?.detail.items.find(i => i.id === lineId) ?? null;
+  }
+
   async validateLocation(lineId: string, scanValue: string) {
+    const orderId = this.lineOrderIndex.get(lineId);
+    const item = this.cachedLine(lineId);
+    if (!orderId || !item) return err(new Error("Line context expired. Reload the order."));
+    this.invalidateOrder(orderId);
     try {
-      const orders = await client.pickerOrders();
-      for (const o of orders.orders) {
-        const d = await client.pickerOrder(o.id);
-        const item = d.order.items.find(i => i.id === lineId);
-        if (item) {
-          const r = await client.validateLocation(o.id, lineId, scanValue, newClientEventId());
-          return r.valid ? { ok: true, data: toLine(item) } : err(new Error("Location barcode does not match"));
-        }
-      }
-      return err(new Error("Line not found"));
-    } catch (e) { return err(e); }
+      const r = await client.validateLocation(orderId, lineId, scanValue, newClientEventId());
+      if (!r.valid) return err(new Error("Location barcode does not match"));
+
+      this.invalidateOrder(orderId);
+      const fresh = await this.getOrder(orderId);
+      if (!fresh.ok) return fresh;
+      const freshLine = fresh.data.lines.find((l: OrderLine) => l.id === lineId);
+      if (!freshLine) return err(new Error("Validated line disappeared from order"));
+      return { ok: true, data: freshLine };
+    } catch (e) {
+      this.invalidateOrder(orderId);
+      return err(e);
+    }
   }
 
   async validateSku(lineId: string, scanValue: string) {
+    const orderId = this.lineOrderIndex.get(lineId);
+    const item = this.cachedLine(lineId);
+    if (!orderId || !item) return err(new Error("Line context expired. Reload the order."));
+    this.invalidateOrder(orderId);
     try {
-      const orders = await client.pickerOrders();
-      for (const o of orders.orders) {
-        const d = await client.pickerOrder(o.id);
-        const item = d.order.items.find(i => i.id === lineId);
-        if (item) {
-          await client.validatePickSku(o.id, lineId, scanValue, newClientEventId());
-          return { ok: true, data: toLine(item) };
-        }
-      }
-      return err(new Error("Line not found"));
-    } catch (e) { return err(e); }
+      await client.validatePickSku(orderId, lineId, scanValue, newClientEventId());
+
+      this.invalidateOrder(orderId);
+      const fresh = await this.getOrder(orderId);
+      if (!fresh.ok) return fresh;
+      const freshLine = fresh.data.lines.find((l: OrderLine) => l.id === lineId);
+      if (!freshLine) return err(new Error("Validated line disappeared from order"));
+      return { ok: true, data: freshLine };
+    } catch (e) {
+      this.invalidateOrder(orderId);
+      return err(e);
+    }
   }
 
   async pickQuantity(lineId: string, qty: number, _uom: string, key: string) {
+    const orderId = this.lineOrderIndex.get(lineId);
+    const item = this.cachedLine(lineId);
+    if (!orderId || !item) return err(new Error("Line context expired. Reload the order."));
+
+    this.invalidateOrder(orderId);
     try {
-      const orders = await client.pickerOrders();
-      for (const o of orders.orders) {
-        const d = await client.pickerOrder(o.id);
-        const item = d.order.items.find(i => i.id === lineId);
-        if (item) {
-          const r = await client.pickItem(o.id, lineId, item.skuBarcode, qty, key);
-          return { ok: true, data: { ...toLine(item), pickedQty: r.pickedQty, status: r.pickedQty >= item.requiredQty ? "PICKED" : "PENDING" } };
-        }
-      }
-      return err(new Error("Line not found"));
-    } catch (e) { return err(e); }
+      await client.pickItem(orderId, lineId, item.skuBarcode, qty, key);
+
+      // Re-read the authoritative server state after every physical-unit
+      // pick. The generation guard prevents an older focus read from putting
+      // the previous 5/6 state back over the new 6/6 state.
+      this.invalidateOrder(orderId);
+      const fresh = await this.getOrder(orderId);
+      if (!fresh.ok) return fresh;
+
+      const freshLine = fresh.data.lines.find((l: OrderLine) => l.id === lineId);
+      if (!freshLine) return err(new Error("Picked line disappeared from order"));
+
+      return { ok: true, data: freshLine };
+    } catch (e) {
+      this.invalidateOrder(orderId);
+      return err(e);
+    }
   }
 
   async createException(lineId: string, type: LineException["type"], reasonCode: string, qty: number | null, note: string | null, key: string) {
@@ -154,13 +240,23 @@ class SupabasePickerApi {
       const orders = await client.pickerOrders();
       const active = orders.orders.find(o => o.status === "PICKING");
       if (!active) return err(new Error("No active picking order"));
+      this.invalidateOrder(active.id);
       const r = await client.createException(active.id, { itemId: lineId, type, reasonCode, quantity: qty, note }, key);
+      this.invalidateOrder(active.id);
       return { ok: true, data: { id: r.exception.id, lineId, type, reasonCode, qty, note, createdAt: new Date().toISOString() } };
     } catch (e) { return err(e); }
   }
 
   async completeOrder(id: string, key: string) {
-    try { await client.pickerComplete(id, key); return this.getOrder(id); } catch (e) { return err(e); }
+    this.invalidateOrder(id);
+    try {
+      await client.pickerComplete(id, key);
+      this.invalidateOrder(id);
+      return this.getOrder(id);
+    } catch (e) {
+      this.invalidateOrder(id);
+      return err(e);
+    }
   }
 
   async grantEvidenceUpload(exceptionId: string, fileName: string, mimeType: string, fileSizeBytes?: number): Promise<Result<EvidenceUploadGrant>> {

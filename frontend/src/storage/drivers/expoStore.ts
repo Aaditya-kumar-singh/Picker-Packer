@@ -5,6 +5,37 @@ import type { OutboxInsert, OutboxRecord, OutboxStatus, RowStore } from "../stor
 
 type Db = SQLite.SQLiteDatabase;
 
+// Keep one Expo SQLite connection for the whole JS runtime. The store uses the
+// synchronous SQLite API deliberately: Expo's async runAsync/getAsync helpers
+// prepare and finalize native statements asynchronously, and Android can raise
+// SQLITE_BUSY during finalize when another Expo Go connection is being torn
+// down during Fast Refresh. These operations are tiny local-store operations,
+// so synchronous native execution gives us deterministic statement lifetime.
+let sharedDb: Db | null = null;
+let dbQueue: Promise<unknown> = Promise.resolve();
+
+function enqueueDb<T>(operation: (db: Db) => T): Promise<T> {
+  const run = dbQueue.then(() => operation(getSharedDb()));
+  dbQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+function getSharedDb(dbName = "ybm-picker.db"): Db {
+  if (sharedDb) return sharedDb;
+
+  const db = SQLite.openDatabaseSync(dbName, {
+    useNewConnection: false,
+  });
+
+  // Wait briefly for any native connection that may still be releasing a
+  // statement, without changing journal mode during app startup.
+  db.execSync("PRAGMA busy_timeout = 5000;");
+  db.execSync(OUTBOX_DDL);
+
+  sharedDb = db;
+  return db;
+}
+
 function toRecord(r: Record<string, unknown>): OutboxRecord {
   return {
     id: Number(r.id),
@@ -31,114 +62,147 @@ const COLS =
   " last_error, synced_at";
 
 export async function openExpoStore(dbName = "ybm-picker.db"): Promise<RowStore> {
-  const db: Db = await SQLite.openDatabaseAsync(dbName);
-  await db.execAsync(OUTBOX_DDL);
+  getSharedDb(dbName);
 
   return {
     async insertOutbox(row: OutboxInsert): Promise<number> {
-      const res = await db.runAsync(
-        `INSERT INTO event_outbox
-           (client_event_id, event_type, entity_type, entity_id, order_id, line_id,
-            payload_json, occurred_at, device_id, status)
-         VALUES (?,?,?,?,?,?,?,?,?, 'PENDING')`,
-        [
-          row.clientEventId,
-          row.eventType,
-          row.entityType,
-          row.entityId,
-          row.orderId,
-          row.lineId,
-          row.payloadJson,
-          row.occurredAt,
-          row.deviceId,
-        ],
-      );
-      return Number(res.lastInsertRowId);
+      return enqueueDb(db => {
+        const res = db.runSync(
+          `INSERT INTO event_outbox
+             (client_event_id, event_type, entity_type, entity_id, order_id, line_id,
+              payload_json, occurred_at, device_id, status)
+           VALUES (?,?,?,?,?,?,?,?,?, 'PENDING')`,
+          [
+            row.clientEventId,
+            row.eventType,
+            row.entityType,
+            row.entityId,
+            row.orderId,
+            row.lineId,
+            row.payloadJson,
+            row.occurredAt,
+            row.deviceId,
+          ],
+        );
+        return Number(res.lastInsertRowId);
+      });
     },
+
     async listByStatuses(statuses: OutboxStatus[]): Promise<OutboxRecord[]> {
-      const marks = statuses.map(() => "?").join(",");
-      const rows = await db.getAllAsync<Record<string, unknown>>(
-        `SELECT ${COLS} FROM event_outbox WHERE status IN (${marks}) ORDER BY occurred_at ASC, id ASC`,
-        statuses,
-      );
-      return rows.map(toRecord);
+      return enqueueDb(db => {
+        const marks = statuses.map(() => "?").join(",");
+        const rows = db.getAllSync<Record<string, unknown>>(
+          `SELECT ${COLS} FROM event_outbox WHERE status IN (${marks}) ORDER BY occurred_at ASC, id ASC`,
+          statuses,
+        );
+        return rows.map(toRecord);
+      });
     },
+
     async getByClientEventId(clientEventId: string): Promise<OutboxRecord | null> {
-      const row = await db.getFirstAsync<Record<string, unknown>>(
-        `SELECT ${COLS} FROM event_outbox WHERE client_event_id = ?`,
-        [clientEventId],
-      );
-      return row ? toRecord(row) : null;
+      return enqueueDb(db => {
+        const row = db.getFirstSync<Record<string, unknown>>(
+          `SELECT ${COLS} FROM event_outbox WHERE client_event_id = ?`,
+          [clientEventId],
+        );
+        return row ? toRecord(row) : null;
+      });
     },
+
     async updateOutbox(id: number, patch: Partial<OutboxRecord>): Promise<void> {
-      const map: Record<string, string> = {
-        status: "status",
-        attemptCount: "attempt_count",
-        lastAttemptAt: "last_attempt_at",
-        lastError: "last_error",
-        syncedAt: "synced_at",
-        payloadJson: "payload_json",
-      };
-      const sets: string[] = [];
-      const params: unknown[] = [];
-      for (const [k, v] of Object.entries(patch)) {
-        const col = map[k];
-        if (!col) continue;
-        sets.push(`${col} = ?`);
-        params.push(v);
-      }
-      if (sets.length === 0) return;
-      params.push(id);
-      const args = params as Array<string | number | null>;
-      await db.runAsync(`UPDATE event_outbox SET ${sets.join(", ")} WHERE id = ?`, args);
+      return enqueueDb(db => {
+        const map: Record<string, string> = {
+          status: "status",
+          attemptCount: "attempt_count",
+          lastAttemptAt: "last_attempt_at",
+          lastError: "last_error",
+          syncedAt: "synced_at",
+          payloadJson: "payload_json",
+        };
+        const sets: string[] = [];
+        const params: unknown[] = [];
+        for (const [k, v] of Object.entries(patch)) {
+          const col = map[k];
+          if (!col) continue;
+          sets.push(`${col} = ?`);
+          params.push(v);
+        }
+        if (sets.length === 0) return;
+        params.push(id);
+        db.runSync(`UPDATE event_outbox SET ${sets.join(", ")} WHERE id = ?`, params as Array<string | number | null>);
+      });
     },
+
     async countByStatus(status: OutboxStatus): Promise<number> {
-      const row = await db.getFirstAsync<{ c: number }>(
-        `SELECT COUNT(*) AS c FROM event_outbox WHERE status = ?`,
-        [status],
-      );
-      return Number(row?.c ?? 0);
+      return enqueueDb(db => {
+        const row = db.getFirstSync<{ c: number }>(
+          "SELECT COUNT(*) AS c FROM event_outbox WHERE status = ?",
+          [status],
+        );
+        return Number(row?.c ?? 0);
+      });
     },
+
     async listFailed(): Promise<OutboxRecord[]> {
-      const rows = await db.getAllAsync<Record<string, unknown>>(
-        `SELECT ${COLS} FROM event_outbox WHERE status = 'FAILED' ORDER BY occurred_at ASC, id ASC`,
-      );
-      return rows.map(toRecord);
+      return enqueueDb(db => {
+        const rows = db.getAllSync<Record<string, unknown>>(
+          `SELECT ${COLS} FROM event_outbox WHERE status = 'FAILED' ORDER BY occurred_at ASC, id ASC`,
+        );
+        return rows.map(toRecord);
+      });
     },
+
     async getCache(key: string): Promise<string | null> {
-      const row = await db.getFirstAsync<{ json: string }>(
-        `SELECT json FROM order_cache WHERE cache_key = ?`,
-        [key],
-      );
-      return row?.json ?? null;
+      return enqueueDb(db => {
+        const row = db.getFirstSync<{ json: string }>(
+          "SELECT json FROM order_cache WHERE cache_key = ?",
+          [key],
+        );
+        return row?.json ?? null;
+      });
     },
+
     async setCache(key: string, json: string): Promise<void> {
-      await db.runAsync(
-        `INSERT INTO order_cache (cache_key, json, updated_at) VALUES (?,?,?)
-         ON CONFLICT(cache_key) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at`,
-        [key, json, new Date().toISOString()],
-      );
+      return enqueueDb(db => {
+        db.runSync(
+          `INSERT INTO order_cache (cache_key, json, updated_at) VALUES (?,?,?)
+           ON CONFLICT(cache_key) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at`,
+          [key, json, new Date().toISOString()],
+        );
+      });
     },
+
     async getMeta(key: string): Promise<string | null> {
-      const row = await db.getFirstAsync<{ meta_value: string }>(
-        `SELECT meta_value FROM sync_meta WHERE meta_key = ?`,
-        [key],
-      );
-      return row?.meta_value ?? null;
+      return enqueueDb(db => {
+        const row = db.getFirstSync<{ meta_value: string }>(
+          "SELECT meta_value FROM sync_meta WHERE meta_key = ?",
+          [key],
+        );
+        return row?.meta_value ?? null;
+      });
     },
+
     async setMeta(key: string, value: string): Promise<void> {
-      await db.runAsync(
-        `INSERT INTO sync_meta (meta_key, meta_value) VALUES (?,?)
-         ON CONFLICT(meta_key) DO UPDATE SET meta_value = excluded.meta_value`,
-        [key, value],
-      );
+      return enqueueDb(db => {
+        db.runSync(
+          `INSERT INTO sync_meta (meta_key, meta_value) VALUES (?,?)
+           ON CONFLICT(meta_key) DO UPDATE SET meta_value = excluded.meta_value`,
+          [key, value],
+        );
+      });
     },
+
     async clearAll(): Promise<void> {
-      await db.execAsync(`DELETE FROM event_outbox; DELETE FROM order_cache; DELETE FROM sync_meta;`);
+      return enqueueDb(db => {
+        db.execSync(
+          "DELETE FROM event_outbox; DELETE FROM order_cache; DELETE FROM sync_meta;",
+        );
+      });
     },
+
     async close(): Promise<void> {
-      await db.closeAsync();
+      // The app owns this process-shared connection for its lifetime. Closing
+      // it from a screen/provider would race other consumers.
     },
   };
 }
-

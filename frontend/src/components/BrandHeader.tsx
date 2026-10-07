@@ -1,12 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/navigation/AppProvider";
 import { useSyncStatus } from "@/sync/SyncContext";
 import { theme } from "@/components/ui";
 
 export function BrandHeader() {
   const { picker } = useAuth();
+  const insets = useSafeAreaInsets();
   const { status } = useSyncStatus();
   const isPacker = picker?.role === "PACKER";
   const roleLabel = isPacker ? "Packer Workspace" : "Picker Workspace";
@@ -30,7 +33,9 @@ export function BrandHeader() {
         : theme.color.critical;
 
   return (
-    <View style={s.header}>
+    <>
+      <StatusBar style="dark" />
+      <View style={[s.header, { paddingTop: Math.max(insets.top, 0) + 6 }]}>
       <View style={s.topRow}>
         <View style={s.brand}>
           <View style={s.logo}>
@@ -65,7 +70,8 @@ export function BrandHeader() {
           {picker?.name ?? "Warehouse user"}
         </Text>
       </View>
-    </View>
+      </View>
+    </>
   );
 }
 

@@ -123,7 +123,7 @@ export function CompletionScreen() {
           />
           <SecondaryButton
             label="Back to picking"
-            onPress={() => router.push(pickStepPath(order.id, order) as never)}
+            onPress={() => router.replace(pickStepPath(order.id, order) as never)}
           />
         </>
       )}

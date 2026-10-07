@@ -40,15 +40,15 @@ test("offline replay handles every defined event type", () => {
   assert.match(offline, /payload: \{ qty, uom, sku: line\.skuBarcode \}/);
 });
 
-test("packer, dispatch and evidence routes exist", () => {
+test("packer and evidence routes exist", () => {
   for (const file of [
     "frontend/src/app/(tabs)/packer-dashboard.tsx",
     "frontend/src/app/pack/order/[id].tsx",
-    "frontend/src/app/(tabs)/dispatch.tsx",
     "frontend/src/screens/PackerDashboardScreen.tsx",
     "frontend/src/screens/PackerOrderScreen.tsx",
     "frontend/src/screens/DispatchScreen.tsx",
   ]) assert.equal(fs.existsSync(path.join(root, file)), true, file);
+  assert.equal(fs.existsSync(path.join(root, "frontend/src/app/(tabs)/dispatch.tsx")), false);
   const api = read("frontend/src/services/supabasePickerApi.ts");
   assert.match(api, /grantEvidenceUpload/);
 });
@@ -173,4 +173,42 @@ test("test order generator caps the picker backlog at 30", () => {
   assert.match(sql, /v_active_orders >= v_max_active_orders/);
   assert.match(sql, /PICKER_BACKLOG_LIMIT/);
   assert.match(sql, /'maxActiveOrders',v_max_active_orders/);
+});
+
+test("picker step transitions use replacement navigation and cannot strand the final line", () => {
+  const sku = read("frontend/src/screens/SkuScanScreen.tsx");
+  const location = read("frontend/src/screens/LocationScanScreen.tsx");
+  const quantity = read("frontend/src/screens/QuantityScreen.tsx");
+  const exception = read("frontend/src/screens/ExceptionScreen.tsx");
+
+  for (const source of [sku, location, quantity, exception]) {
+    assert.doesNotMatch(source, /router\.push\([^\n]*\/pick\//);
+  }
+  assert.doesNotMatch(sku, /awaitingNext|goNext/);
+  assert.match(sku, /nextStep === "complete"/);
+  assert.match(sku, /pathname: "\/pick\/\[orderId\]\/complete"/);
+  assert.match(quantity, /nextStep === "complete"/);
+});
+
+test("picker order reads reject stale in-flight responses after workflow mutations", () => {
+  const api = read("frontend/src/services/supabasePickerApi.ts");
+  assert.match(api, /private orderGeneration = new Map/);
+  assert.match(api, /private invalidateOrder\(id: string\)/);
+  assert.match(api, /const generation = this\.orderGeneration\.get\(id\) \?\? 0/);
+  assert.match(api, /this\.orderGeneration\.get\(id\) \?\? 0\) !== generation/);
+  assert.match(api, /this\.invalidateOrder\(orderId\);/);
+});
+
+test("all picker workflow screens derive the next step from authoritative line state", () => {
+  for (const file of [
+    "frontend/src/screens/LocationScanScreen.tsx",
+    "frontend/src/screens/SkuScanScreen.tsx",
+    "frontend/src/screens/QuantityScreen.tsx",
+    "frontend/src/screens/CompletionScreen.tsx",
+    "frontend/src/screens/OrderDetailScreen.tsx",
+    "frontend/src/screens/ExceptionScreen.tsx",
+  ]) {
+    const source = read(file);
+    assert.match(source, /resolvePickStep|pickStepPath/, file);
+  }
 });

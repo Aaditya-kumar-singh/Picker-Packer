@@ -1,37 +1,42 @@
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   AppHeader,
   ErrorBanner,
   LoadingState,
-  MetricCard,
   PrimaryButton,
   Screen,
-  SecondaryButton,
   StatusBadge,
+  SuccessFeedback,
   theme,
 } from "@/components/ui";
 import { newIdemKey } from "@/repositories/pickerRepository";
+import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
 import * as client from "@/api/client";
-import BarcodeDisplay from "@/components/BarcodeDisplay";
-
-type Condition = "GOOD" | "DAMAGED" | "OTHER";
 
 export function PackerOrderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [order, setOrder] = useState<client.OrderDetail | null>(null);
+  const [riders, setRiders] = useState<client.Rider[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [packQty, setPackQty] = useState<Record<string, string>>({});
-  const [productType, setProductType] = useState<Record<string, string>>({});
-  const [productBarcode, setProductBarcode] = useState<Record<string, string>>({});
-  const [productConfirmed, setProductConfirmed] = useState<Record<string, boolean>>({});
-  const [condition, setCondition] = useState<Record<string, Condition>>({});
+  const [success, setSuccess] = useState<string | null>(null);
+  const [barcode, setBarcode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [riderModal, setRiderModal] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [copiedBarcode, setCopiedBarcode] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setOrder((await client.packerOrder(String(id))).order);
+      const [detail, riderData] = await Promise.all([
+        client.packerOrder(String(id)),
+        client.packerRiders(),
+      ]);
+      setOrder(detail.order);
+      setRiders(riderData.riders);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load order");
@@ -40,98 +45,54 @@ export function PackerOrderScreen() {
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  async function start() {
-    setBusy("start");
+  async function scan(value?: string) {
+    const code = (value ?? barcode).trim();
+    if (!code || busy || !order) return;
+    setBusy(true);
     setError(null);
+    setSuccess(null);
+    setBarcode(code);
     try {
-      await client.packerStart(String(id), newIdemKey());
-      await load();
+      const result = await client.packerScanBarcode(String(id), code, newIdemKey());
+      setOrder(result.order);
+      setBarcode("");
+      const item = result.item;
+      const packedText = item ? item.packedQty + "/" + item.pickedQty : "";
+      setSuccess("Item packed successfully. " + (item ? item.productName : "") + (packedText ? " (" + packedText + ")" : ""));
+      if (result.allPacked) {
+        setSuccess("All items packed! Order is ready for rider assignment.");
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start packing");
+      setError(e instanceof Error ? e.message : "Barcode scan failed");
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
-  function verifyProduct(item: client.OrderItem) {
-    setProductConfirmed(prev => ({ ...prev, [item.id]: true }));
-    setProductType(prev => ({ ...prev, [item.id]: prev[item.id] ?? item.productType }));
-    setProductBarcode(prev => ({ ...prev, [item.id]: prev[item.id] ?? "" }));
-    setError(null);
+  async function copyBarcode(value: string) {
+    if (!value) return;
+    await Clipboard.setStringAsync(value);
+    setCopiedBarcode(value);
+    setTimeout(() => setCopiedBarcode(current => current === value ? null : current), 1400);
   }
 
-  async function confirmItem(item: client.OrderItem) {
-    const remaining = item.pickedQty - item.packedQty;
-    const requested = Number(packQty[item.id] ?? remaining);
-    const type = (productType[item.id] ?? "").trim();
-    const barcode = (productBarcode[item.id] ?? "").trim();
-    const itemCondition = condition[item.id] ?? "GOOD";
-
-    if (!productConfirmed[item.id]) {
-      setError("Confirm the product identity before packing the item.");
-      return;
-    }
-    if (!type) {
-      setError("Enter the product type.");
-      return;
-    }
-    if (!barcode) {
-      setError("Scan or enter the product barcode.");
-      return;
-    }
-    if (remaining <= 0) return;
-    if (!Number.isInteger(requested) || requested <= 0 || requested > remaining) {
-      setError(`Pack quantity must be between 1 and ${remaining}`);
-      return;
-    }
-
-    setBusy(item.id);
+  async function assign(rider: client.Rider) {
+    if (!order || assigning) return;
+    setAssigning(true);
     setError(null);
     try {
-      await client.confirmPackItem(
-        String(id),
-        item.id,
-        item.productName,
-        type,
-        barcode,
-        requested,
-        itemCondition,
-        newIdemKey(),
-      );
-      setProductConfirmed(prev => ({ ...prev, [item.id]: false }));
-      setProductBarcode(prev => ({ ...prev, [item.id]: "" }));
-      setPackQty(prev => ({ ...prev, [item.id]: "" }));
-      await load();
+      const result = await client.assignRider(order.id, rider.id, rider.name, newIdemKey());
+      setOrder(prev => prev ? { ...prev, status: "RIDER_ASSIGNED", riderId: rider.id, riderName: rider.name } : prev);
+      setRiderModal(false);
+      setSuccess("Rider assigned successfully!");
+      void result;
+      setTimeout(() => {
+        router.replace({ pathname: "/packer-dashboard", params: { message: "Rider assigned successfully!" } } as never);
+      }, 700);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not confirm packing");
+      setError(e instanceof Error ? e.message : "Rider assignment failed");
     } finally {
-      setBusy(null);
-    }
-  }
-
-  async function createPackage() {
-    setBusy("package");
-    setError(null);
-    try {
-      await client.createPackage(String(id), "STANDARD", undefined, null, newIdemKey());
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create package");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function complete() {
-    setBusy("complete");
-    setError(null);
-    try {
-      await client.packerComplete(String(id), newIdemKey());
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not complete packing");
-    } finally {
-      setBusy(null);
+      setAssigning(false);
     }
   }
 
@@ -145,198 +106,181 @@ export function PackerOrderScreen() {
     );
   }
 
-  const packed = order.items.reduce((n, i) => n + i.packedQty, 0);
-  const picked = order.items.reduce((n, i) => n + i.pickedQty, 0);
-  const remaining = picked - packed;
-  const canComplete =
-    order.status === "PACKING" &&
-    remaining === 0 &&
-    order.packages.length > 0;
+  const packed = order.items.reduce((sum, item) => sum + item.packedQty, 0);
+  const picked = order.items.reduce((sum, item) => sum + item.pickedQty, 0);
+  const allPacked = order.status === "PACKED" || order.status === "RIDER_ASSIGNED" || (picked > 0 && packed >= picked);
+  const progress = picked > 0 ? Math.min(100, Math.round((packed / picked) * 100)) : 0;
 
   return (
     <Screen>
-      <AppHeader title={order.id} sub={order.customer} />
-      <ErrorBanner message={error} />
+      <AppHeader title={order.id} sub={order.customer || "Unknown Customer"} />
+      <Pressable onPress={() => router.back()} style={s.back}>
+        <Text style={s.backText}>← Back to orders</Text>
+      </Pressable>
 
-      <View style={s.grid}>
-        <View style={s.cell}><MetricCard value={String(picked)} label="Picked units" /></View>
-        <View style={s.cell}><MetricCard value={String(packed)} label="Packed units" tone={remaining ? "warn" : "ok"} /></View>
-        <View style={s.cell}><MetricCard value={String(order.packingConfirmations.length)} label="Verified items" /></View>
+      <View style={s.statusRow}>
+        <Text style={s.progressLabel}>Pack Progress</Text>
+        <Text style={s.progressCount}>{packed}/{picked} items</Text>
+      </View>
+      <View style={s.progress}><View style={[s.fill, { width: (progress + "%") as `${number}%` }]} /></View>
+
+      <View style={s.scanRow}>
+        <TextInput
+          value={barcode}
+          onChangeText={setBarcode}
+          onSubmitEditing={() => void scan()}
+          placeholder="Scan barcode..."
+          placeholderTextColor={theme.color.faint}
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!busy && order.status !== "PACKED" && order.status !== "RIDER_ASSIGNED"}
+          style={s.scanInput}
+        />
+        <Pressable style={s.camera} onPress={() => setScannerVisible(true)} disabled={busy}>
+          <Text style={s.cameraText}>▣</Text>
+        </Pressable>
+        <Pressable style={[s.scanButton, busy && s.disabled]} onPress={() => void scan()} disabled={busy}>
+          <Text style={s.scanButtonText}>{busy ? "..." : "Scan"}</Text>
+        </Pressable>
       </View>
 
-      <StatusBadge text={order.status} tone={order.status === "PACKING" ? "warn" : "info"} />
+      <ErrorBanner message={error} />
+      <SuccessFeedback message={success} />
 
-      {order.status === "READY_FOR_PACKING" ? (
-        <PrimaryButton
-          label={busy === "start" ? "Starting…" : "START PACKING"}
-          onPress={() => void start()}
-          disabled={busy !== null}
-        />
-      ) : null}
+      <Text style={s.section}>Items</Text>
+      {order.items.map(item => {
+        const done = item.packedQty >= item.pickedQty;
+        return (
+          <View key={item.id} style={[s.item, done && s.itemDone]}>
+            <Text style={s.check}>{done ? "☑" : "☐"}</Text>
+            <View style={s.itemMain}>
+              <Text style={s.name}>{item.productName}</Text>
+              <Text style={s.specs}>{item.productSpecs || ""}</Text>
+              <View style={s.barcodeRow}>
+                <Text selectable style={s.sku}>{item.skuBarcode}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Copy barcode for ${item.productName}`}
+                  onPress={() => void copyBarcode(item.skuBarcode)}
+                  style={s.copyBarcode}
+                >
+                  <Text style={s.copyBarcodeText}>{copiedBarcode === item.skuBarcode ? "Copied" : "Copy barcode"}</Text>
+                </Pressable>
+              </View>
+            </View>
+            <Text style={s.qty}>{item.packedQty}/{item.pickedQty}</Text>
+          </View>
+        );
+      })}
 
-      {order.status === "PACKING"
-        ? order.items.map(item => {
-            const left = item.pickedQty - item.packedQty;
-            const verified = productConfirmed[item.id] === true;
-            const itemCondition = condition[item.id] ?? "GOOD";
-
+      {order.recentScans.length > 0 ? (
+        <>
+          <Text style={s.section}>Recent Scans</Text>
+          {order.recentScans.map((scanItem, index) => {
+            const item = order.items.find(i => i.id === scanItem.itemId);
             return (
-              <View key={item.id} style={s.item}>
-                <View style={s.row}>
-                  <Text style={s.sku}>{item.sku}</Text>
-                  <Text style={s.qty}>{item.packedQty}/{item.pickedQty}</Text>
-                </View>
-
-                <Text style={s.name}>{item.productName}</Text>
-                <Text style={s.specs}>{item.productSpecs || "No additional specifications"}</Text>
-
-                <View style={s.verifyCard}>
-                  <Text style={s.sectionTitle}>PRODUCT VERIFICATION</Text>
-                  <Text style={s.label}>Expected product</Text>
-                  <Text style={s.value}>{item.productName}</Text>
-                  <Text style={s.label}>Expected type</Text>
-                  <Text style={s.value}>{item.productType}</Text>
-                  <BarcodeDisplay
-                    label="EXPECTED PRODUCT BARCODE"
-                    value={item.skuBarcode}
-                    scanTitle="Scan product barcode"
-                    inputValue={productBarcode[item.id] ?? ""}
-                    onInputChange={value => setProductBarcode(prev => ({ ...prev, [item.id]: value }))}
-                    inputPlaceholder="Type or scan product barcode"
-                    match={
-                      (productBarcode[item.id] ?? "").trim()
-                        ? (productBarcode[item.id] ?? "").trim().toUpperCase() === item.skuBarcode.trim().toUpperCase()
-                        : null
-                    }
-                    onScanned={(value) => setProductBarcode(prev => ({ ...prev, [item.id]: value }))}
-                    disabled={busy !== null}
-                  />
-
-                  {!verified ? (
-                    <PrimaryButton
-                      label="CONFIRM PRODUCT"
-                      onPress={() => verifyProduct(item)}
-                      disabled={busy !== null || left <= 0}
-                    />
-                  ) : (
-                    <>
-                      <Text style={s.confirmed}>Product identity confirmed</Text>
-
-                      <TextInput
-                        value={productType[item.id] ?? ""}
-                        onChangeText={v => setProductType(prev => ({ ...prev, [item.id]: v }))}
-                        placeholder="Enter product type"
-                        editable={busy === null}
-                        style={s.input}
-                      />
-
-                      <TextInput
-                        value={packQty[item.id] ?? String(left)}
-                        onChangeText={v => setPackQty(prev => ({ ...prev, [item.id]: v }))}
-                        keyboardType="numeric"
-                        placeholder="Confirmed quantity"
-                        editable={busy === null}
-                        style={s.input}
-                      />
-
-                      <Text style={s.label}>Condition</Text>
-                      <View style={s.conditionRow}>
-                        {(["GOOD", "DAMAGED", "OTHER"] as Condition[]).map(value => (
-                          <Pressable
-                            key={value}
-                            onPress={() => setCondition(prev => ({ ...prev, [item.id]: value }))}
-                            style={[s.condition, itemCondition === value && s.conditionActive]}
-                          >
-                            <Text style={s.conditionText}>{value}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
-
-                      <PrimaryButton
-                        label={busy === item.id ? "Confirming…" : "CONFIRM ITEM & PACK"}
-                        onPress={() => void confirmItem(item)}
-                        disabled={busy !== null || left <= 0}
-                      />
-                    </>
-                  )}
-                </View>
-
-                {left <= 0 ? <Text style={s.done}>Item fully packed and confirmed</Text> : null}
+              <View key={scanItem.createdAt + scanItem.itemId + index} style={s.recent}>
+                <Text style={s.recentCheck}>✓</Text>
+                <Text style={s.recentBarcode}>{scanItem.barcode}</Text>
+                <Text style={s.recentName} numberOfLines={1}>{item?.productName || "Item"}</Text>
+                <Text style={s.recentTime}>{new Date(scanItem.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
               </View>
             );
-          })
-        : null}
-
-      {order.status === "PACKING" ? (
-        <PrimaryButton
-          label={busy === "package" ? "Creating…" : "CREATE STANDARD PACKAGE"}
-          onPress={() => void createPackage()}
-          disabled={busy !== null || remaining !== 0}
-        />
+          })}
+        </>
       ) : null}
 
-      {order.status === "PACKING" ? (
-        <PrimaryButton
-          label={busy === "complete" ? "Completing…" : "COMPLETE PACKING"}
-          onPress={() => void complete()}
-          disabled={!canComplete || busy !== null}
-        />
+      {allPacked ? (
+        <>
+          <View style={s.allPacked}>
+            <Text style={s.allPackedTitle}>✓ All items packed!</Text>
+            <Text style={s.allPackedText}>Order is ready for rider assignment.</Text>
+          </View>
+          {order.status === "PACKED" ? (
+            <PrimaryButton label="Assign Rider" onPress={() => setRiderModal(true)} disabled={assigning} />
+          ) : (
+            <View style={s.assigned}><Text style={s.assignedText}>Rider assigned successfully!</Text></View>
+          )}
+        </>
       ) : null}
 
-      {order.status === "PACKED" || order.status === "RIDER_ASSIGNED" ? (
-        <PrimaryButton label="Go to dispatch" onPress={() => router.push("/dispatch" as never)} />
-      ) : null}
+      <BarcodeScannerModal
+        visible={scannerVisible}
+        title="Scan product barcode"
+        onScanned={value => { setScannerVisible(false); void scan(value); }}
+        onClose={() => setScannerVisible(false)}
+      />
 
-      <SecondaryButton label="Back to packing queue" onPress={() => router.back()} />
+      <Modal visible={riderModal} transparent animationType="fade" onRequestClose={() => setRiderModal(false)}>
+        <View style={s.modalBackdrop}>
+          <View style={s.modal}>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Select Rider</Text>
+              <Pressable onPress={() => setRiderModal(false)}><Text style={s.close}>×</Text></Pressable>
+            </View>
+            {riders.map(rider => (
+              <Pressable key={rider.id} style={s.rider} onPress={() => void assign(rider)} disabled={assigning}>
+                <View style={s.riderMain}>
+                  <Text style={s.riderName}>{rider.name}</Text>
+                  <Text style={s.riderPhone}>{rider.phone || ""}</Text>
+                  <Text style={s.riderType}>BIKE</Text>
+                </View>
+                <Text style={s.available}>AVAILABLE</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
 
 const s = StyleSheet.create({
-  grid: { flexDirection: "row", gap: theme.space.xs, marginVertical: theme.space.sm },
-  cell: { flex: 1 },
-  item: {
-    backgroundColor: theme.color.surface,
-    borderWidth: 1,
-    borderColor: theme.color.line,
-    borderRadius: theme.radius.lg,
-    padding: theme.space.sm,
-    marginTop: theme.space.xs,
-  },
-  row: { flexDirection: "row", justifyContent: "space-between" },
-  sku: { ...(theme.type.codeMd as object), color: theme.color.ink },
-  qty: { ...(theme.type.labelMd as object), color: theme.color.primary },
-  name: { ...(theme.type.body as object), color: theme.color.muted, marginBottom: theme.space.xs },
-  specs: { ...(theme.type.secondary as object), color: theme.color.secondary, marginBottom: theme.space.xs },
-  verifyCard: {
-    backgroundColor: theme.color.surfaceContainerLow,
-    borderRadius: theme.radius.md,
-    padding: theme.space.sm,
-    marginTop: theme.space.xs,
-  },
-  sectionTitle: { ...(theme.type.labelMd as object), color: theme.color.primaryContainer, marginBottom: theme.space.xs },
-  label: { ...(theme.type.caption as object), color: theme.color.muted, marginTop: theme.space.xxs },
-  value: { ...(theme.type.bodyMd as object), color: theme.color.ink, marginBottom: theme.space.xxs },
-  confirmed: { ...(theme.type.labelMd as object), color: theme.color.primary, marginBottom: theme.space.xs },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.color.line,
-    borderRadius: theme.radius.md,
-    padding: theme.space.sm,
-    color: theme.color.ink,
-    backgroundColor: theme.color.surface,
-    marginBottom: theme.space.xs,
-  },
-  conditionRow: { flexDirection: "row", gap: theme.space.xs, marginVertical: theme.space.xs },
-  condition: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.color.line,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.space.xs,
-    alignItems: "center",
-  },
-  conditionActive: { borderColor: theme.color.primary, backgroundColor: theme.color.surfaceContainerHigh },
-  conditionText: { ...(theme.type.caption as object), color: theme.color.ink },
-  done: { ...(theme.type.labelMd as object), color: theme.color.primary, marginTop: theme.space.xs },
+  back: { marginBottom: theme.space.sm },
+  backText: { ...(theme.type.bodyMd as object), color: theme.color.tertiary },
+  statusRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: theme.space.sm },
+  progressLabel: { ...(theme.type.labelMd as object), color: theme.color.ink },
+  progressCount: { ...(theme.type.secondary as object), color: theme.color.muted },
+  progress: { height: 8, backgroundColor: theme.color.surfaceContainerHigh, borderRadius: 5, overflow: "hidden", marginTop: theme.space.xs, marginBottom: theme.space.sm },
+  fill: { height: 8, backgroundColor: theme.color.tertiary, borderRadius: 5 },
+  scanRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  scanInput: { flex: 1, minHeight: 46, borderWidth: 1, borderColor: theme.color.line, borderRadius: 10, paddingHorizontal: 12, color: theme.color.ink, backgroundColor: theme.color.surface },
+  camera: { width: 46, height: 46, borderRadius: 10, backgroundColor: "#6750d8", alignItems: "center", justifyContent: "center" },
+  cameraText: { color: "#fff", fontSize: 18 },
+  scanButton: { minHeight: 46, paddingHorizontal: 14, borderRadius: 10, backgroundColor: "#61d7c7", alignItems: "center", justifyContent: "center" },
+  scanButtonText: { color: "#fff", fontWeight: "800" },
+  disabled: { opacity: 0.45 },
+  section: { ...(theme.type.labelLg as object), color: theme.color.ink, marginTop: theme.space.md, marginBottom: theme.space.xs },
+  item: { flexDirection: "row", alignItems: "center", backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.line, borderRadius: theme.radius.md, padding: theme.space.sm, marginBottom: theme.space.xs },
+  itemDone: { borderColor: theme.color.primary, backgroundColor: theme.color.okBg },
+  check: { fontSize: 18, color: theme.color.primary, width: 26 },
+  itemMain: { flex: 1 },
+  name: { ...(theme.type.bodyMd as object), color: theme.color.ink, fontWeight: "700" },
+  specs: { ...(theme.type.secondary as object), color: theme.color.muted, marginTop: 2 },
+  barcodeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 },
+  sku: { ...(theme.type.caption as object), color: theme.color.muted, flex: 1 },
+  copyBarcode: { borderWidth: 1, borderColor: theme.color.line, borderRadius: theme.radius.sm, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: theme.color.surfaceContainerLow },
+  copyBarcodeText: { ...(theme.type.caption as object), color: theme.color.primary, fontWeight: "800" },
+  qty: { ...(theme.type.labelLg as object), color: theme.color.ink },
+  allPacked: { backgroundColor: theme.color.okBg, borderWidth: 1, borderColor: theme.color.primary, borderRadius: theme.radius.md, padding: theme.space.sm, marginTop: theme.space.sm },
+  allPackedTitle: { ...(theme.type.labelLg as object), color: theme.color.okInk },
+  allPackedText: { ...(theme.type.secondary as object), color: theme.color.okInk, marginTop: 2 },
+  assigned: { backgroundColor: theme.color.okBg, borderRadius: theme.radius.md, padding: theme.space.sm, marginTop: theme.space.sm },
+  assignedText: { ...(theme.type.labelLg as object), color: theme.color.okInk, textAlign: "center" },
+  recent: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: theme.color.line },
+  recentCheck: { color: theme.color.okInk, fontWeight: "800" },
+  recentBarcode: { ...(theme.type.caption as object), color: theme.color.ink, minWidth: 100 },
+  recentName: { flex: 1, ...(theme.type.caption as object), color: theme.color.muted },
+  recentTime: { ...(theme.type.caption as object), color: theme.color.muted },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 },
+  modal: { backgroundColor: theme.color.surface, borderRadius: theme.radius.lg, padding: theme.space.md },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: theme.space.sm },
+  modalTitle: { ...(theme.type.titleMd as object), color: theme.color.ink },
+  close: { fontSize: 28, color: theme.color.muted },
+  rider: { borderWidth: 1, borderColor: theme.color.line, borderRadius: theme.radius.md, padding: theme.space.sm, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: theme.space.xs },
+  riderMain: { flex: 1 },
+  riderName: { ...(theme.type.body as object), color: theme.color.ink, fontWeight: "700" },
+  riderPhone: { ...(theme.type.secondary as object), color: theme.color.muted },
+  riderType: { ...(theme.type.caption as object), color: theme.color.muted, marginTop: 2 },
+  available: { ...(theme.type.caption as object), color: theme.color.okInk, backgroundColor: theme.color.okBg, paddingHorizontal: 7, paddingVertical: 4, borderRadius: theme.radius.pill },
 });

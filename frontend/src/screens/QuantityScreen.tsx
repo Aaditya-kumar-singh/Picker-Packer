@@ -1,5 +1,5 @@
 // Screen 8 — Quantity. qty>0, qty<=remaining, UOM match. Short -> exception, over -> blocked.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -21,10 +21,12 @@ export function QuantityScreen() {
   const [qty, setQty] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     const r = await pickerRepository.getOrder(String(orderId));
-    if (r.ok) setOrder(r.data);
+    if (generation === loadGeneration.current && r.ok) setOrder(r.data);
   }, [orderId]);
 
   useFocusEffect(
@@ -48,6 +50,7 @@ export function QuantityScreen() {
   async function confirm() {
     if (!line || !order) return;
     const n = Number(qty);
+    loadGeneration.current += 1;
     setBusy(true);
     setError(null);
     try {
@@ -59,14 +62,24 @@ export function QuantityScreen() {
       // Short pick (< required) routes to exception workflow per spec demo,
       // carrying the worked line so the report attaches to active context.
       if (isShortPick(n, line.requiredQty)) {
-        router.push({ pathname: `/pick/${order.id}/exception`, params: { lineId: line.id } } as never);
+        router.replace({ pathname: "/pick/[orderId]/exception", params: { orderId: order.id, lineId: line.id } } as never);
         return;
       }
       // Full pick terminalizes this line; lines advance strictly in route
       // order, so the next active line (if any) is PENDING → location.
       // LocationScanScreen self-corrects via resolvePickStep if that ever
       // stops holding (e.g. a concurrent supervisor skip elsewhere).
-      router.push(`/pick/${order.id}/location` as never);
+      const nextOrder = {
+        ...order,
+        lines: order.lines.map((l) => l.id === r.data.id ? r.data : l),
+      };
+      setOrder(nextOrder);
+      const nextStep = resolvePickStep(nextOrder);
+      if (nextStep === "complete") {
+        router.replace({ pathname: "/pick/[orderId]/complete", params: { orderId: order.id } } as never);
+      } else {
+        router.replace(`/pick/${order.id}/${nextStep}` as never);
+      }
     } finally {
       setBusy(false);
     }

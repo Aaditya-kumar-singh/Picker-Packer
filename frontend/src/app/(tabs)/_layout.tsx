@@ -68,21 +68,21 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="completed-orders"
+        options={{
+          title: "Completed",
+          tabBarLabel: "Completed",
+          tabBarIcon: tabIcon("checkmark-done-outline"),
+          href: isPicker || isPacker ? "/completed-orders" : null,
+        }}
+      />
+      <Tabs.Screen
         name="packer-dashboard"
         options={{
           title: "Home",
           tabBarLabel: "Home",
           tabBarIcon: tabIcon("home-outline"),
           href: isPacker ? "/packer-dashboard" : null,
-        }}
-      />
-      <Tabs.Screen
-        name="dispatch"
-        options={{
-          title: "Dispatch",
-          tabBarLabel: "Dispatch",
-          tabBarIcon: tabIcon("cube-outline"),
-          href: isPacker ? "/dispatch" : null,
         }}
       />
       <Tabs.Screen

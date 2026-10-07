@@ -1,6 +1,6 @@
 // Screen 6 — Location Scan. Wrong scan stays in state + 422. Dev mock buttons.
-import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   AppHeader,
@@ -16,7 +16,6 @@ import { nextPendingLine, resolvePickStep } from "@/domain/order";
 import { pickerRepository } from "@/repositories/pickerRepository";
 import { beepError, beepSuccess } from "@/services/scanner";
 import { OfflineBanner } from "@/components/SyncBadge";
-import BarcodeDisplay from "@/components/BarcodeDisplay";
 import type { Order } from "@/types";
 
 export function LocationScanScreen() {
@@ -24,12 +23,13 @@ export function LocationScanScreen() {
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-  const [manual, setManual] = useState("");
   const [busy, setBusy] = useState(false);
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     const r = await pickerRepository.getOrder(String(orderId));
-    if (r.ok) setOrder(r.data);
+    if (generation === loadGeneration.current && r.ok) setOrder(r.data);
   }, [orderId]);
 
   useFocusEffect(
@@ -48,13 +48,14 @@ export function LocationScanScreen() {
     }
   }, [order, step]);
 
-  async function scan(value: string) {
+  async function next() {
     if (!line || !order || busy) return;
-    const v = value.trim();
+    const v = line.locationBarcode.trim();
     if (!v) {
-      setError("Enter or scan a location barcode");
+      setError("Default location barcode is unavailable");
       return;
     }
+    loadGeneration.current += 1;
     setBusy(true);
     setError(null);
     setOk(null);
@@ -66,9 +67,17 @@ export function LocationScanScreen() {
         return;
       }
       beepSuccess();
-      setOk(`Location ${r.data.locationCode} validated`);
-      setManual("");
-      router.push(`/pick/${order!.id}/sku` as never);
+      setOk(`Location ${r.data.locationCode} confirmed`);
+
+      // Continue from the post-scan line state and replace the current step.
+      // Forward picker steps must never accumulate stale screens in the stack.
+      const nextOrder = {
+        ...order,
+        lines: order.lines.map((l) => l.id === r.data.id ? r.data : l),
+      };
+      setOrder(nextOrder);
+      const nextStep = resolvePickStep(nextOrder);
+      router.replace(`/pick/${order.id}/${nextStep}` as never);
     } finally {
       setBusy(false);
     }
@@ -90,23 +99,21 @@ export function LocationScanScreen() {
       <SLAIndicator slaDueAt={order.slaDueAt} />
       <ProgressIndicator done={done} total={order.lines.length} />
       <View style={ls.locationCard}>
-        <Text style={ls.locationTitle}>Pick Location</Text>
+        <Text style={ls.locationTitle}>Default Location</Text>
         <Text style={ls.locationCode}>{line.locationCode}</Text>
-        <BarcodeDisplay
-          label="EXPECTED LOCATION BARCODE"
-          value={line.locationBarcode}
-          scanTitle="Scan location barcode"
-          inputValue={manual}
-          onInputChange={setManual}
-          onSubmit={() => void scan(manual)}
-          inputPlaceholder="Type or scan location barcode"
-          match={manual.trim() ? manual.trim().toUpperCase() === line.locationBarcode.trim().toUpperCase() : null}
-          onScanned={(value) => {
-            setManual(value);
-            void scan(value);
-          }}
+        <View style={ls.barcodeBox}>
+          <Text style={ls.barcodeLabel}>LOCATION BARCODE</Text>
+          <Text selectable style={ls.barcodeValue}>{line.locationBarcode}</Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Next to SKU scan"
+          onPress={() => void next()}
           disabled={busy}
-        />
+          style={[ls.nextButton, busy && ls.disabled]}
+        >
+          <Text style={ls.nextText}>{busy ? "Checking…" : "Next"}</Text>
+        </Pressable>
       </View>
       <OfflineBanner />
       <ErrorBanner message={error} />
@@ -118,6 +125,12 @@ const ls = StyleSheet.create({
   locationCard: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#1351b4", borderRadius: 12, padding: 16, marginTop: 12 },
   locationTitle: { fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: "#1351b4", textTransform: "uppercase" },
   locationCode: { fontSize: 24, fontWeight: "800", color: "#0d1c2e", marginTop: 4 },
-  locationLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.6, color: "#434653", marginTop: 12 },
-  locationBarcode: { fontSize: 18, fontWeight: "700", letterSpacing: 0.4, color: "#0d1c2e", marginTop: 3 },
+  barcodeBox: { marginTop: 12, backgroundColor: "#f7f8fa", borderRadius: 10, padding: 12 },
+  barcodeLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.6, color: "#16823b" },
+  barcodeValue: { fontSize: 18, fontWeight: "700", letterSpacing: 0.3, color: "#0d1c2e", marginTop: 5 },
+  nextButton: { minHeight: 52, marginTop: 14, borderRadius: 10, backgroundColor: "#1351b4", alignItems: "center", justifyContent: "center" },
+  nextText: { color: "#fff", fontSize: 14, fontWeight: "800", textTransform: "uppercase" },
+  successText: { color: "#087a27", fontSize: 11, fontWeight: "700", marginTop: 6 },
+  errorText: { color: "#b42318", fontSize: 11, fontWeight: "700", marginTop: 6 },
+  disabled: { opacity: 0.45 },
 });
