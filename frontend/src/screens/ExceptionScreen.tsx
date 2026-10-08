@@ -3,9 +3,8 @@
 // upload never loses the report; uploads retry against a fresh grant while
 // abandoned PENDING rows are janitor-cleaned server-side.
 import { useCallback, useState } from "react";
-import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   AlertHeader,
@@ -222,7 +221,7 @@ export function ExceptionScreen() {
         ) : null}
         {photo ? (
           <View style={s.previewBox}>
-            <Image source={{ uri: photo.uri }} style={s.preview} contentFit="cover" />
+            <Image source={{ uri: photo.uri }} style={s.preview} resizeMode="cover" />
             <SecondaryButton label="Remove photo" onPress={() => { setPhoto(null); setUploadState("idle"); setUploadError(null); }} />
           </View>
         ) : (
