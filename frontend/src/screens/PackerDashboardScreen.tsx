@@ -73,17 +73,37 @@ export function PackerDashboardScreen() {
 }
 
 const s = StyleSheet.create({
-  metrics: { flexDirection: "row", gap: theme.space.xs, marginBottom: theme.space.sm },
+  metrics: { flexDirection: "row", gap: theme.space.sm, marginBottom: theme.space.md },
   metric: { flex: 1 },
-  card: { backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.line, borderRadius: theme.radius.lg, padding: theme.space.sm, marginBottom: theme.space.xs },
+  card: { 
+    backgroundColor: theme.color.surface, 
+    borderWidth: 1, 
+    borderColor: theme.color.line, 
+    borderRadius: theme.radius.lg, 
+    padding: theme.space.md, 
+    marginBottom: theme.space.sm,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2
+  },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  id: { ...(theme.type.codeMd as object), color: theme.color.ink },
+  id: { ...(theme.type.codeLg as object), color: theme.color.ink },
   customer: { ...(theme.type.bodyMd as object), color: theme.color.muted, marginTop: theme.space.xs },
-  meta: { ...(theme.type.secondary as object), color: theme.color.muted, marginTop: 2 },
-  progress: { height: 5, backgroundColor: theme.color.surfaceContainerHigh, borderRadius: 4, overflow: "hidden", marginTop: theme.space.xs },
-  fill: { height: 5, backgroundColor: theme.color.primary },
-  complete: { borderWidth: 1, borderColor: theme.color.primary, borderRadius: theme.radius.md, padding: theme.space.xs, marginTop: theme.space.xs, alignItems: "center" },
-  completeText: { ...(theme.type.secondary as object), color: theme.color.okInk, fontWeight: "700" },
+  meta: { ...(theme.type.secondary as object), color: theme.color.muted, marginTop: 4 },
+  progress: { height: 8, backgroundColor: theme.color.surfaceContainerHigh, borderRadius: 4, overflow: "hidden", marginTop: theme.space.sm },
+  fill: { height: 8, backgroundColor: theme.color.primaryContainer },
+  complete: { 
+    backgroundColor: theme.color.okBg, 
+    borderWidth: 1, 
+    borderColor: theme.color.primary, 
+    borderRadius: theme.radius.md, 
+    padding: theme.space.sm, 
+    marginTop: theme.space.md, 
+    alignItems: "center" 
+  },
+  completeText: { ...(theme.type.button as object), color: theme.color.okInk, fontWeight: "700", textTransform: "uppercase" },
   success: { backgroundColor: theme.color.okBg, borderWidth: 1, borderColor: theme.color.primary, borderRadius: theme.radius.md, padding: theme.space.sm, marginBottom: theme.space.sm },
   successText: { ...(theme.type.bodyMd as object), color: theme.color.okInk, fontWeight: "800", textAlign: "center" },
 });

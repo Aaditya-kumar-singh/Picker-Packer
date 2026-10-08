@@ -7,14 +7,16 @@
     "icon": "./assets/icon.png",
     "scheme": "ybm-picker-packer",
     "userInterfaceStyle": "light",
-  "plugins": [
-    [
-      "expo-camera",
-      {
-        "cameraPermission": "Allow YBM Picker & Packer to use the camera to scan warehouse barcodes."
-      }
-    ]
-  ],
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow YBM Picker & Packer to use the camera to scan warehouse barcodes."
+        }
+      ],
+      "expo-router",
+      "expo-sqlite"
+    ],
     "ios": {
       "supportsTablet": true
     },

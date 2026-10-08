@@ -65,7 +65,7 @@ export function LoginScreen() {
           <Text style={ls.monogramText}>YBM</Text>
           <Text style={ls.monogramSub}>WAREHOUSE</Text>
         </View>
-        <Text style={ls.version}>WAREHOUSE MANAGEMENT SYSTEM v4.2</Text>
+        <Text style={ls.version}>Warehouse Management System</Text>
       </View>
 
       <View style={ls.heroCard}>
@@ -181,22 +181,22 @@ const ls = StyleSheet.create({
     letterSpacing: 3,
   },
   version: {
-    ...(theme.type.secondary as object),
+    ...(theme.type.bodyMd as object),
     color: theme.color.secondary,
-    letterSpacing: 1.2,
-    fontWeight: "600",
+    letterSpacing: 0.5,
+    fontWeight: "500",
   },
   heroCard: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
     borderWidth: 1,
     borderColor: theme.color.line,
-    padding: theme.space.sm,
-    marginBottom: theme.space.sm,
+    padding: theme.space.lg,
+    marginBottom: theme.space.lg,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
   heroCopy: { flex: 1 },

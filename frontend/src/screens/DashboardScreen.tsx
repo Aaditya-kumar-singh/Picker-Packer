@@ -125,20 +125,24 @@ export function DashboardScreen() {
 const ds = StyleSheet.create({
   grid: {
     flexDirection: "row",
-    marginHorizontal: -4,
-    marginTop: theme.space.sm,
+    gap: theme.space.xs,
+    marginTop: theme.space.md,
   },
   cell: {
     flex: 1,
-    paddingHorizontal: 4,
   },
   activeCard: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
     borderWidth: 1,
     borderColor: theme.color.primaryContainer,
-    padding: theme.space.md,
-    marginTop: theme.space.md,
+    padding: theme.space.lg,
+    marginTop: theme.space.lg,
+    shadowColor: theme.color.primaryDark,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   activeHeader: {
     flexDirection: "row",
@@ -152,14 +156,15 @@ const ds = StyleSheet.create({
     letterSpacing: 0.8,
   },
   orderId: {
-    ...(theme.type.codeLg as object),
+    ...(theme.type.codeDisplay as object),
+    fontSize: 28, // slight tweak to fit better
     color: theme.color.ink,
-    marginTop: 3,
+    marginTop: 6,
   },
   activeMeta: {
-    ...(theme.type.secondary as object),
+    ...(theme.type.bodyMd as object),
     color: theme.color.secondary,
-    marginVertical: theme.space.sm,
+    marginVertical: theme.space.md,
   },
   stale: {
     marginTop: theme.space.xs,
@@ -172,17 +177,17 @@ const ds = StyleSheet.create({
     gap: theme.space.xs,
     backgroundColor: theme.color.surfaceContainerLow,
     borderRadius: theme.radius.lg,
-    padding: theme.space.sm,
-    marginTop: theme.space.sm,
+    padding: theme.space.md,
+    marginTop: theme.space.md,
   },
   offlineDot: {
-    width: 9,
-    height: 9,
+    width: 10,
+    height: 10,
     borderRadius: 5,
     backgroundColor: theme.color.critical,
   },
   offlineText: {
-    ...(theme.type.secondary as object),
+    ...(theme.type.bodyMd as object),
     color: theme.color.ink,
     flex: 1,
   },
