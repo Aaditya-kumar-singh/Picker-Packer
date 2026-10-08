@@ -166,31 +166,47 @@ export function FieldInput({
   label,
   error,
   style,
+  secureTextEntry,
   ...rest
 }: { label?: string; error?: string | null } & TextInputProps) {
   const [focused, setFocused] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const isPassword = secureTextEntry === true;
+
   return (
     <View style={s.field}>
       {label ? <Text style={s.fieldLabel}>{label}</Text> : null}
-      <TextInput
-        {...rest}
-        onFocus={(e) => {
-          setFocused(true);
-          rest.onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          rest.onBlur?.(e);
-        }}
-        placeholderTextColor={theme.color.faint}
-        style={[s.input, focused && s.inputFocused, error ? s.inputError : null, style]}
-      />
+      <View style={isPassword ? s.passwordInputWrap : null}>
+        <TextInput
+          {...rest}
+          secureTextEntry={isPassword ? !passwordVisible : secureTextEntry}
+          onFocus={(e) => {
+            setFocused(true);
+            rest.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            rest.onBlur?.(e);
+          }}
+          placeholderTextColor={theme.color.faint}
+          style={[s.input, isPassword && s.passwordInput, focused && s.inputFocused, error ? s.inputError : null, style]}
+        />
+        {isPassword ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={passwordVisible ? "Hide password" : "Show password"}
+            onPress={() => setPasswordVisible((visible) => !visible)}
+            hitSlop={10}
+            style={s.passwordEye}
+          >
+            <Text style={s.passwordEyeText}>{passwordVisible ? "?" : "??"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
       {error ? <Text style={s.fieldError}>{error}</Text> : null}
     </View>
   );
 }
-
-// ── Scan ───────────────────────────────────────────────────────────────
 export function ScanTarget({ label, value }: { label: string; value: string }) {
   return (
     <View style={s.scan}>
@@ -473,6 +489,10 @@ const s = StyleSheet.create({
     minHeight: theme.touch.primary,
   },
   inputFocused: { borderColor: theme.color.primaryContainer, backgroundColor: theme.color.surface },
+  passwordInputWrap: { position: "relative" },
+  passwordInput: { paddingRight: 52 },
+  passwordEye: { position: "absolute", right: 12, top: 0, bottom: 0, width: 40, alignItems: "center", justifyContent: "center" },
+  passwordEyeText: { fontSize: 20, color: theme.color.secondary },
   inputError: { borderColor: theme.color.critical },
   fieldError: { color: theme.color.badInk, ...(theme.type.labelMd as object), marginTop: 6 },
   // ── Scan targets (industrial blue bordered cards) ──

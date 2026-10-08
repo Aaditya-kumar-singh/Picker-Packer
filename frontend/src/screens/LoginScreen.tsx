@@ -123,7 +123,7 @@ export function LoginScreen() {
               pressed && !busy && quickLoginReady.picker && ls.quickPressed,
             ]}
           >
-            <Text style={ls.quickButtonText}>Test • LogIn as Picker</Text>
+            <Text style={ls.quickButtonText}>TEST LOGIN • PICKER</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -136,7 +136,7 @@ export function LoginScreen() {
               pressed && !busy && quickLoginReady.packer && ls.quickPressed,
             ]}
           >
-            <Text style={ls.quickButtonText}>Test • LogIn as Packer</Text>
+            <Text style={ls.quickButtonText}>TEST LOGIN • PACKER</Text>
           </Pressable>
         </View>
       ) : null}
