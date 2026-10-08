@@ -2,6 +2,7 @@
 // Every screen consumes these; no per-screen color/type reinvention.
 // Status is never color alone: badges always pair tone with a text label
 // (and a glyph where space allows).
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
@@ -199,7 +200,7 @@ export function FieldInput({
             hitSlop={10}
             style={s.passwordEye}
           >
-            <Text style={s.passwordEyeText}>{passwordVisible ? "?" : "??"}</Text>
+            <Ionicons name={passwordVisible ? "eye-off-outline" : "eye-outline"} size={21} color={theme.color.secondary} />
           </Pressable>
         ) : null}
       </View>
@@ -420,7 +421,7 @@ export function ErrorState({
 const s = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: theme.color.bg },
-  body: { flexGrow: 1, padding: theme.space.sm, paddingBottom: theme.space.lg },
+  body: { flexGrow: 1, paddingHorizontal: theme.space.md, paddingTop: theme.space.sm, paddingBottom: theme.space.lg },
   center: { justifyContent: "center" },
   // ── Headers ──
   header: { paddingVertical: theme.space.xs, marginBottom: theme.space.xxs },
@@ -607,7 +608,8 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.color.line,
     borderRadius: theme.radius.lg,
-    padding: theme.space.sm,
+    padding: theme.space.md,
+    minHeight: 128,
     marginTop: theme.space.xs,
     shadowColor: theme.color.ink,
     shadowOpacity: 0.06,
@@ -615,8 +617,8 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  metricValue: { ...(theme.type.title as object), color: theme.color.ink },
-  metricLabel: { ...(theme.type.labelMd as object), color: theme.color.muted, marginTop: 2, textTransform: "uppercase" },
+  metricValue: { ...(theme.type.title as object), fontSize: 34, color: theme.color.ink },
+  metricLabel: { ...(theme.type.labelMd as object), fontSize: 13, lineHeight: 17, color: theme.color.muted, marginTop: 2, textTransform: "uppercase" },
   // ── Async states ──
   stateBox: { paddingVertical: theme.space.lg, alignItems: "stretch" },
   stateText: { ...(theme.type.secondary as object), color: theme.color.muted, marginTop: theme.space.xs, textAlign: "center" },
