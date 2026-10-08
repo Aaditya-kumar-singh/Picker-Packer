@@ -51,7 +51,7 @@ export function PackerDashboardScreen() {
             return (
               <View key={o.id} style={s.card}>
                 <View style={s.row}>
-                  <Text style={s.id}>{o.id}</Text>
+                  <Text style={s.id}>{o.orderNumber}</Text>
                   <StatusBadge text={complete ? "PACKED" : "PACKING"} tone={complete ? "ok" : "info"} />
                 </View>
                 <Text style={s.customer}>{o.customer || "Unknown Customer"}</Text>

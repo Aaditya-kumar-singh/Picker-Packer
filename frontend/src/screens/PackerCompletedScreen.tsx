@@ -64,7 +64,7 @@ export function PackerCompletedScreen() {
               style={({ pressed }) => [s.card, pressed && s.pressed]}
             >
               <View style={s.row}>
-                <Text style={s.id}>{order.id}</Text>
+                <Text style={s.id}>{order.orderNumber}</Text>
                 <StatusBadge
                   text={riderAssigned ? "RIDER ASSIGNED" : "PACKED"}
                   tone="ok"

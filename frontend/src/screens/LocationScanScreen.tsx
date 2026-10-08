@@ -9,7 +9,7 @@ import {
   ProgressIndicator,
   ScanTarget,
   Screen,
-  SLAIndicator,
+
   SuccessFeedback,
 } from "@/components/ui";
 import { nextPendingLine, resolvePickStep } from "@/domain/order";
@@ -96,7 +96,6 @@ export function LocationScanScreen() {
   return (
     <Screen>
       <AppHeader title={order.externalId} sub={`Line ${line.lineNo} — go to location`} />
-      <SLAIndicator slaDueAt={order.slaDueAt} />
       <ProgressIndicator done={done} total={order.lines.length} />
       <View style={ls.locationCard}>
         <Text style={ls.locationTitle}>Default Location</Text>

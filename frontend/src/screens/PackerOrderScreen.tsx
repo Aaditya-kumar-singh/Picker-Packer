@@ -113,7 +113,7 @@ export function PackerOrderScreen() {
 
   return (
     <Screen>
-      <AppHeader title={order.id} sub={order.customer || "Unknown Customer"} />
+      <AppHeader title={order.orderNumber} sub={order.customer || "Unknown Customer"} />
       <Pressable onPress={() => router.back()} style={s.back}>
         <Text style={s.backText}>← Back to orders</Text>
       </Pressable>

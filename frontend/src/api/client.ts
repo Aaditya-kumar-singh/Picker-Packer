@@ -48,6 +48,7 @@ export type PackageRecord = {
 
 export type OrderSummary = {
   id: string;
+  orderNumber: string;
   customer: string;
   warehouseId?: string;
   priority: string;
@@ -160,7 +161,7 @@ function mapItem(i: any): OrderItem {
 function mapOrderSummary(o: any, items: OrderItem[] = []): OrderSummary {
   const pickedCount = items.filter(i => i.pickedQty >= i.requiredQty).length;
   return {
-    id: o.id, customer: o.customer, warehouseId: o.warehouse_id, priority: o.priority,
+    id: o.id, orderNumber: o.order_number ?? o.id, customer: o.customer, warehouseId: o.warehouse_id, priority: o.priority,
     slaMinutes: o.sla_minutes, status: o.status, pickerId: o.picker_id, packerId: o.packer_id,
     riderId: o.rider_id ?? null, riderName: o.rider_name ?? null,
     createdAt: o.created_at, updatedAt: o.updated_at,

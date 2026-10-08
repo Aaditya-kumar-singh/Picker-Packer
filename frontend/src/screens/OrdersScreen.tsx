@@ -8,7 +8,7 @@ import {
   LoadingState,
   Screen,
   SectionHeader,
-  SLAIndicator,
+
   StatusBadge,
   theme,
   toneForOrderStatus,
@@ -121,7 +121,6 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
 
               <View style={os.footer}>
                 <Text style={os.lineCount}>{o.totalLines} pick lines</Text>
-                <SLAIndicator slaDueAt={o.slaDueAt} />
               </View>
             </Pressable>
           );

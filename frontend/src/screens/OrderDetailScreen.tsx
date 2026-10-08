@@ -14,7 +14,7 @@ import {
   ProgressIndicator,
   Screen,
   SectionHeader,
-  SLAIndicator,
+
   StatusBadge,
   theme,
   toneForLineStatus,
@@ -108,7 +108,7 @@ export function OrderDetailScreen() {
         </View>
         <View style={od.summaryDivider} />
         <View style={od.summaryItem}>
-          <SLAIndicator slaDueAt={order.slaDueAt} />
+
         </View>
       </View>
 

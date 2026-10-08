@@ -25,7 +25,7 @@ function toLine(l: client.OrderItem, idx = 0): OrderLine {
 
 function toOrder(o: client.OrderSummary): Order {
   return {
-    id: o.id, externalId: o.id, status: mapStatus(o.status),
+    id: o.id, externalId: o.orderNumber, status: mapStatus(o.status),
     priority: o.priority === "URGENT" ? 2 : o.priority === "HIGH" ? 1 : 0,
     slaDueAt: new Date(new Date(o.createdAt).getTime() + o.slaMinutes * 60000).toISOString(),
     totalLines: o.itemCount ?? o.items?.length ?? 0, version: 1, assignedPickerCode: o.pickerId ?? null,
