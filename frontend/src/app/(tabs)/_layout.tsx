@@ -8,9 +8,9 @@ import { BrandHeader } from "@/components/BrandHeader";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
-function tabIcon(name: IconName) {
-  return ({ color, size }: { color: ColorValue; size: number }) => (
-    <Ionicons name={name} color={color} size={size} />
+function tabIcon(activeName: IconName, inactiveName: IconName) {
+  return ({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) => (
+    <Ionicons name={focused ? activeName : inactiveName} color={color} size={size} />
   );
 }
 
@@ -37,15 +37,20 @@ export default function TabLayout() {
           borderTopColor: theme.color.line,
           borderTopWidth: 1,
           height: baseTabHeight + bottomInset,
-          paddingTop: 5,
+          paddingTop: 6,
           paddingBottom: 6 + bottomInset,
+          shadowColor: theme.color.ink,
+          shadowOpacity: 0.05,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: -2 },
+          elevation: 4,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: "700",
         },
         tabBarItemStyle: {
-          minHeight: 50,
+          minHeight: 48,
         },
       }}
     >
@@ -54,7 +59,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarLabel: "Home",
-          tabBarIcon: tabIcon("home-outline"),
+          tabBarIcon: tabIcon("home", "home-outline"),
           href: isPicker ? "/dashboard" : null,
         }}
       />
@@ -63,7 +68,7 @@ export default function TabLayout() {
         options={{
           title: "Orders",
           tabBarLabel: "Orders",
-          tabBarIcon: tabIcon("list-outline"),
+          tabBarIcon: tabIcon("list", "list-outline"),
           href: isPicker ? "/orders" : null,
         }}
       />
@@ -72,7 +77,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarLabel: "Home",
-          tabBarIcon: tabIcon("home-outline"),
+          tabBarIcon: tabIcon("home", "home-outline"),
           href: isPacker ? "/packer-dashboard" : null,
         }}
       />
@@ -81,7 +86,7 @@ export default function TabLayout() {
         options={{
           title: "Completed",
           tabBarLabel: "Completed",
-          tabBarIcon: tabIcon("checkmark-done-outline"),
+          tabBarIcon: tabIcon("checkmark-done", "checkmark-done-outline"),
           href: isPicker || isPacker ? "/completed-orders" : null,
         }}
       />
@@ -90,7 +95,7 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarLabel: "Profile",
-          tabBarIcon: tabIcon("person-outline"),
+          tabBarIcon: tabIcon("person", "person-outline"),
           href: picker ? "/profile" : null,
         }}
       />

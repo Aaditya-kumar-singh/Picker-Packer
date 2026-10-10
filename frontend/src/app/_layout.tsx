@@ -3,6 +3,7 @@ import { Stack, router, useSegments } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/navigation/AppProvider";
 import { SyncProvider } from "@/sync/SyncContext";
+import { theme } from "@/theme";
 
 function RouteGuard() {
   const { picker, ready } = useAuth();
@@ -51,10 +52,18 @@ export default function RootLayout() {
       <AuthProvider>
         <SyncProvider>
           <RouteGuard />
-          <Stack screenOptions={{ headerShown: true }}>
-            <Stack.Screen name="index" options={{ title: "YBM Picker" }} />
-            <Stack.Screen name="login" options={{ title: "Login" }} />
-            <Stack.Screen name="otp" options={{ title: "OTP" }} />
+          <Stack
+            screenOptions={{
+              headerShown: true,
+              headerStyle: { backgroundColor: theme.color.surface },
+              headerTintColor: theme.color.primaryContainer,
+              headerTitleStyle: { fontWeight: "700", fontSize: 16 },
+              headerShadowVisible: false,
+            }}
+          >
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen name="otp" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
             <Stack.Screen name="order/[id]" options={{ title: "Picking Order" }} />

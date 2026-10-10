@@ -1,6 +1,7 @@
 // Persistent lightweight sync indicator + offline banner.
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { StatusBadge, theme, type Tone } from "@/components/ui";
 import { useSyncStatus } from "@/sync/SyncContext";
 
@@ -12,11 +13,11 @@ export function SyncBadge({ onPress }: { onPress?: () => void }) {
       : status.connectivity === "CHECKING"
         ? "CHECKING"
         : status.connectivity === "OFFLINE"
-          ? `OFFLINE${status.pending > 0 ? ` � QUEUED: ${status.pending}` : ""}`
+          ? `OFFLINE${status.pending > 0 ? ` • ${status.pending} QUEUED` : ""}`
           : status.connectivity === "SERVER_UNREACHABLE"
             ? "SERVER UNREACHABLE"
             : status.pending > 0
-              ? `QUEUED: ${status.pending}`
+              ? `${status.pending} QUEUED`
               : status.lastSyncAt
                 ? "SYNCED"
                 : "ONLINE";
@@ -42,13 +43,18 @@ export function SyncBadge({ onPress }: { onPress?: () => void }) {
 export function OfflineBanner() {
   const { status } = useSyncStatus();
   if (status.connectivity === "CHECKING" || (status.connectivity === "ONLINE" && status.pending === 0)) return null;
-  const text =
-    status.connectivity !== "ONLINE"
-      ? `Working offline — ${status.pending} event(s) queued for sync. Nothing is sent to WMS from this device.`
-      : `${status.pending} event(s) queued — tap SYNC to upload.`;
+  const isOffline = status.connectivity !== "ONLINE";
+  const text = isOffline
+    ? `Working offline — ${status.pending} event(s) queued for sync.`
+    : `${status.pending} event(s) queued — tap to upload.`;
   return (
     <View style={s.banner}>
-      <Text style={s.bannerText}>◌ {text}</Text>
+      <Ionicons
+        name={isOffline ? "cloud-offline-outline" : "cloud-upload-outline"}
+        size={20}
+        color={theme.color.warnInk}
+      />
+      <Text style={s.bannerText}>{text}</Text>
     </View>
   );
 }
@@ -70,7 +76,12 @@ export function ConflictList() {
   }
   return (
     <View style={s.conflicts}>
-      <Text style={s.conflictsTitle}>! Sync conflicts ({status.conflicts.length}) — see your supervisor to resolve</Text>
+      <View style={s.conflictsHeader}>
+        <Ionicons name="alert-circle" size={18} color={theme.color.badInk} />
+        <Text style={s.conflictsTitle}>
+          Sync conflicts ({status.conflicts.length}) — see supervisor to resolve
+        </Text>
+      </View>
       {status.conflicts.map((c) => (
         <View key={c.clientEventId} style={s.conflict}>
           <Text style={s.conflictId}>Event {c.clientEventId.slice(0, 8)}…</Text>
@@ -82,8 +93,13 @@ export function ConflictList() {
         accessibilityState={{ disabled: syncing }}
         onPress={() => void retry()}
         disabled={syncing}
-        style={[s.retry, syncing && s.retryDisabled]}
+        style={({ pressed }) => [
+          s.retry,
+          syncing && s.retryDisabled,
+          pressed && !syncing ? { opacity: 0.85 } : null,
+        ]}
       >
+        <Ionicons name="refresh" size={16} color={theme.color.warnInk} />
         <Text style={s.retryText}>{syncing ? "Retrying…" : "Retry sync"}</Text>
       </Pressable>
     </View>
@@ -97,31 +113,59 @@ const s = StyleSheet.create({
     borderRadius: theme.radius.md,
     padding: theme.space.sm,
     marginTop: theme.space.xs,
+    borderWidth: 1,
+    borderColor: theme.color.warnBorder,
     borderLeftWidth: 4,
     borderLeftColor: theme.color.warnInk,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  bannerText: { ...(theme.type.bodyMd as object), color: theme.color.warnInk, fontWeight: "600" },
+  bannerText: {
+    ...(theme.type.bodyMd as object),
+    color: theme.color.warnInk,
+    fontWeight: "600",
+    flex: 1,
+  },
   conflicts: {
     borderWidth: 1,
-    borderColor: theme.color.warnInk,
+    borderColor: theme.color.badBorder,
     borderRadius: theme.radius.lg,
-    padding: theme.space.sm,
+    padding: theme.space.md,
     marginTop: theme.space.xs,
-    backgroundColor: theme.color.warnBg,
+    backgroundColor: theme.color.badBg,
   },
-  conflictsTitle: { ...(theme.type.labelLg as object), color: theme.color.warnInk },
-  conflict: { marginTop: theme.space.xs, borderTopWidth: 1, borderTopColor: theme.color.tertiaryFixedDim, paddingTop: theme.space.xs },
-  conflictId: { ...(theme.type.codeMd as object), color: theme.color.ink },
-  conflictMsg: { ...(theme.type.secondary as object), color: theme.color.warnInk, marginTop: 2 },
-  retry: {
+  conflictsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  conflictsTitle: {
+    ...(theme.type.labelLg as object),
+    color: theme.color.badInk,
+    flex: 1,
+  },
+  conflict: {
     marginTop: theme.space.xs,
-    borderWidth: 2,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(220, 38, 38, 0.15)",
+    paddingTop: theme.space.xs,
+  },
+  conflictId: { ...(theme.type.codeMd as object), color: theme.color.ink },
+  conflictMsg: { ...(theme.type.secondary as object), color: theme.color.badInk, marginTop: 2 },
+  retry: {
+    marginTop: theme.space.sm,
+    borderWidth: 1.5,
     borderColor: theme.color.warnInk,
-    borderRadius: theme.radius.lg,
-    paddingVertical: theme.space.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: "#ffffff",
+    paddingVertical: theme.space.xs,
+    paddingHorizontal: theme.space.md,
     minHeight: theme.touch.min,
     justifyContent: "center",
     alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
   },
   retryDisabled: { opacity: 0.45 },
   retryText: { ...(theme.type.button as object), color: theme.color.warnInk },

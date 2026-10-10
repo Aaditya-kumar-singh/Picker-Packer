@@ -1,7 +1,7 @@
 // Picker Dashboard — screenshot-aligned compact warehouse dashboard.
 import { useCallback, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import {
   EmptyState,
@@ -71,18 +71,30 @@ export function DashboardScreen() {
           </View>
 
           <View style={[ds.grid, { gap: metricGap }]}>
-            <View style={ds.cell}>
-              <MetricCard value={String(data.pendingCount)} label="Assigned" tone={data.pendingCount > 0 ? "info" : "ok"} />
-              <Text style={ds.metricHint}>Pick & Pack items</Text>
-            </View>
-            <View style={ds.cell}>
-              <MetricCard value={String(data.metrics.ordersPicked)} label="Completed" tone="ok" />
-              <Text style={ds.metricHint}>Great job!</Text>
-            </View>
-            <View style={ds.cell}>
-              <MetricCard value={String(data.metrics.totalPickedQty)} label="Items Picked Today" tone={data.metrics.totalPickedQty > 0 ? "info" : undefined} />
-              <Text style={ds.metricHint}>Keep it up!</Text>
-            </View>
+            <Pressable
+              style={({ pressed }) => [ds.cell, pressed && ds.metricPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Assigned orders, ${data.pendingCount}`}
+              onPress={() => router.push("/orders" as never)}
+            >
+              <MetricCard
+                value={String(data.pendingCount)}
+                label="Assigned"
+                tone={data.pendingCount > 0 ? "info" : "ok"}
+              />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [ds.cell, pressed && ds.metricPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Completed orders, ${data.metrics.ordersPicked}`}
+              onPress={() => router.push("/completed-orders" as never)}
+            >
+              <MetricCard
+                value={String(data.metrics.ordersPicked)}
+                label="Completed"
+                tone="ok"
+              />
+            </Pressable>
           </View>
 
           {data.activeOrder ? (
@@ -100,14 +112,15 @@ export function DashboardScreen() {
               <View style={ds.activeBody}>
                 <Text style={[ds.orderId, compact && ds.orderIdCompact]}>{data.activeOrder.externalId}</Text>
                 <View style={ds.activeMetaRow}>
-                  <Ionicons name="list" size={18} color={theme.color.faint} />
+                  <Ionicons name="list" size={18} color={theme.color.muted} />
                   <Text style={ds.activeMeta}>{data.activeOrder.lines.length} pick lines</Text>
                   <View style={ds.metaDivider} />
-                  <Ionicons name="star" size={18} color={theme.color.faint} />
+                  <Ionicons name="star" size={18} color={theme.color.warnPrimary} />
                   <Text style={ds.activeMeta}>{data.activeOrder.priority >= 2 ? "High priority" : "Standard priority"}</Text>
                 </View>
                 <PrimaryButton
                   label="RESUME PICKING"
+                  icon="arrow-forward-circle"
                   onPress={() => router.push(`/order/${data.activeOrder!.id}` as never)}
                 />
               </View>
@@ -134,13 +147,17 @@ const ds = StyleSheet.create({
   dashboardTitle: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: theme.space.lg,
+    marginTop: theme.space.sm,
     marginBottom: theme.space.md,
-    paddingHorizontal: 2,
+    gap: 8,
   },
   dashboardIcon: {
-    width: 34,
+    width: 36,
+    height: 36,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.color.infoBg,
     alignItems: "center",
+    justifyContent: "center",
   },
   dashboardTitleCopy: {
     flex: 1,
@@ -149,46 +166,39 @@ const ds = StyleSheet.create({
   dashboardTitleText: {
     ...(theme.type.titleMd as object),
     color: theme.color.ink,
-    textTransform: "capitalize",
   },
   dashboardSubtitle: {
     ...(theme.type.bodyMd as object),
     color: theme.color.muted,
-    marginTop: 2,
+    marginTop: 1,
   },
   grid: {
     flexDirection: "row",
-    marginBottom: 2,
+    marginBottom: theme.space.sm,
   },
   cell: {
     flex: 1,
     minWidth: 0,
-    position: "relative",
   },
-  metricHint: {
-    position: "absolute",
-    left: 12,
-    right: 10,
-    bottom: 10,
-    fontSize: 10,
-    lineHeight: 14,
-    color: theme.color.muted,
+  metricPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.98 }],
   },
   activeCard: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: theme.color.primaryFixedDim,
-    marginTop: theme.space.lg,
+    borderWidth: 1.5,
+    borderColor: theme.color.primary,
+    marginTop: theme.space.md,
     shadowColor: theme.color.primaryDark,
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
   activeBanner: {
-    minHeight: 74,
+    minHeight: 64,
     backgroundColor: theme.color.primaryContainer,
     paddingHorizontal: theme.space.md,
     paddingVertical: theme.space.sm,
@@ -200,60 +210,59 @@ const ds = StyleSheet.create({
   activeBannerTitle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     flex: 1,
     minWidth: 0,
   },
   activeBannerText: {
-    ...(theme.type.titleMd as object),
+    ...(theme.type.section as object),
     color: "#ffffff",
-    fontSize: 20,
     letterSpacing: 0.6,
   },
   activeStatus: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
     backgroundColor: theme.color.warnBg,
     borderRadius: theme.radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    maxWidth: "48%",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: theme.color.warnBorder,
   },
   activeStatusText: {
-    ...(theme.type.labelMd as object),
+    ...(theme.type.labelSm as object),
     color: theme.color.warnInk,
     fontWeight: "800",
   },
   activeBody: {
-    padding: theme.space.lg,
+    padding: theme.space.md,
   },
   orderId: {
     ...(theme.type.codeDisplay as object),
-    fontSize: 34,
+    fontSize: 28,
     color: theme.color.ink,
     letterSpacing: 1,
   },
   orderIdCompact: {
-    fontSize: 28,
+    fontSize: 24,
     letterSpacing: 0.5,
   },
   activeMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: theme.space.sm,
+    marginVertical: theme.space.sm,
     minWidth: 0,
     gap: 8,
   },
   activeMeta: {
-    ...(theme.type.bodyMd as object),
+    ...(theme.type.secondary as object),
     color: theme.color.secondary,
     flexShrink: 1,
-    marginVertical: 0,
   },
   metaDivider: {
     width: 1,
-    height: 22,
+    height: 16,
     backgroundColor: theme.color.line,
   },
   stale: {
@@ -266,9 +275,11 @@ const ds = StyleSheet.create({
     alignItems: "center",
     gap: theme.space.xs,
     backgroundColor: theme.color.surfaceContainerLow,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     padding: theme.space.md,
     marginTop: theme.space.md,
+    borderWidth: 1,
+    borderColor: theme.color.line,
   },
   offlineDot: {
     width: 10,
@@ -277,8 +288,8 @@ const ds = StyleSheet.create({
     backgroundColor: theme.color.critical,
   },
   offlineText: {
-    ...(theme.type.bodyMd as object),
-    color: theme.color.ink,
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
     flex: 1,
   },
 });

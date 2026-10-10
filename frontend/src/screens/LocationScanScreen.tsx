@@ -1,16 +1,19 @@
-// Screen 6 — Location Scan. Wrong scan stays in state + 422. Dev mock buttons.
+// Screen 6 — Location Scan.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   AppHeader,
   ErrorBanner,
   LoadingState,
+  PickStepStepper,
+  PrimaryButton,
   ProgressIndicator,
-  ScanTarget,
   Screen,
-
   SuccessFeedback,
+  theme,
 } from "@/components/ui";
 import { nextPendingLine, resolvePickStep } from "@/domain/order";
 import { pickerRepository } from "@/repositories/pickerRepository";
@@ -24,6 +27,7 @@ export function LocationScanScreen() {
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
@@ -38,15 +42,19 @@ export function LocationScanScreen() {
     }, [load])
   );
   const line = order ? nextPendingLine(order) : null;
-  // Authoritative routing: if the active line already progressed past
-  // location (e.g. back-navigation after SKU validation), forward to the
-  // correct step instead of letting a location submit fail LINE_NOT_READY.
   const step = order ? resolvePickStep(order) : null;
   useEffect(() => {
     if (order && step !== null && step !== "location") {
       router.replace(`/pick/${order.id}/${step}` as never);
     }
   }, [order, step]);
+
+  async function copyBarcode(code: string) {
+    if (!code) return;
+    await Clipboard.setStringAsync(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
 
   async function next() {
     if (!line || !order || busy) return;
@@ -69,11 +77,9 @@ export function LocationScanScreen() {
       beepSuccess();
       setOk(`Location ${r.data.locationCode} confirmed`);
 
-      // Continue from the post-scan line state and replace the current step.
-      // Forward picker steps must never accumulate stale screens in the stack.
       const nextOrder = {
         ...order,
-        lines: order.lines.map((l) => l.id === r.data.id ? r.data : l),
+        lines: order.lines.map((l) => (l.id === r.data.id ? r.data : l)),
       };
       setOrder(nextOrder);
       const nextStep = resolvePickStep(nextOrder);
@@ -95,41 +101,151 @@ export function LocationScanScreen() {
 
   return (
     <Screen>
-      <AppHeader title={order.externalId} sub={`Line ${line.lineNo} — go to location`} />
+      <AppHeader
+        title={order.externalId}
+        sub={`Line ${line.lineNo} of ${order.lines.length} — Go to aisle/shelf`}
+      />
+
+      {/* Stepper navigation */}
+      <PickStepStepper currentStep="location" />
+
       <ProgressIndicator done={done} total={order.lines.length} />
+
       <View style={ls.locationCard}>
-        <Text style={ls.locationTitle}>Default Location</Text>
+        <View style={ls.locationBadgeRow}>
+          <View style={ls.badge}>
+            <Ionicons name="location-sharp" size={16} color={theme.colors.location.icon} />
+            <Text style={ls.badgeText}>TARGET LOCATION</Text>
+          </View>
+          <Text style={ls.itemMeta}>{line.skuName}</Text>
+        </View>
+
         <Text style={ls.locationCode}>{line.locationCode}</Text>
+
         <View style={ls.barcodeBox}>
-          <Text style={ls.barcodeLabel}>LOCATION BARCODE</Text>
+          <View style={ls.barcodeHeader}>
+            <Text style={ls.barcodeLabel}>LOCATION BARCODE</Text>
+            <Pressable
+              onPress={() => void copyBarcode(line.locationBarcode)}
+              style={({ pressed }) => [ls.copyBtn, pressed ? { opacity: 0.7 } : null]}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={copied ? "checkmark" : "copy-outline"}
+                size={13}
+                color={copied ? theme.color.okInk : theme.color.primary}
+              />
+              <Text style={[ls.copyText, copied && { color: theme.color.okInk }]}>
+                {copied ? "Copied" : "Copy"}
+              </Text>
+            </Pressable>
+          </View>
           <Text selectable style={ls.barcodeValue}>{line.locationBarcode}</Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Next to SKU scan"
+
+        <PrimaryButton
+          label={busy ? "Verifying Location…" : "Confirm & Proceed to SKU"}
+          icon="arrow-forward"
           onPress={() => void next()}
           disabled={busy}
-          style={[ls.nextButton, busy && ls.disabled]}
-        >
-          <Text style={ls.nextText}>{busy ? "Checking…" : "Next"}</Text>
-        </Pressable>
+        />
       </View>
+
       <OfflineBanner />
       <ErrorBanner message={error} />
       <SuccessFeedback message={ok} />
     </Screen>
   );
 }
+
 const ls = StyleSheet.create({
-  locationCard: { backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#1351b4", borderRadius: 12, padding: 16, marginTop: 12 },
-  locationTitle: { fontSize: 12, fontWeight: "700", letterSpacing: 0.5, color: "#1351b4", textTransform: "uppercase" },
-  locationCode: { fontSize: 24, fontWeight: "800", color: "#0d1c2e", marginTop: 4 },
-  barcodeBox: { marginTop: 12, backgroundColor: "#f7f8fa", borderRadius: 10, padding: 12 },
-  barcodeLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.6, color: "#16823b" },
-  barcodeValue: { fontSize: 18, fontWeight: "700", letterSpacing: 0.3, color: "#0d1c2e", marginTop: 5 },
-  nextButton: { minHeight: 52, marginTop: 14, borderRadius: 10, backgroundColor: "#1351b4", alignItems: "center", justifyContent: "center" },
-  nextText: { color: "#fff", fontSize: 14, fontWeight: "800", textTransform: "uppercase" },
-  successText: { color: "#087a27", fontSize: 11, fontWeight: "700", marginTop: 6 },
-  errorText: { color: "#b42318", fontSize: 11, fontWeight: "700", marginTop: 6 },
-  disabled: { opacity: 0.45 },
+  locationCard: {
+    backgroundColor: theme.color.surface,
+    borderWidth: 1.5,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.lg,
+    padding: theme.space.md,
+    marginTop: theme.space.xs,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  locationBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: theme.colors.location.bg,
+    borderWidth: 1,
+    borderColor: theme.colors.location.border,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: theme.radius.sm,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: theme.colors.location.text,
+    letterSpacing: 0.5,
+  },
+  itemMeta: {
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
+    maxWidth: "50%",
+  },
+  locationCode: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: theme.color.ink,
+    letterSpacing: 0.5,
+    marginVertical: 4,
+  },
+  barcodeBox: {
+    marginTop: theme.space.sm,
+    marginBottom: theme.space.sm,
+    backgroundColor: theme.color.surfaceContainerLow,
+    borderRadius: theme.radius.md,
+    padding: theme.space.md,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+  },
+  barcodeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  barcodeLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    color: theme.color.muted,
+  },
+  copyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: theme.color.surface,
+  },
+  copyText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: theme.color.primary,
+  },
+  barcodeValue: {
+    ...(theme.type.codeLg as object),
+    fontSize: 20,
+    color: theme.color.ink,
+    marginTop: 6,
+    letterSpacing: 1,
+  },
 });

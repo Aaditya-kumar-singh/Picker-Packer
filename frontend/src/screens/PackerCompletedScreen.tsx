@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import {
   AppHeader,
@@ -46,7 +47,7 @@ export function PackerCompletedScreen() {
       ) : orders.length === 0 ? (
         <EmptyState
           title="No Completed Orders"
-          body="Orders completed by you will appear here."
+          body="Orders packed and dispatched by you will appear here."
           actionLabel="Refresh"
           onAction={() => void load()}
         />
@@ -70,13 +71,20 @@ export function PackerCompletedScreen() {
                   tone="ok"
                 />
               </View>
-              <Text style={s.customer}>{order.customer || "Unknown Customer"}</Text>
+              <Text style={s.customer}>{order.customer || "Warehouse Customer"}</Text>
               <View style={s.metaRow}>
-                <Text style={s.meta}>{total} items</Text>
-                <Text style={s.meta}>{packed}/{total} packed</Text>
+                <Text style={s.meta}>{total} item lines</Text>
+                <Text style={s.metaHighlight}>{packed} of {total} packed</Text>
               </View>
               <View style={s.progress}>
                 <View style={[s.fill, { width: `${total ? Math.min(100, Math.round((packed / total) * 100)) : 0}%` }]} />
+              </View>
+              <View style={s.footer}>
+                <View style={s.footerLeft}>
+                  <Ionicons name="checkmark-done" size={14} color={theme.color.okInk} />
+                  <Text style={s.footerText}>{riderAssigned ? `Rider: ${order.riderName ?? "Assigned"}` : "Ready for pickup"}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={theme.color.faint} />
               </View>
             </Pressable>
           );
@@ -89,49 +97,77 @@ export function PackerCompletedScreen() {
 const s = StyleSheet.create({
   card: {
     backgroundColor: theme.color.surface,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: theme.color.line,
     borderRadius: theme.radius.lg,
-    padding: theme.space.sm,
-    marginBottom: theme.space.xs,
+    padding: theme.space.md,
+    marginBottom: theme.space.sm,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
   },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: theme.space.sm,
   },
   id: {
-    ...(theme.type.codeMd as object),
+    ...(theme.type.codeLg as object),
     color: theme.color.ink,
-    flex: 1,
+    fontSize: 17,
   },
   customer: {
     ...(theme.type.bodyMd as object),
     color: theme.color.muted,
-    marginTop: theme.space.xs,
+    marginTop: 4,
   },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: theme.space.xs,
+    marginTop: theme.space.sm,
   },
   meta: {
     ...(theme.type.secondary as object),
     color: theme.color.muted,
   },
+  metaHighlight: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.okInk,
+    fontWeight: "700",
+  },
   progress: {
-    height: 5,
+    height: 7,
     backgroundColor: theme.color.surfaceContainerHigh,
     borderRadius: 4,
     overflow: "hidden",
-    marginTop: theme.space.xs,
+    marginTop: 6,
+    marginBottom: 6,
   },
   fill: {
-    height: 5,
-    backgroundColor: theme.color.primary,
+    height: 7,
+    backgroundColor: theme.color.okPrimary,
+    borderRadius: 4,
+  },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  footerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  footerText: {
+    ...(theme.type.secondary as object),
+    color: theme.color.okInk,
+    fontSize: 12,
   },
 });

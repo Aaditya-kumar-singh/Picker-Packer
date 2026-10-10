@@ -1,15 +1,19 @@
 // Compact picker item step: verify the SKU and count each physical item barcode scan as 1 EA.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   AppHeader,
   ErrorBanner,
   LoadingState,
   MetricCard,
+  PickStepStepper,
+  ProgressIndicator,
   ScanTarget,
   Screen,
   SuccessFeedback,
+  theme,
 } from "@/components/ui";
 import { nextPendingLine, resolvePickStep } from "@/domain/order";
 import { newIdemKey, pickerRepository } from "@/repositories/pickerRepository";
@@ -61,8 +65,6 @@ export function SkuScanScreen() {
   useEffect(() => {
     if (!order) return;
 
-    // Terminal state is a first-class route. Never leave a completed order
-    // sitting on the SKU screen waiting for another line.
     if (step === "complete") {
       router.replace({
         pathname: "/pick/[orderId]/complete",
@@ -84,8 +86,6 @@ export function SkuScanScreen() {
       return;
     }
 
-    // Invalidate any focus-load that was started before this scan. Its result
-    // must never overwrite the state produced by this mutation.
     loadGeneration.current += 1;
     setBusy(true);
     setError(null);
@@ -104,7 +104,6 @@ export function SkuScanScreen() {
         return;
       }
 
-      // Every successful physical item scan represents one picked unit.
       const picked = await pickerRepository.pickQuantity(line.id, 1, line.uom, newIdemKey());
       if (!picked.ok) {
         beepError();
@@ -124,9 +123,6 @@ export function SkuScanScreen() {
       setActiveLineId(null);
       setSkuVerified(false);
 
-      // Advance directly from the authoritative post-pick state. This removes
-      // the intermediate completion/loading state that could leave 5/5 or 6/6
-      // stranded on the SKU screen.
       if (completed) {
         const nextStep = resolvePickStep(nextOrder);
         if (nextStep === "complete") {
@@ -147,7 +143,7 @@ export function SkuScanScreen() {
     return (
       <Screen>
         <AppHeader
-          title="PICK ITEM"
+          title="Pick Item"
           sub={!order ? "Loading…" : loading ? "Refreshing order…" : "Moving to the correct step…"}
         />
         <LoadingState
@@ -165,13 +161,26 @@ export function SkuScanScreen() {
 
   return (
     <Screen>
-      <AppHeader title="PICK ITEM" sub={`Line ${line.lineNo} • ${line.skuName}`} />
-      <Text style={s.orderId} numberOfLines={2}>{order.externalId}</Text>
-      <Text style={s.progressText}>{done} of {order.lines.length} lines • {order.lines.length ? Math.round(done / order.lines.length * 100) : 0}%</Text>
+      <AppHeader
+        title={order.externalId}
+        sub={`Line ${line.lineNo} • ${line.skuName}`}
+      />
+
+      {/* Visual breadcrumb stepper */}
+      <PickStepStepper currentStep="sku" />
+
+      <ProgressIndicator done={done} total={order.lines.length} />
 
       <View style={s.productCard}>
-        <Text style={s.productName}>{line.skuName}</Text>
-        <Text style={s.productSpecs}>{line.productSpecs}</Text>
+        <View style={s.productHeader}>
+          <Text style={s.productName}>{line.skuName}</Text>
+          <View style={s.locationTag}>
+            <Ionicons name="location-outline" size={13} color={theme.colors.location.text} />
+            <Text style={s.locationText}>{line.locationCode}</Text>
+          </View>
+        </View>
+        {line.productSpecs ? <Text style={s.productSpecs}>{line.productSpecs}</Text> : null}
+
         <BarcodeDisplay
           label="EXPECTED PRODUCT BARCODE"
           value={line.skuBarcode}
@@ -186,30 +195,55 @@ export function SkuScanScreen() {
           }}
           disabled={busy || complete}
         />
+
         {manual.trim() && !complete ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Next after entering the product barcode"
             onPress={() => void processItemBarcode(manual)}
             disabled={busy}
-            style={[s.verifyNextButton, busy && s.disabled]}
+            style={({ pressed }) => [s.verifyNextButton, busy && s.disabled, pressed ? { opacity: 0.88 } : null]}
           >
-            <Text style={s.verifyNextButtonText}>{busy ? "Checking…" : "NEXT"}</Text>
+            <Ionicons name="checkmark-circle" size={18} color="#ffffff" />
+            <Text style={s.verifyNextButtonText}>{busy ? "Checking…" : "CONFIRM SCAN"}</Text>
           </Pressable>
         ) : null}
       </View>
 
-      <ScanTarget label="EXPECTED SKU" value={line.skuCode} />
-      <SuccessFeedback message={skuVerified ? "Item verified — scan each physical item" : "Location OK — scan item"} />
+      <ScanTarget label="EXPECTED SKU CODE" value={line.skuCode} />
+      <SuccessFeedback
+        message={skuVerified ? "Item verified — scan each physical item" : "Location verified — scan product barcode"}
+      />
 
       <View style={s.countCard}>
         <View style={s.metricsRow}>
-          <View style={s.metricCell}><MetricCard value={`${pickedQty} / ${requiredQty} ${line.uom}`} label="Picked" tone={complete ? "ok" : "info"} /></View>
-          <View style={s.metricCell}><MetricCard value={`${remaining} ${line.uom}`} label="Remaining" tone={remaining === 0 ? "ok" : "warn"} /></View>
+          <View style={s.metricCell}>
+            <MetricCard
+              value={`${pickedQty} / ${requiredQty} ${line.uom}`}
+              label="Picked Units"
+              tone={complete ? "ok" : "info"}
+            />
+          </View>
+          <View style={s.metricCell}>
+            <MetricCard
+              value={`${remaining} ${line.uom}`}
+              label="Remaining"
+              tone={remaining === 0 ? "ok" : "warn"}
+            />
+          </View>
         </View>
-        <Text style={s.scanInstruction}>{complete ? "LINE COMPLETE" : skuVerified ? "SCAN NEXT ITEM" : "SCAN ITEM"}</Text>
-        <Text style={s.countText}>{pickedQty} / {requiredQty} {line.uom}</Text>
-        {!complete ? <Text style={s.helper}>Each successful product barcode scan adds 1 {line.uom}.</Text> : null}
+
+        <View style={s.countBottom}>
+          <Text style={s.scanInstruction}>
+            {complete ? "LINE COMPLETE" : skuVerified ? "SCAN PHYSICAL ITEM" : "SCAN TO VERIFY"}
+          </Text>
+          <Text style={s.countText}>
+            {pickedQty} <Text style={{ fontSize: 18, color: theme.color.muted }}>/ {requiredQty} {line.uom}</Text>
+          </Text>
+          {!complete ? (
+            <Text style={s.helper}>Each barcode scan counts as 1 {line.uom} picked.</Text>
+          ) : null}
+        </View>
       </View>
 
       <ErrorBanner message={error} />
@@ -218,20 +252,111 @@ export function SkuScanScreen() {
 }
 
 const s = StyleSheet.create({
-  orderId: { fontSize: 19, lineHeight: 22, fontWeight: "800", color: "#0d1c2e", marginTop: 3 },
-  progressText: { fontSize: 12, fontWeight: "700", color: "#172033", marginTop: 3, marginBottom: 4 },
-  productCard: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#1351b4", borderRadius: 12, padding: 9, marginTop: 1 },
-  productName: { fontSize: 18, fontWeight: "700", color: "#0d1c2e" },
-  productSpecs: { fontSize: 12, color: "#434653", marginTop: 1 },
-  verifyNextButton: { minHeight: 46, marginTop: 8, borderRadius: 10, backgroundColor: "#0b8f2f", alignItems: "center", justifyContent: "center" },
-  verifyNextButtonText: { color: "#fff", fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
+  productCard: {
+    backgroundColor: theme.color.surface,
+    borderWidth: 1.5,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.lg,
+    padding: theme.space.md,
+    marginTop: theme.space.xs,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  productHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  productName: {
+    ...(theme.type.section as object),
+    color: theme.color.ink,
+    flex: 1,
+  },
+  locationTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: theme.colors.location.bg,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.location.border,
+  },
+  locationText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: theme.colors.location.text,
+  },
+  productSpecs: {
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
+    marginTop: 2,
+    marginBottom: theme.space.xs,
+  },
+  verifyNextButton: {
+    minHeight: theme.touch.min,
+    marginTop: theme.space.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.okPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  verifyNextButtonText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
   disabled: { opacity: 0.5 },
-  countCard: { marginTop: 5, padding: 8, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#d5dbe5" },
-  metricsRow: { flexDirection: "row", marginHorizontal: -3 },
-  metricCell: { flex: 1, paddingHorizontal: 3 },
-  scanInstruction: { textAlign: "center", marginTop: 5, fontSize: 11, fontWeight: "800", color: "#16823b", letterSpacing: 0.6 },
-  countText: { textAlign: "center", fontSize: 28, lineHeight: 32, fontWeight: "900", color: "#0d1c2e", marginTop: 1 },
-  helper: { textAlign: "center", fontSize: 10, color: "#596273", marginTop: 2 },
-  nextButton: { minHeight: 46, marginTop: 8, borderRadius: 10, backgroundColor: "#0b8f2f", alignItems: "center", justifyContent: "center" },
-  nextButtonText: { color: "#fff", fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
+  countCard: {
+    marginTop: theme.space.sm,
+    padding: theme.space.md,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  metricsRow: {
+    flexDirection: "row",
+    gap: theme.space.sm,
+  },
+  metricCell: {
+    flex: 1,
+  },
+  countBottom: {
+    marginTop: theme.space.sm,
+    alignItems: "center",
+    paddingTop: theme.space.xs,
+    borderTopWidth: 1,
+    borderTopColor: theme.color.line,
+  },
+  scanInstruction: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: theme.color.primaryContainer,
+    letterSpacing: 0.6,
+  },
+  countText: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: theme.color.ink,
+    marginTop: 2,
+  },
+  helper: {
+    fontSize: 11,
+    color: theme.color.muted,
+    marginTop: 4,
+  },
 });

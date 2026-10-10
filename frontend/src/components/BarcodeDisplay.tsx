@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
 import { theme } from "@/components/ui";
@@ -55,15 +56,29 @@ export default function BarcodeDisplay({
     <>
       <View style={s.card}>
         <View style={s.header}>
-          <Text style={s.label}>{label}</Text>
+          <View style={s.labelWrap}>
+            <Ionicons name="barcode-outline" size={16} color={theme.color.primaryContainer} />
+            <Text style={s.label}>{label}</Text>
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Copy ${label.toLowerCase()}`}
             onPress={() => void copy()}
             disabled={!value || disabled}
-            style={[s.copy, (!value || disabled) && s.disabled]}
+            style={({ pressed }) => [
+              s.copy,
+              (!value || disabled) && s.disabled,
+              pressed && !disabled ? { opacity: 0.8 } : null,
+            ]}
           >
-            <Text style={s.copyText}>{copied ? "Copied" : "Copy"}</Text>
+            <Ionicons
+              name={copied ? "checkmark" : "copy-outline"}
+              size={14}
+              color={copied ? theme.color.okInk : theme.color.primary}
+            />
+            <Text style={[s.copyText, copied && { color: theme.color.okInk }]}>
+              {copied ? "Copied" : "Copy"}
+            </Text>
           </Pressable>
         </View>
 
@@ -92,13 +107,24 @@ export default function BarcodeDisplay({
                 accessibilityLabel={`Scan ${label.toLowerCase()} with camera`}
                 onPress={() => setScannerVisible(true)}
                 disabled={disabled}
-                style={[s.scan, disabled && s.disabled]}
+                style={({ pressed }) => [s.scan, disabled && s.disabled, pressed ? { opacity: 0.85 } : null]}
               >
+                <Ionicons name="camera-outline" size={16} color="#ffffff" />
                 <Text style={s.scanText}>Scan</Text>
               </Pressable>
             </View>
-            {match === true ? <Text style={s.successText}>Barcode matches expected product.</Text> : null}
-            {match === false ? <Text style={s.errorText}>Barcode does not match expected product.</Text> : null}
+            {match === true ? (
+              <View style={s.matchSuccessRow}>
+                <Ionicons name="checkmark-circle" size={14} color={theme.color.okInk} />
+                <Text style={s.successText}>Barcode matches expected product.</Text>
+              </View>
+            ) : null}
+            {match === false ? (
+              <View style={s.matchErrorRow}>
+                <Ionicons name="close-circle" size={14} color={theme.color.badInk} />
+                <Text style={s.errorText}>Wrong barcode. Rescan the correct product.</Text>
+              </View>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -115,60 +141,125 @@ export default function BarcodeDisplay({
 
 const s = StyleSheet.create({
   card: {
-    marginTop: 12,
-    backgroundColor: theme.color.surfaceContainerLow,
-    borderRadius: theme.radius.md,
-    padding: 12,
+    backgroundColor: theme.color.surface,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.lg,
+    padding: theme.space.md,
+    marginTop: theme.space.xs,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  label: { ...theme.type.caption, color: theme.color.primaryContainer },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  labelWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  label: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.muted,
+    textTransform: "uppercase",
+  },
   copy: {
     minHeight: 32,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.color.surfaceContainer,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  copyText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: theme.color.primary,
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  expectedRow: {
+    backgroundColor: theme.color.surfaceContainerLow,
+    borderRadius: theme.radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: theme.color.line,
-    backgroundColor: theme.color.surface,
-    alignItems: "center",
-    justifyContent: "center",
   },
-  copyText: { color: theme.color.ink, fontWeight: "800", fontSize: 11 },
-  expectedRow: { marginTop: 5 },
-  value: { ...theme.type.codeLg, color: theme.color.ink },
+  value: {
+    ...(theme.type.codeLg as object),
+    color: theme.color.ink,
+    letterSpacing: 1,
+  },
   inputLabel: {
-    ...theme.type.caption,
+    ...(theme.type.labelSm as object),
     color: theme.color.muted,
-    marginTop: 10,
+    marginTop: theme.space.sm,
     marginBottom: 4,
   },
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: theme.color.line,
-    borderRadius: 10,
+    borderRadius: theme.radius.md,
     backgroundColor: theme.color.surface,
     overflow: "hidden",
+    minHeight: theme.touch.min,
   },
-  inputSuccess: { borderColor: theme.color.primary },
-  inputError: { borderColor: theme.color.critical },
+  inputSuccess: {
+    borderColor: theme.color.okPrimary,
+  },
+  inputError: {
+    borderColor: theme.color.critical,
+  },
   input: {
     flex: 1,
-    minHeight: 46,
-    paddingHorizontal: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    ...(theme.type.bodyMd as object),
     color: theme.color.ink,
-    fontSize: 15,
-    fontWeight: "600",
   },
   scan: {
-    minHeight: 46,
+    backgroundColor: theme.color.primaryContainer,
     paddingHorizontal: 14,
-    backgroundColor: theme.color.primary,
+    minHeight: theme.touch.min,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
   },
-  scanText: { color: "#fff", fontWeight: "800", fontSize: 12 },
-  successText: { color: theme.color.okInk, fontSize: 11, fontWeight: "700", marginTop: 5 },
-  errorText: { color: theme.color.critical, fontSize: 11, fontWeight: "700", marginTop: 5 },
-  disabled: { opacity: 0.45 },
+  scanText: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  matchSuccessRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+  },
+  successText: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.okInk,
+  },
+  matchErrorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+  },
+  errorText: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.badInk,
+  },
 });

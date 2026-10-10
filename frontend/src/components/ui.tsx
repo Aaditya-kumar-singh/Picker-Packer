@@ -1,11 +1,10 @@
 // YBM warehouse design system — shared tokens + primitives.
-// Every screen consumes these; no per-screen color/type reinvention.
-// Status is never color alone: badges always pair tone with a text label
-// (and a glyph where space allows).
+// High-visibility, tactile, ergonomic UI components for industrial operations.
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -33,6 +32,15 @@ const toneBg = (tone: Tone): string =>
         ? theme.color.warnBg
         : theme.color.infoBg;
 
+const toneBorder = (tone: Tone): string =>
+  tone === "ok"
+    ? theme.color.okBorder
+    : tone === "bad"
+      ? theme.color.badBorder
+      : tone === "warn"
+        ? theme.color.warnBorder
+        : theme.color.infoBorder;
+
 const toneInk = (tone: Tone): string =>
   tone === "ok"
     ? theme.color.okInk
@@ -42,11 +50,12 @@ const toneInk = (tone: Tone): string =>
         ? theme.color.warnInk
         : theme.color.infoInk;
 
-/** Single source for order-status tones (was mapped inline per screen). */
+/** Single source for order-status tones. */
 export function toneForOrderStatus(status: string): Tone {
-  if (status === "COMPLETED") return "ok";
-  if (status === "ASSIGNED" || status === "IN_PROGRESS") return "warn";
-  if (status === "CANCELLED") return "info";
+  if (status === "COMPLETED" || status === "PACKED") return "ok";
+  if (status === "ASSIGNED" || status === "IN_PROGRESS" || status === "PICKING" || status === "PACKING") return "warn";
+  if (status === "READY_FOR_PACKING" || status === "RIDER_ASSIGNED") return "info";
+  if (status === "CANCELLED") return "bad";
   return "info";
 }
 
@@ -55,13 +64,20 @@ export function toneForLineStatus(status: string): Tone {
   if (status === "PICKED") return "ok";
   if (status === "EXCEPTION") return "bad";
   if (status === "SKIPPED") return "warn";
+  if (status === "LOCATION_VALIDATED" || status === "SKU_VALIDATED") return "info";
   return "info";
 }
 
 // ── Layout ─────────────────────────────────────────────────────────────
-// Screen: safe area + scroll + keyboard-aware container. Every screen wraps
-// in this so small portrait phones and open keyboards never clip content.
-export function Screen({ children, center, backgroundColor }: { children: ReactNode; center?: boolean; backgroundColor?: string }) {
+export function Screen({
+  children,
+  center,
+  backgroundColor,
+}: {
+  children: ReactNode;
+  center?: boolean;
+  backgroundColor?: string;
+}) {
   return (
     <SafeAreaView style={[s.screen, backgroundColor ? { backgroundColor } : null]}>
       <KeyboardAvoidingView
@@ -71,6 +87,7 @@ export function Screen({ children, center, backgroundColor }: { children: ReactN
         <ScrollView
           contentContainerStyle={[s.body, center === true && s.center]}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           {children}
         </ScrollView>
@@ -79,26 +96,41 @@ export function Screen({ children, center, backgroundColor }: { children: ReactN
   );
 }
 
-export function AppHeader({ title, sub, showBack }: { title: string; sub?: string; showBack?: boolean }) {
+export function AppHeader({
+  title,
+  sub,
+  showBack,
+}: {
+  title: string;
+  sub?: string;
+  showBack?: boolean;
+}) {
   return (
     <View style={s.header} accessibilityRole="header">
       {showBack && (
-        <Pressable onPress={() => router.back()} style={{ marginBottom: theme.space.xs }}>
-          <Text style={{ ...(theme.type.bodyMd as object), color: theme.color.primary }}>← Back</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          onPress={() => router.back()}
+          style={({ pressed }) => [s.backButton, pressed ? s.pressedGhost : null]}
+        >
+          <Ionicons name="arrow-back" size={18} color={theme.color.primary} />
+          <Text style={s.backText}>Back</Text>
         </Pressable>
       )}
-      <Text style={s.headerTitle}>{title}</Text>
+      <Text style={s.headerTitle} numberOfLines={1}>{title}</Text>
       {sub ? <Text style={s.headerSub}>{sub}</Text> : null}
     </View>
   );
 }
 
-// Exception-flow header: visually distinct band so report/evidence work is
-// unmistakable vs the happy-path pick flow.
 export function AlertHeader({ title, sub }: { title: string; sub?: string }) {
   return (
     <View style={s.alertHeader} accessibilityRole="header">
-      <Text style={s.alertTitle}>⚠ {title}</Text>
+      <View style={s.alertRow}>
+        <Ionicons name="warning" size={24} color={theme.color.warnInk} />
+        <Text style={s.alertTitle}>{title}</Text>
+      </View>
       {sub ? <Text style={s.alertSub}>{sub}</Text> : null}
     </View>
   );
@@ -108,7 +140,11 @@ export function SectionHeader({ title, hint }: { title: string; hint?: string })
   return (
     <View style={s.sectionHead}>
       <Text style={s.sectionTitle}>{title}</Text>
-      {hint ? <Text style={s.sectionHint}>{hint}</Text> : null}
+      {hint ? (
+        <View style={s.hintPill}>
+          <Text style={s.sectionHint}>{hint}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -117,24 +153,43 @@ export function Divider() {
   return <View style={s.divider} />;
 }
 
-// ── Buttons (min 56px targets, pressed + disabled states) ──────────────
+// ── Buttons (min 54px targets, tactile press feedback) ─────────────────
 export function PrimaryButton({
   label,
   onPress,
   disabled,
+  icon,
+  variant = "primary",
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
+  variant?: "primary" | "success" | "danger" | "amber";
 }) {
+  const bg =
+    variant === "success"
+      ? theme.color.okPrimary
+      : variant === "danger"
+        ? theme.color.badPrimary
+        : variant === "amber"
+          ? theme.packer.primary
+          : theme.color.primaryContainer;
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: disabled === true }}
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [s.primary, disabled === true && s.disabled, pressed && !disabled ? s.pressed : null]}
+      style={({ pressed }) => [
+        s.primary,
+        { backgroundColor: bg },
+        disabled === true && s.disabled,
+        pressed && !disabled ? s.pressed : null,
+      ]}
     >
+      {icon ? <Ionicons name={icon} size={20} color="#ffffff" /> : null}
       <Text style={s.primaryText}>{label}</Text>
     </Pressable>
   );
@@ -144,10 +199,12 @@ export function SecondaryButton({
   label,
   onPress,
   disabled,
+  icon,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
 }) {
   return (
     <Pressable
@@ -155,9 +212,16 @@ export function SecondaryButton({
       accessibilityState={{ disabled: disabled === true }}
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [s.secondary, disabled === true && s.disabled, pressed && !disabled ? s.pressedGhost : null]}
+      style={({ pressed }) => [
+        s.secondary,
+        disabled === true && s.disabled,
+        pressed && !disabled ? s.pressedGhost : null,
+      ]}
     >
-      <Text style={[s.secondaryText, disabled === true && s.secondaryTextDisabled]}>{label}</Text>
+      {icon ? <Ionicons name={icon} size={18} color={theme.color.ink} /> : null}
+      <Text style={[s.secondaryText, disabled === true && s.secondaryTextDisabled]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -190,34 +254,52 @@ export function FieldInput({
             rest.onBlur?.(e);
           }}
           placeholderTextColor={theme.color.faint}
-          style={[s.input, isPassword && s.passwordInput, focused && s.inputFocused, error ? s.inputError : null, style]}
+          style={[
+            s.input,
+            isPassword && s.passwordInput,
+            focused && s.inputFocused,
+            error ? s.inputError : null,
+            style,
+          ]}
         />
         {isPassword ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={passwordVisible ? "Hide password" : "Show password"}
-            onPress={() => setPasswordVisible((visible) => !visible)}
-            hitSlop={10}
+            onPress={() => setPasswordVisible((v) => !v)}
+            hitSlop={12}
             style={s.passwordEye}
           >
-            <Ionicons name={passwordVisible ? "eye-off-outline" : "eye-outline"} size={21} color={theme.color.secondary} />
+            <Ionicons
+              name={passwordVisible ? "eye-off-outline" : "eye-outline"}
+              size={22}
+              color={theme.color.muted}
+            />
           </Pressable>
         ) : null}
       </View>
-      {error ? <Text style={s.fieldError}>{error}</Text> : null}
-    </View>
-  );
-}
-export function ScanTarget({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={s.scan}>
-      <Text style={s.scanLabel}>◉ {label}</Text>
-      <Text style={s.scanValue}>{value}</Text>
+      {error ? (
+        <View style={s.fieldErrorRow}>
+          <Ionicons name="alert-circle" size={16} color={theme.color.badInk} />
+          <Text style={s.fieldError}>{error}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-// Manual entry + submit as one unit so both scan screens stay identical.
+export function ScanTarget({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={s.scan}>
+      <View style={s.scanHeader}>
+        <Ionicons name="scan-outline" size={18} color={theme.color.primaryContainer} />
+        <Text style={s.scanLabel}>{label}</Text>
+      </View>
+      <Text selectable style={s.scanValue}>{value}</Text>
+    </View>
+  );
+}
+
 export function ScanInput({
   value,
   onChange,
@@ -232,7 +314,7 @@ export function ScanInput({
   placeholder: string;
 }) {
   return (
-    <View>
+    <View style={{ marginTop: theme.space.xs }}>
       <TextInput
         value={value}
         onChangeText={onChange}
@@ -245,21 +327,31 @@ export function ScanInput({
         returnKeyType="go"
         onSubmitEditing={onSubmit}
       />
-      <PrimaryButton label={busy ? "Checking…" : "Submit scan"} onPress={onSubmit} disabled={busy} />
+      <PrimaryButton
+        label={busy ? "Verifying…" : "Submit Scan"}
+        onPress={onSubmit}
+        disabled={busy}
+        icon="barcode-outline"
+      />
     </View>
   );
 }
 
-// ── Status ─────────────────────────────────────────────────────────────
-const GLYPH: Record<Tone, string> = { ok: "✓ ", bad: "✕ ", info: "• ", warn: "! " };
+// ── Status Badges ──────────────────────────────────────────────────────
+const GLYPH_ICON: Record<Tone, keyof typeof Ionicons.glyphMap> = {
+  ok: "checkmark-circle",
+  bad: "close-circle",
+  info: "information-circle",
+  warn: "time",
+};
 
 export function StatusBadge({ text, tone }: { text: string; tone: Tone }) {
+  const icon = GLYPH_ICON[tone];
+  const ink = toneInk(tone);
   return (
-    <View style={[s.badge, { backgroundColor: toneBg(tone) }]}>
-      <Text style={[s.badgeText, { color: toneInk(tone) }]}>
-        {GLYPH[tone]}
-        {text}
-      </Text>
+    <View style={[s.badge, { backgroundColor: toneBg(tone), borderColor: toneBorder(tone) }]}>
+      <Ionicons name={icon} size={14} color={ink} style={{ marginRight: 4 }} />
+      <Text style={[s.badgeText, { color: ink }]}>{text}</Text>
     </View>
   );
 }
@@ -268,7 +360,8 @@ export function ErrorBanner({ message }: { message: string | null }) {
   if (!message) return null;
   return (
     <View style={s.error} accessibilityRole="alert">
-      <Text style={s.errorText}>✕ {message}</Text>
+      <Ionicons name="alert-circle" size={20} color={theme.color.badInk} />
+      <Text style={s.errorText}>{message}</Text>
     </View>
   );
 }
@@ -277,7 +370,8 @@ export function SuccessFeedback({ message }: { message: string | null }) {
   if (!message) return null;
   return (
     <View style={s.success}>
-      <Text style={s.successText}>✓ {message}</Text>
+      <Ionicons name="checkmark-circle" size={20} color={theme.color.okInk} />
+      <Text style={s.successText}>{message}</Text>
     </View>
   );
 }
@@ -286,12 +380,73 @@ export function ProgressIndicator({ done, total }: { done: number; total: number
   const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
   return (
     <View style={s.progressWrap}>
+      <View style={s.progressHeader}>
+        <Text style={s.progressLabel}>Overall Progress</Text>
+        <Text style={s.progressPercentage}>{pct}%</Text>
+      </View>
       <View style={s.progressTrack}>
         <View style={[s.progressFill, { width: `${pct}%` }]} />
       </View>
       <Text style={s.progressText}>
-        {done} of {total} lines • {pct}%
+        {done} of {total} lines resolved
       </Text>
+    </View>
+  );
+}
+
+/** 3-Step Breadcrumb Stepper for the sequential Picker flow */
+export function PickStepStepper({
+  currentStep,
+}: {
+  currentStep: "location" | "sku" | "quantity";
+}) {
+  const steps = [
+    { key: "location", label: "Location", icon: "location-sharp" as const },
+    { key: "sku", label: "SKU Scan", icon: "barcode-sharp" as const },
+    { key: "quantity", label: "Quantity", icon: "cube-sharp" as const },
+  ];
+
+  const currentIndex = steps.findIndex((s) => s.key === currentStep);
+
+  return (
+    <View style={s.stepperWrap}>
+      {steps.map((st, i) => {
+        const isDone = i < currentIndex;
+        const isActive = i === currentIndex;
+        return (
+          <View key={st.key} style={s.stepperItemWrap}>
+            <View
+              style={[
+                s.stepCircle,
+                isDone && s.stepCircleDone,
+                isActive && s.stepCircleActive,
+              ]}
+            >
+              {isDone ? (
+                <Ionicons name="checkmark" size={16} color="#ffffff" />
+              ) : (
+                <Ionicons
+                  name={st.icon}
+                  size={14}
+                  color={isActive ? "#ffffff" : theme.color.muted}
+                />
+              )}
+            </View>
+            <Text
+              style={[
+                s.stepLabel,
+                isActive && s.stepLabelActive,
+                isDone && s.stepLabelDone,
+              ]}
+            >
+              {st.label}
+            </Text>
+            {i < steps.length - 1 && (
+              <View style={[s.stepLine, isDone && s.stepLineDone]} />
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -302,19 +457,25 @@ export function SLAIndicator({ slaDueAt }: { slaDueAt: string }) {
   const soon = !urgent && mins < 60;
   return (
     <View style={[s.sla, urgent ? s.slaUrgent : soon ? s.slaSoon : s.slaCalm]}>
+      <Ionicons
+        name={urgent ? "warning" : "time-outline"}
+        size={15}
+        color={urgent ? theme.color.badInk : soon ? theme.color.warnInk : theme.color.infoInk}
+      />
       <Text style={[s.slaText, urgent ? s.slaTextUrgent : soon ? s.slaTextSoon : s.slaTextCalm]}>
-        {urgent ? `⚠ SLA ${mins}m left — URGENT` : `◷ SLA ${mins}m left`}
+        {urgent ? `SLA: ${mins}m left — URGENT` : `SLA: ${mins}m left`}
       </Text>
     </View>
   );
 }
 
 export function WmsStatusBadge({ status }: { status: string }) {
-  const tone: Tone = status === "SYNCED" ? "ok" : status === "PENDING" ? "warn" : status === "FAILED" ? "bad" : "info";
-  return <StatusBadge text={`WMS ${status}`} tone={tone} />;
+  const tone: Tone =
+    status === "SYNCED" ? "ok" : status === "PENDING" ? "warn" : status === "FAILED" ? "bad" : "info";
+  return <StatusBadge text={`WMS: ${status}`} tone={tone} />;
 }
 
-// ── Selection chips (exception types, reasons, dev toggles) ────────────
+// ── Selection Chips ────────────────────────────────────────────────────
 export function Chip({
   label,
   selected,
@@ -331,15 +492,17 @@ export function Chip({
       onPress={onPress}
       style={({ pressed }) => [s.chip, selected && s.chipOn, pressed && s.chipPressed]}
     >
-      <Text style={[s.chipText, selected && s.chipTextOn]}>
-        {selected ? "◉ " : "○ "}
-        {label}
-      </Text>
+      <Ionicons
+        name={selected ? "checkmark-circle" : "ellipse-outline"}
+        size={18}
+        color={selected ? "#ffffff" : theme.color.muted}
+      />
+      <Text style={[s.chipText, selected && s.chipTextOn]}>{label}</Text>
     </Pressable>
   );
 }
 
-// ── Cards & data ───────────────────────────────────────────────────────
+// ── Cards & Data ───────────────────────────────────────────────────────
 export function Card({ children }: { children: ReactNode }) {
   return <View style={s.card}>{children}</View>;
 }
@@ -355,9 +518,10 @@ export function MetricCard({
   tone?: Tone;
   onPress?: () => void;
 }) {
+  const accentColor = tone ? toneInk(tone) : theme.color.primaryContainer;
   const inner = (
-    <View style={[s.metric, tone !== undefined && { borderLeftColor: toneInk(tone), borderLeftWidth: 4 }]}>
-      <Text style={[s.metricValue, tone !== undefined && { color: toneInk(tone) }]}>{value}</Text>
+    <View style={[s.metric, tone !== undefined && { borderTopColor: accentColor, borderTopWidth: 4 }]}>
+      <Text style={[s.metricValue, tone !== undefined && { color: accentColor }]}>{value}</Text>
       <Text style={s.metricLabel}>{label}</Text>
     </View>
   );
@@ -369,12 +533,11 @@ export function MetricCard({
   );
 }
 
-// ── Async states (never a blank screen) ────────────────────────────────
+// ── Async States ───────────────────────────────────────────────────────
 export function LoadingState({ label = "Loading…" }: { label?: string }) {
   return (
     <View style={s.stateBox}>
-      <View style={s.skeleton} />
-      <View style={[s.skeleton, s.skeletonShort]} />
+      <ActivityIndicator size="large" color={theme.color.primary} />
       <Text style={s.stateText}>{label}</Text>
     </View>
   );
@@ -393,10 +556,16 @@ export function EmptyState({
 }) {
   return (
     <View style={s.stateBox}>
-      <Text style={s.emptyGlyph}>○</Text>
+      <View style={s.emptyIconWrap}>
+        <Ionicons name="folder-open-outline" size={40} color={theme.color.faint} />
+      </View>
       <Text style={s.emptyTitle}>{title}</Text>
       {body ? <Text style={s.stateText}>{body}</Text> : null}
-      {actionLabel && onAction ? <SecondaryButton label={actionLabel} onPress={onAction} /> : null}
+      {actionLabel && onAction ? (
+        <View style={{ marginTop: theme.space.md, alignSelf: "center", minWidth: 160 }}>
+          <SecondaryButton label={actionLabel} onPress={onAction} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -413,7 +582,11 @@ export function ErrorState({
   return (
     <View style={s.stateBox}>
       <ErrorBanner message={message} />
-      {onRetry ? <PrimaryButton label={retryLabel} onPress={onRetry} /> : null}
+      {onRetry ? (
+        <View style={{ marginTop: theme.space.sm, alignSelf: "center", minWidth: 160 }}>
+          <PrimaryButton label={retryLabel} onPress={onRetry} />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -421,174 +594,411 @@ export function ErrorState({
 const s = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1, backgroundColor: theme.color.bg },
-  body: { flexGrow: 1, paddingHorizontal: theme.space.md, paddingTop: theme.space.sm, paddingBottom: theme.space.lg },
+  body: {
+    flexGrow: 1,
+    paddingHorizontal: theme.space.md,
+    paddingTop: theme.space.sm,
+    paddingBottom: theme.space.xl,
+  },
   center: { justifyContent: "center" },
-  // ── Headers ──
-  header: { paddingVertical: theme.space.xs, marginBottom: theme.space.xxs },
+
+  // Headers
+  header: { paddingVertical: theme.space.xs, marginBottom: theme.space.xs },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    alignSelf: "flex-start",
+    marginBottom: theme.space.xs,
+    borderRadius: theme.radius.sm,
+  },
+  backText: {
+    ...(theme.type.bodyMd as object),
+    fontWeight: "700",
+    color: theme.color.primary,
+  },
   headerTitle: { ...(theme.type.display as object), color: theme.color.ink },
-  headerSub: { ...(theme.type.secondary as object), color: theme.color.secondary, marginTop: 2, letterSpacing: 0.4 },
+  headerSub: {
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
+    marginTop: 4,
+    letterSpacing: 0.3,
+  },
   alertHeader: {
     backgroundColor: theme.color.warnBg,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     padding: theme.space.md,
     marginBottom: theme.space.sm,
     borderLeftWidth: 4,
     borderLeftColor: theme.color.warnInk,
+    borderWidth: 1,
+    borderColor: theme.color.warnBorder,
   },
+  alertRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   alertTitle: { ...(theme.type.title as object), color: theme.color.warnInk },
-  alertSub: { ...(theme.type.secondary as object), color: theme.color.warnInk, marginTop: 2 },
-  sectionHead: { marginTop: theme.space.md, marginBottom: theme.space.xxs },
-  sectionTitle: { ...(theme.type.labelLg as object), color: theme.color.ink, textTransform: "uppercase" },
-  sectionHint: { ...(theme.type.secondary as object), color: theme.color.secondary, marginTop: 2 },
-  divider: { height: 1, backgroundColor: theme.color.line, marginVertical: theme.space.sm },
-  // ── Buttons (Stitch touch-target-primary 56px) ──
+  alertSub: { ...(theme.type.secondary as object), color: theme.color.warnInk, marginTop: 4 },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: theme.space.lg,
+    marginBottom: theme.space.xs,
+  },
+  sectionTitle: {
+    ...(theme.type.section as object),
+    color: theme.color.ink,
+    letterSpacing: 0.2,
+  },
+  hintPill: {
+    backgroundColor: theme.color.surfaceContainer,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: theme.radius.pill,
+  },
+  sectionHint: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.muted,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: theme.color.line,
+    marginVertical: theme.space.sm,
+  },
+
+  // Buttons
   primary: {
-    backgroundColor: theme.color.primaryContainer,
     minHeight: theme.touch.primary,
     justifyContent: "center",
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     alignItems: "center",
     marginTop: theme.space.sm,
     flexDirection: "row",
     gap: theme.space.xs,
+    paddingHorizontal: theme.space.md,
     shadowColor: theme.color.ink,
     shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  pressed: { opacity: 0.88 },
-  pressedGhost: { backgroundColor: theme.color.surfaceContainerLow },
+  pressed: { opacity: 0.88, transform: [{ scale: 0.99 }] },
+  pressedGhost: { backgroundColor: theme.color.surfaceContainer },
   disabled: { opacity: 0.45 },
-  primaryText: { ...(theme.type.button as object), color: theme.color.onPrimary, textTransform: "uppercase" },
+  primaryText: {
+    ...(theme.type.button as object),
+    color: "#ffffff",
+    letterSpacing: 0.5,
+  },
   secondary: {
-    borderWidth: 2,
-    borderColor: theme.color.primary,
+    borderWidth: 1.5,
+    borderColor: theme.color.lineStrong,
     backgroundColor: theme.color.surface,
     minHeight: theme.touch.min,
     justifyContent: "center",
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     alignItems: "center",
     marginTop: theme.space.xs,
     flexDirection: "row",
     gap: theme.space.xs,
+    paddingHorizontal: theme.space.md,
   },
-  secondaryText: { ...(theme.type.button as object), color: theme.color.primary, textTransform: "uppercase" },
+  secondaryText: {
+    ...(theme.type.button as object),
+    color: theme.color.inkSecondary,
+    letterSpacing: 0.4,
+  },
   secondaryTextDisabled: { color: theme.color.faint },
-  // ── Inputs (Stitch rounded-xl, surfaceContainerLow bg) ──
+
+  // Inputs
   field: { marginTop: theme.space.sm },
-  fieldLabel: { ...(theme.type.labelLg as object), color: theme.color.ink, marginBottom: 6, textTransform: "uppercase" },
+  fieldLabel: {
+    ...(theme.type.labelMd as object),
+    color: theme.color.inkSecondary,
+    marginBottom: 6,
+  },
   input: {
     borderWidth: 1.5,
     borderColor: theme.color.line,
-    backgroundColor: theme.color.surfaceContainerLow,
-    borderRadius: theme.radius.lg,
-    ...(theme.type.codeMd as object),
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.md,
+    ...(theme.type.bodyMd as object),
     padding: theme.space.sm,
     paddingHorizontal: theme.space.md,
     color: theme.color.ink,
     minHeight: theme.touch.primary,
   },
-  inputFocused: { borderColor: theme.color.primaryContainer, backgroundColor: theme.color.surface },
+  inputFocused: {
+    borderColor: theme.color.primary,
+    backgroundColor: "#ffffff",
+  },
   passwordInputWrap: { position: "relative" },
-  passwordInput: { paddingRight: 52 },
-  passwordEye: { position: "absolute", right: 12, top: 0, bottom: 0, width: 40, alignItems: "center", justifyContent: "center" },
-  passwordEyeText: { fontSize: 20, color: theme.color.secondary },
+  passwordInput: { paddingRight: 48 },
+  passwordEye: {
+    position: "absolute",
+    right: 12,
+    top: 0,
+    bottom: 0,
+    width: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   inputError: { borderColor: theme.color.critical },
-  fieldError: { color: theme.color.badInk, ...(theme.type.labelMd as object), marginTop: 6 },
-  // ── Scan targets (industrial blue bordered cards) ──
+  fieldErrorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+  },
+  fieldError: {
+    color: theme.color.badInk,
+    ...(theme.type.labelSm as object),
+  },
+
+  // Scan targets
   scan: {
-    backgroundColor: theme.color.surfaceContainerLow,
+    backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
     padding: theme.space.md,
     marginVertical: theme.space.xs,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: theme.color.primaryContainer,
+    shadowColor: theme.color.primaryContainer,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  scanLabel: { ...(theme.type.labelMd as object), color: theme.color.primaryContainer, textTransform: "uppercase" },
-  scanValue: { ...(theme.type.codeLg as object), marginTop: 6, color: theme.color.ink },
+  scanHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  scanLabel: {
+    ...(theme.type.labelMd as object),
+    color: theme.color.primaryContainer,
+    textTransform: "uppercase",
+  },
+  scanValue: {
+    ...(theme.type.codeLg as object),
+    marginTop: 8,
+    color: theme.color.ink,
+  },
   scanEntry: {
     borderWidth: 2,
     borderColor: theme.color.primaryContainer,
-    backgroundColor: theme.color.surfaceContainerLow,
-    borderRadius: theme.radius.lg,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.md,
     ...(theme.type.codeLg as object),
     padding: theme.space.sm,
-    marginTop: theme.space.sm,
+    marginTop: theme.space.xs,
     textAlign: "center",
     color: theme.color.ink,
     minHeight: theme.touch.primary,
   },
-  // ── Badges ──
+
+  // Badges
   badge: {
     alignSelf: "flex-start",
     borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: theme.space.xxs,
-    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: "100%",
   },
-  badgeText: { ...(theme.type.badge as object) },
-  // ── Feedback banners ──
+  badgeText: {
+    ...(theme.type.badge as object),
+    flexShrink: 1,
+  },
+
+  // Feedback banners
   error: {
     backgroundColor: theme.color.badBg,
     borderRadius: theme.radius.md,
     padding: theme.space.sm,
     marginTop: theme.space.xs,
-    borderLeftWidth: 4,
-    borderLeftColor: theme.color.badInk,
+    borderWidth: 1,
+    borderColor: theme.color.badBorder,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  errorText: { color: theme.color.badInk, ...(theme.type.bodyMd as object), fontWeight: "600" },
+  errorText: {
+    color: theme.color.badInk,
+    ...(theme.type.bodyMd as object),
+    fontWeight: "600",
+    flex: 1,
+  },
   success: {
     backgroundColor: theme.color.okBg,
     borderRadius: theme.radius.md,
     padding: theme.space.sm,
     marginTop: theme.space.xs,
-    borderLeftWidth: 4,
-    borderLeftColor: theme.color.okInk,
+    borderWidth: 1,
+    borderColor: theme.color.okBorder,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  successText: { color: theme.color.okInk, ...(theme.type.bodyMd as object), fontWeight: "700" },
-  // ── Progress ──
-  progressWrap: { marginTop: theme.space.xs },
-  progressTrack: { height: 8, borderRadius: 4, backgroundColor: theme.color.surfaceContainerHigh, overflow: "hidden" },
-  progressFill: { height: 8, borderRadius: 4, backgroundColor: theme.color.primaryContainer },
-  progressText: { ...(theme.type.labelLg as object), marginTop: 6, color: theme.color.ink },
-  // ── SLA ──
-  sla: {
+  successText: {
+    color: theme.color.okInk,
+    ...(theme.type.bodyMd as object),
+    fontWeight: "600",
+    flex: 1,
+  },
+
+  // Progress
+  progressWrap: { marginTop: theme.space.xs, marginBottom: theme.space.xs },
+  progressHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  progressLabel: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.muted,
+    textTransform: "uppercase",
+  },
+  progressPercentage: {
+    ...(theme.type.labelMd as object),
+    color: theme.color.ink,
+    fontWeight: "700",
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.color.surfaceContainerHigh,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.color.primaryContainer,
+  },
+  progressText: {
+    ...(theme.type.secondary as object),
+    marginTop: 4,
+    color: theme.color.muted,
+  },
+
+  // Stepper
+  stepperWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: theme.color.surface,
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
     borderRadius: theme.radius.md,
-    paddingVertical: theme.space.xs,
-    paddingHorizontal: theme.space.sm,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    marginVertical: theme.space.xs,
+  },
+  stepperItemWrap: {
+    flex: 1,
+    alignItems: "center",
+    position: "relative",
+  },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.color.surfaceContainer,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+    borderWidth: 1.5,
+    borderColor: theme.color.lineStrong,
+  },
+  stepCircleActive: {
+    backgroundColor: theme.color.primaryContainer,
+    borderColor: theme.color.primary,
+  },
+  stepCircleDone: {
+    backgroundColor: theme.color.okPrimary,
+    borderColor: theme.color.okPrimary,
+  },
+  stepLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: theme.color.muted,
+  },
+  stepLabelActive: {
+    color: theme.color.primaryContainer,
+    fontWeight: "700",
+  },
+  stepLabelDone: {
+    color: theme.color.okInk,
+  },
+  stepLine: {
+    position: "absolute",
+    top: 14,
+    right: -25,
+    width: 50,
+    height: 2,
+    backgroundColor: theme.color.line,
+    zIndex: -1,
+  },
+  stepLineDone: {
+    backgroundColor: theme.color.okPrimary,
+  },
+
+  // SLA
+  sla: {
+    borderRadius: theme.radius.pill,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
     marginTop: theme.space.xs,
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
+    borderWidth: 1,
   },
-  slaCalm: { backgroundColor: theme.color.infoBg },
-  slaSoon: { backgroundColor: theme.color.warnBg },
-  slaUrgent: { backgroundColor: theme.color.badBg, borderWidth: 2, borderColor: theme.color.critical },
-  slaText: { ...(theme.type.labelLg as object) },
+  slaCalm: {
+    backgroundColor: theme.color.infoBg,
+    borderColor: theme.color.infoBorder,
+  },
+  slaSoon: {
+    backgroundColor: theme.color.warnBg,
+    borderColor: theme.color.warnBorder,
+  },
+  slaUrgent: {
+    backgroundColor: theme.color.badBg,
+    borderColor: theme.color.badBorder,
+  },
+  slaText: { ...(theme.type.labelMd as object) },
   slaTextCalm: { color: theme.color.infoInk },
   slaTextSoon: { color: theme.color.warnInk },
-  slaTextUrgent: { color: theme.color.badInk },
-  // ── Chips (zone-selector style from Stitch) ──
+  slaTextUrgent: { color: theme.color.badInk, fontWeight: "700" },
+
+  // Chips
   chip: {
     borderWidth: 1.5,
     borderColor: theme.color.line,
-    backgroundColor: theme.color.surfaceContainerHigh,
-    borderRadius: theme.radius.lg,
-    padding: theme.space.sm,
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     marginTop: theme.space.xs,
     minHeight: theme.touch.min,
-    justifyContent: "center",
+    justifyContent: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: theme.space.xs,
   },
-  chipOn: { backgroundColor: theme.color.primary, borderColor: theme.color.primary },
+  chipOn: {
+    backgroundColor: theme.color.primaryContainer,
+    borderColor: theme.color.primaryContainer,
+  },
   chipPressed: { opacity: 0.88 },
-  chipText: { ...(theme.type.labelLg as object), color: theme.color.ink },
-  chipTextOn: { color: theme.color.onPrimary },
-  // ── Cards (elevated Stitch style) ──
+  chipText: { ...(theme.type.bodyMd as object), color: theme.color.ink, fontWeight: "600" },
+  chipTextOn: { color: "#ffffff", fontWeight: "700" },
+
+  // Cards
   card: {
     backgroundColor: theme.color.surface,
     borderWidth: 1,
@@ -597,34 +1007,64 @@ const s = StyleSheet.create({
     padding: theme.space.md,
     marginTop: theme.space.xs,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  // ── Metric cards ──
+
+  // Metric cards
   metric: {
     backgroundColor: theme.color.surface,
     borderWidth: 1,
     borderColor: theme.color.line,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     padding: theme.space.md,
-    minHeight: 128,
-    marginTop: theme.space.xs,
+    minHeight: 104,
+    justifyContent: "center",
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  metricValue: { ...(theme.type.title as object), fontSize: 34, color: theme.color.ink },
-  metricLabel: { ...(theme.type.labelMd as object), fontSize: 13, lineHeight: 17, color: theme.color.muted, marginTop: 2, textTransform: "uppercase" },
-  // ── Async states ──
-  stateBox: { paddingVertical: theme.space.lg, alignItems: "stretch" },
-  stateText: { ...(theme.type.secondary as object), color: theme.color.muted, marginTop: theme.space.xs, textAlign: "center" },
-  emptyGlyph: { fontSize: 48, textAlign: "center", color: theme.color.primaryFixedDim },
-  emptyTitle: { ...(theme.type.section as object), textAlign: "center", marginTop: theme.space.xs, color: theme.color.ink },
-  skeleton: { height: 14, borderRadius: 7, backgroundColor: theme.color.surfaceContainerHigh, marginTop: theme.space.xs },
-  skeletonShort: { width: "55%" },
-});
+  metricValue: {
+    ...(theme.type.display as object),
+    color: theme.color.ink,
+  },
+  metricLabel: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.muted,
+    marginTop: 4,
+    textTransform: "uppercase",
+  },
 
+  // Async states
+  stateBox: {
+    paddingVertical: theme.space.xl,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: theme.color.surfaceContainer,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: theme.space.xs,
+  },
+  stateText: {
+    ...(theme.type.bodyMd as object),
+    color: theme.color.muted,
+    marginTop: 6,
+    textAlign: "center",
+    maxWidth: 280,
+  },
+  emptyTitle: {
+    ...(theme.type.section as object),
+    textAlign: "center",
+    marginTop: theme.space.xs,
+    color: theme.color.ink,
+  },
+});

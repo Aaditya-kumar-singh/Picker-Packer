@@ -1,14 +1,11 @@
 // Screen 9 — Exception. All 6 documented types. Line -> EXCEPTION, then next item.
-// Photo evidence (online only): exception is created FIRST so a failed
-// upload never loses the report; uploads retry against a fresh grant while
-// abandoned PENDING rows are janitor-cleaned server-side.
 import { useCallback, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { Image, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   AlertHeader,
-  AppHeader,
   Chip,
   Divider,
   ErrorBanner,
@@ -28,8 +25,6 @@ import type { EvidenceItem, ExceptionType, Order } from "@/types";
 
 const TYPES: ExceptionType[] = ["SHORT_PICK", "DAMAGED", "WRONG_ITEM", "LOCATION_EMPTY", "EXPIRED", "OTHER"];
 
-// Reason codes per exception type. DAMAGED deliberately has no stock-shortage
-// default — damage reasons describe the damage.
 const REASONS: Record<ExceptionType, string[]> = {
   SHORT_PICK: ["INSUFFICIENT_STOCK", "PARTIAL_CASE", "NOT_FOUND_IN_LOCATION"],
   DAMAGED: ["CRUSHED", "TORN_PACKAGING", "WATER_DAMAGE", "OTHER_DAMAGE"],
@@ -61,7 +56,6 @@ export function ExceptionScreen() {
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Photo flow state (set after the exception exists).
   const [exceptionId, setExceptionId] = useState<string | null>(null);
   const [photo, setPhoto] = useState<LocalPhoto | null>(null);
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "error">("idle");
@@ -79,9 +73,6 @@ export function ExceptionScreen() {
     }, [load])
   );
 
-  // Active-line context: explicit lineId (e.g. the short-picked line) wins;
-  // otherwise the SKU-validated line being worked. Never fall back to an
-  // untouched PENDING line — exceptions attach to work in progress.
   const line =
     order?.lines.find((l) => l.id === lineId) ??
     order?.lines.find((l) => l.status === "SKU_VALIDATED") ??
@@ -174,7 +165,6 @@ export function ExceptionScreen() {
         setUploadError(`${up.apiError.error}: ${up.apiError.message}`);
         return;
       }
-      // Resolve the PENDING row minted by the grant, then confirm it.
       const list = await pickerRepository.listExceptionEvidence(exceptionId);
       const row = list.ok ? list.data.find((e) => e.objectKey === g.data.objectKey && e.status === "PENDING") : undefined;
       if (!row) {
@@ -194,9 +184,6 @@ export function ExceptionScreen() {
     }
   }
 
-  // The exceptioned line is terminal, so resume at the next line's
-  // authoritative step (or completion). Reload first: local order state is
-  // stale after submit. Fall back to location only when reload fails.
   async function continuePicking() {
     const r = await pickerRepository.getOrder(String(orderId));
     if (r.ok) {
@@ -213,11 +200,11 @@ export function ExceptionScreen() {
     const failed = evidence.filter((e) => e.status === "FAILED");
     return (
       <Screen>
-        <AlertHeader title="Exception saved" sub={`${order.externalId} • Line ${line?.lineNo ?? "-"}`} />
-        <SuccessFeedback message="Exception recorded. It is safe to leave — uploads can retry." />
-        <SectionHeader title="Photo evidence" hint={type === "DAMAGED" ? "Recommended for damage" : "Optional"} />
+        <AlertHeader title="Exception Recorded" sub={`${order.externalId} • Line ${line?.lineNo ?? "-"}`} />
+        <SuccessFeedback message="Exception saved. You may attach photos or continue to the next item." />
+        <SectionHeader title="Photo Evidence" hint={type === "DAMAGED" ? "Recommended for damage" : "Optional"} />
         {!online ? (
-          <ErrorBanner message="Photo upload needs a connection. The exception is saved — attach the photo when back online." />
+          <ErrorBanner message="Photo upload requires connection. The exception is safely stored offline." />
         ) : null}
         {photo ? (
           <View style={s.previewBox}>
@@ -225,23 +212,27 @@ export function ExceptionScreen() {
             <SecondaryButton label="Remove photo" onPress={() => { setPhoto(null); setUploadState("idle"); setUploadError(null); }} />
           </View>
         ) : (
-          <>
-            <PrimaryButton label="Take photo" onPress={() => void capture(true)} disabled={!online} />
-            <SecondaryButton label="Choose from library" onPress={() => void capture(false)} disabled={!online} />
-          </>
+          <View style={{ gap: theme.space.xs }}>
+            <PrimaryButton label="Take Photo" icon="camera-outline" onPress={() => void capture(true)} disabled={!online} />
+            <SecondaryButton label="Choose from Library" icon="images-outline" onPress={() => void capture(false)} disabled={!online} />
+          </View>
         )}
         {photo && uploadState !== "uploading" ? (
-          <PrimaryButton label="Upload photo" onPress={() => void upload()} disabled={!online} />
+          <PrimaryButton label="Upload Photo" icon="cloud-upload-outline" onPress={() => void upload()} disabled={!online} />
         ) : null}
-        {uploadState === "uploading" ? <Text style={s.info}>Uploading…</Text> : null}
+        {uploadState === "uploading" ? <Text style={s.info}>Uploading photo…</Text> : null}
         <ErrorBanner message={uploadError} />
         {uploadState === "error" ? (
           <SecondaryButton label="Retry upload" onPress={() => void upload()} />
         ) : null}
-        {uploaded.length > 0 ? <Text style={s.info}>Uploaded photos: {uploaded.length}</Text> : null}
-        {failed.length > 0 ? <Text style={s.info}>Failed uploads: {failed.length} (abandoned rows are cleaned server-side)</Text> : null}
+        {uploaded.length > 0 ? (
+          <Text style={s.info}>Uploaded photos: {uploaded.length}</Text>
+        ) : null}
+        {failed.length > 0 ? (
+          <Text style={s.info}>Failed uploads: {failed.length} (abandoned rows are cleaned server-side)</Text>
+        ) : null}
         <Divider />
-        <PrimaryButton label="Continue picking" onPress={() => void continuePicking()} />
+        <PrimaryButton label="Continue Picking" icon="arrow-forward-circle" onPress={() => void continuePicking()} />
       </Screen>
     );
   }
@@ -257,17 +248,23 @@ export function ExceptionScreen() {
         </>
       ) : (
         <>
-          <SectionHeader title="Exception type" />
-          {TYPES.map((t) => (
-            <Chip key={t} label={t} selected={type === t} onPress={() => pickType(t)} />
-          ))}
+          <SectionHeader title="Exception Type" />
+          <View style={s.chipGroup}>
+            {TYPES.map((t) => (
+              <Chip key={t} label={t.replace(/_/g, " ")} selected={type === t} onPress={() => pickType(t)} />
+            ))}
+          </View>
+
           <SectionHeader title="Reason" />
-          {REASONS[type].map((rc) => (
-            <Chip key={rc} label={rc} selected={reason === rc} onPress={() => setReason(rc)} />
-          ))}
+          <View style={s.chipGroup}>
+            {REASONS[type].map((rc) => (
+              <Chip key={rc} label={rc.replace(/_/g, " ")} selected={reason === rc} onPress={() => setReason(rc)} />
+            ))}
+          </View>
+
           {type === "SHORT_PICK" ? (
             <>
-              <SectionHeader title="Shortage" hint="Confirm the missing quantity" />
+              <SectionHeader title="Shortage Breakdown" hint="Confirm missing quantity" />
               <View style={s.grid}>
                 <View style={s.cell}>
                   <MetricCard value={String(line.requiredQty)} label="Required" />
@@ -276,11 +273,11 @@ export function ExceptionScreen() {
                   <MetricCard value={String(line.pickedQty)} label="Picked" tone="info" />
                 </View>
                 <View style={s.cell}>
-                  <MetricCard value={String(shortage)} label="Shortage" tone={shortage > 0 ? "warn" : "ok"} />
+                  <MetricCard value={String(shortage)} label="Shortage" tone={shortage > 0 ? "bad" : "ok"} />
                 </View>
               </View>
               <FieldInput
-                label="Confirm shortage qty"
+                label="Confirm Shortage Quantity"
                 value={qty}
                 onChangeText={setQty}
                 keyboardType="numeric"
@@ -290,15 +287,24 @@ export function ExceptionScreen() {
               />
             </>
           ) : null}
+
           <FieldInput
-            label="Note"
+            label="Additional Notes"
             value={note}
             onChangeText={setNote}
-            placeholder="Optional note"
+            placeholder="Describe the issue (optional)"
             returnKeyType="done"
           />
+
           <ErrorBanner message={error} />
-          <PrimaryButton label={busy ? "Saving…" : "Submit exception"} onPress={submit} disabled={busy} />
+
+          <PrimaryButton
+            label={busy ? "Saving Exception…" : "SUBMIT EXCEPTION"}
+            variant="danger"
+            icon="warning"
+            onPress={submit}
+            disabled={busy}
+          />
         </>
       )}
     </Screen>
@@ -306,10 +312,17 @@ export function ExceptionScreen() {
 }
 
 const s = StyleSheet.create({
-  grid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4, marginTop: 2 },
-  cell: { width: "50%", paddingHorizontal: 4, flexGrow: 1 },
+  grid: { flexDirection: "row", gap: theme.space.xs, marginTop: theme.space.xs, marginBottom: theme.space.xs },
+  cell: { flex: 1 },
+  chipGroup: { gap: theme.space.xxs },
   info: { marginTop: theme.space.xs, ...(theme.type.bodyMd as object), color: theme.color.muted },
-  previewBox: { marginTop: theme.space.xs },
-  preview: { width: "100%", height: 220, borderRadius: theme.radius.lg, backgroundColor: theme.color.surfaceContainerLow },
+  previewBox: { marginTop: theme.space.xs, gap: theme.space.xs },
+  preview: {
+    width: "100%",
+    height: 220,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.color.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+  },
 });
-

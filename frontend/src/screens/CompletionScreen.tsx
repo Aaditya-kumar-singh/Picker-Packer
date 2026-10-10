@@ -1,6 +1,7 @@
 // Picker completion — explicit COMPLETE PICKING, then READY_FOR_PACKING.
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   Card,
@@ -73,10 +74,21 @@ export function CompletionScreen() {
 
   return (
     <Screen>
-      <Text style={s.title}>{isReady ? "READY FOR PACKING" : "COMPLETE PICKING"}</Text>
-      <Text style={s.subtitle}>
-        {isReady ? "All resolved lines have been handed to the packing queue." : "Confirm that all picking work is resolved before completing the order."}
-      </Text>
+      <View style={s.hero}>
+        <View style={[s.iconBox, isReady ? s.iconBoxReady : s.iconBoxPending]}>
+          <Ionicons
+            name={isReady ? "checkmark-circle" : "cube"}
+            size={36}
+            color={isReady ? theme.color.okInk : theme.color.primaryContainer}
+          />
+        </View>
+        <Text style={s.title}>{isReady ? "READY FOR PACKING" : "COMPLETE PICKING"}</Text>
+        <Text style={s.subtitle}>
+          {isReady
+            ? "All resolved lines have been handed to the packing queue."
+            : "Confirm that all picking work is resolved before completing the order."}
+        </Text>
+      </View>
 
       <View style={s.grid}>
         <View style={s.cell}>
@@ -97,7 +109,7 @@ export function CompletionScreen() {
       <Card>
         <View style={s.statusRow}>
           <View>
-            <Text style={s.orderLabel}>ORDER</Text>
+            <Text style={s.orderLabel}>ORDER NUMBER</Text>
             <Text style={s.orderId}>{order.externalId}</Text>
           </View>
           <StatusBadge
@@ -110,47 +122,72 @@ export function CompletionScreen() {
       <ErrorBanner message={error} />
 
       {isReady ? (
-        <>
+        <View style={{ marginTop: theme.space.md }}>
           <SuccessFeedback message="PICKING COMPLETE — order is READY_FOR_PACKING." />
-          <PrimaryButton label="Back to Assigned Orders" onPress={() => router.replace("/orders" as never)} />
-        </>
+          <PrimaryButton
+            label="Back to Assigned Orders"
+            icon="list"
+            onPress={() => router.replace("/orders" as never)}
+          />
+        </View>
       ) : (
-        <>
+        <View style={{ marginTop: theme.space.md }}>
           <PrimaryButton
             label={busy ? "Completing…" : "COMPLETE PICKING"}
+            icon="checkmark-done"
+            variant="success"
             onPress={complete}
             disabled={busy || resolved !== order.lines.length}
           />
           <SecondaryButton
             label="Back to picking"
+            icon="arrow-back"
             onPress={() => router.replace(pickStepPath(order.id, order) as never)}
           />
-        </>
+        </View>
       )}
     </Screen>
   );
 }
 
 const s = StyleSheet.create({
+  hero: {
+    alignItems: "center",
+    marginVertical: theme.space.md,
+  },
+  iconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: theme.space.xs,
+  },
+  iconBoxPending: {
+    backgroundColor: theme.color.infoBg,
+  },
+  iconBoxReady: {
+    backgroundColor: theme.color.okBg,
+  },
   title: {
     ...(theme.type.title as object),
     color: theme.color.ink,
-    marginTop: theme.space.sm,
+    textAlign: "center",
   },
   subtitle: {
     ...(theme.type.bodyMd as object),
-    color: theme.color.secondary,
-    marginTop: theme.space.xs,
-    marginBottom: theme.space.md,
+    color: theme.color.muted,
+    textAlign: "center",
+    marginTop: 4,
+    maxWidth: 320,
   },
   grid: {
     flexDirection: "row",
-    marginHorizontal: -4,
+    gap: theme.space.xs,
     marginBottom: theme.space.md,
   },
   cell: {
     flex: 1,
-    paddingHorizontal: 4,
   },
   statusRow: {
     flexDirection: "row",
@@ -166,5 +203,6 @@ const s = StyleSheet.create({
     ...(theme.type.codeLg as object),
     color: theme.color.ink,
     marginTop: 2,
+    fontSize: 18,
   },
 });

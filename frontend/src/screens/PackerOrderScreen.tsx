@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -58,7 +59,7 @@ export function PackerOrderScreen() {
       setBarcode("");
       const item = result.item;
       const packedText = item ? item.packedQty + "/" + item.pickedQty : "";
-      setSuccess("Item packed successfully. " + (item ? item.productName : "") + (packedText ? " (" + packedText + ")" : ""));
+      setSuccess("Item packed successfully: " + (item ? item.productName : "") + (packedText ? " (" + packedText + ")" : ""));
       if (result.allPacked) {
         setSuccess("All items packed! Order is ready for rider assignment.");
       }
@@ -99,7 +100,7 @@ export function PackerOrderScreen() {
   if (!order) {
     return (
       <Screen>
-        <AppHeader title="Packing order" />
+        <AppHeader title="Packing Order" showBack />
         <ErrorBanner message={error} />
         <LoadingState label="Loading order…" />
       </Screen>
@@ -113,62 +114,86 @@ export function PackerOrderScreen() {
 
   return (
     <Screen>
-      <AppHeader title={order.orderNumber} sub={order.customer || "Unknown Customer"} />
-      <Pressable onPress={() => router.back()} style={s.back}>
-        <Text style={s.backText}>← Back to orders</Text>
-      </Pressable>
+      <AppHeader title={order.orderNumber} sub={order.customer || "Warehouse Customer"} showBack />
 
-      <View style={s.statusRow}>
-        <Text style={s.progressLabel}>Pack Progress</Text>
-        <Text style={s.progressCount}>{packed}/{picked} items</Text>
-      </View>
-      <View style={s.progress}><View style={[s.fill, { width: (progress + "%") as `${number}%` }]} /></View>
+      <View style={s.card}>
+        <View style={s.statusRow}>
+          <Text style={s.progressLabel}>Packing Progress</Text>
+          <Text style={s.progressCount}>{packed} of {picked} units packed ({progress}%)</Text>
+        </View>
+        <View style={s.progress}>
+          <View style={[s.fill, { width: `${progress}%` }]} />
+        </View>
 
-      <View style={s.scanRow}>
-        <TextInput
-          value={barcode}
-          onChangeText={setBarcode}
-          onSubmitEditing={() => void scan()}
-          placeholder="Scan barcode..."
-          placeholderTextColor={theme.color.faint}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!busy && order.status !== "PACKED" && order.status !== "RIDER_ASSIGNED"}
-          style={s.scanInput}
-        />
-        <Pressable style={s.camera} onPress={() => setScannerVisible(true)} disabled={busy}>
-          <Text style={s.cameraText}>▣</Text>
-        </Pressable>
-        <Pressable style={[s.scanButton, busy && s.disabled]} onPress={() => void scan()} disabled={busy}>
-          <Text style={s.scanButtonText}>{busy ? "..." : "Scan"}</Text>
-        </Pressable>
+        <View style={s.scanRow}>
+          <TextInput
+            value={barcode}
+            onChangeText={setBarcode}
+            onSubmitEditing={() => void scan()}
+            placeholder="Scan or type item barcode…"
+            placeholderTextColor={theme.color.faint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!busy && order.status !== "PACKED" && order.status !== "RIDER_ASSIGNED"}
+            style={s.scanInput}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Scan with camera"
+            style={({ pressed }) => [s.camera, pressed ? { opacity: 0.85 } : null]}
+            onPress={() => setScannerVisible(true)}
+            disabled={busy}
+          >
+            <Ionicons name="camera-outline" size={20} color="#ffffff" />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Submit barcode"
+            style={({ pressed }) => [s.scanButton, busy && s.disabled, pressed ? { opacity: 0.85 } : null]}
+            onPress={() => void scan()}
+            disabled={busy}
+          >
+            <Text style={s.scanButtonText}>{busy ? "…" : "Verify"}</Text>
+          </Pressable>
+        </View>
       </View>
 
       <ErrorBanner message={error} />
       <SuccessFeedback message={success} />
 
-      <Text style={s.section}>Items</Text>
+      <Text style={s.section}>Order Items</Text>
       {order.items.map(item => {
         const done = item.packedQty >= item.pickedQty;
         return (
           <View key={item.id} style={[s.item, done && s.itemDone]}>
-            <Text style={s.check}>{done ? "☑" : "☐"}</Text>
+            <Ionicons
+              name={done ? "checkmark-circle" : "ellipse-outline"}
+              size={22}
+              color={done ? theme.color.okInk : theme.color.muted}
+              style={{ marginRight: 10 }}
+            />
             <View style={s.itemMain}>
               <Text style={s.name}>{item.productName}</Text>
-              <Text style={s.specs}>{item.productSpecs || ""}</Text>
+              {item.productSpecs ? <Text style={s.specs}>{item.productSpecs}</Text> : null}
               <View style={s.barcodeRow}>
+                <Ionicons name="barcode-outline" size={13} color={theme.color.muted} />
                 <Text selectable style={s.sku}>{item.skuBarcode}</Text>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Copy barcode for ${item.productName}`}
                   onPress={() => void copyBarcode(item.skuBarcode)}
                   style={s.copyBarcode}
+                  hitSlop={6}
                 >
-                  <Text style={s.copyBarcodeText}>{copiedBarcode === item.skuBarcode ? "Copied" : "Copy barcode"}</Text>
+                  <Text style={s.copyBarcodeText}>{copiedBarcode === item.skuBarcode ? "Copied" : "Copy"}</Text>
                 </Pressable>
               </View>
             </View>
-            <Text style={s.qty}>{item.packedQty}/{item.pickedQty}</Text>
+            <View style={s.qtyBadge}>
+              <Text style={[s.qty, done && { color: theme.color.okInk }]}>
+                {item.packedQty}/{item.pickedQty}
+              </Text>
+            </View>
           </View>
         );
       })}
@@ -176,32 +201,46 @@ export function PackerOrderScreen() {
       {order.recentScans.length > 0 ? (
         <>
           <Text style={s.section}>Recent Scans</Text>
-          {order.recentScans.map((scanItem, index) => {
-            const item = order.items.find(i => i.id === scanItem.itemId);
-            return (
-              <View key={scanItem.createdAt + scanItem.itemId + index} style={s.recent}>
-                <Text style={s.recentCheck}>✓</Text>
-                <Text style={s.recentBarcode}>{scanItem.barcode}</Text>
-                <Text style={s.recentName} numberOfLines={1}>{item?.productName || "Item"}</Text>
-                <Text style={s.recentTime}>{new Date(scanItem.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
-              </View>
-            );
-          })}
+          <View style={s.recentList}>
+            {order.recentScans.map((scanItem, index) => {
+              const item = order.items.find(i => i.id === scanItem.itemId);
+              return (
+                <View key={scanItem.createdAt + scanItem.itemId + index} style={s.recent}>
+                  <Ionicons name="checkmark-sharp" size={14} color={theme.color.okInk} />
+                  <Text style={s.recentBarcode}>{scanItem.barcode}</Text>
+                  <Text style={s.recentName} numberOfLines={1}>{item?.productName || "Item"}</Text>
+                  <Text style={s.recentTime}>{new Date(scanItem.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+                </View>
+              );
+            })}
+          </View>
         </>
       ) : null}
 
       {allPacked ? (
-        <>
+        <View style={{ marginTop: theme.space.md }}>
           <View style={s.allPacked}>
-            <Text style={s.allPackedTitle}>✓ All items packed!</Text>
-            <Text style={s.allPackedText}>Order is ready for rider assignment.</Text>
+            <Ionicons name="checkmark-circle" size={24} color={theme.color.okInk} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.allPackedTitle}>All items packed & verified!</Text>
+              <Text style={s.allPackedText}>Order is ready for dispatch rider assignment.</Text>
+            </View>
           </View>
           {order.status === "PACKED" ? (
-            <PrimaryButton label="Assign Rider" onPress={() => setRiderModal(true)} disabled={assigning} />
+            <PrimaryButton
+              label="ASSIGN DISPATCH RIDER"
+              icon="bicycle-outline"
+              variant="amber"
+              onPress={() => setRiderModal(true)}
+              disabled={assigning}
+            />
           ) : (
-            <View style={s.assigned}><Text style={s.assignedText}>Rider assigned successfully!</Text></View>
+            <View style={s.assigned}>
+              <Ionicons name="checkmark-done-circle" size={20} color={theme.color.okInk} />
+              <Text style={s.assignedText}>Rider assigned: {order.riderName || "Assigned"}</Text>
+            </View>
           )}
-        </>
+        </View>
       ) : null}
 
       <BarcodeScannerModal
@@ -215,17 +254,26 @@ export function PackerOrderScreen() {
         <View style={s.modalBackdrop}>
           <View style={s.modal}>
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Select Rider</Text>
-              <Pressable onPress={() => setRiderModal(false)}><Text style={s.close}>×</Text></Pressable>
+              <Text style={s.modalTitle}>Select Dispatch Rider</Text>
+              <Pressable onPress={() => setRiderModal(false)} hitSlop={12}>
+                <Ionicons name="close" size={24} color={theme.color.muted} />
+              </Pressable>
             </View>
             {riders.map(rider => (
-              <Pressable key={rider.id} style={s.rider} onPress={() => void assign(rider)} disabled={assigning}>
+              <Pressable
+                key={rider.id}
+                style={({ pressed }) => [s.rider, pressed ? { opacity: 0.85 } : null]}
+                onPress={() => void assign(rider)}
+                disabled={assigning}
+              >
                 <View style={s.riderMain}>
                   <Text style={s.riderName}>{rider.name}</Text>
-                  <Text style={s.riderPhone}>{rider.phone || ""}</Text>
-                  <Text style={s.riderType}>BIKE</Text>
+                  <Text style={s.riderPhone}>{rider.phone || "No phone listed"}</Text>
+                  <Text style={s.riderType}>Standard Delivery Bike</Text>
                 </View>
-                <Text style={s.available}>AVAILABLE</Text>
+                <View style={s.availablePill}>
+                  <Text style={s.available}>AVAILABLE</Text>
+                </View>
               </Pressable>
             ))}
           </View>
@@ -236,51 +284,293 @@ export function PackerOrderScreen() {
 }
 
 const s = StyleSheet.create({
-  back: { marginBottom: theme.space.sm },
-  backText: { ...(theme.type.bodyMd as object), color: theme.color.tertiary },
-  statusRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: theme.space.sm },
-  progressLabel: { ...(theme.type.labelMd as object), color: theme.color.ink },
-  progressCount: { ...(theme.type.secondary as object), color: theme.color.muted },
-  progress: { height: 8, backgroundColor: theme.color.surfaceContainerHigh, borderRadius: 5, overflow: "hidden", marginTop: theme.space.xs, marginBottom: theme.space.sm },
-  fill: { height: 8, backgroundColor: theme.color.tertiary, borderRadius: 5 },
-  scanRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  scanInput: { flex: 1, minHeight: 46, borderWidth: 1, borderColor: theme.color.line, borderRadius: 10, paddingHorizontal: 12, color: theme.color.ink, backgroundColor: theme.color.surface },
-  camera: { width: 46, height: 46, borderRadius: 10, backgroundColor: "#6750d8", alignItems: "center", justifyContent: "center" },
-  cameraText: { color: "#fff", fontSize: 18 },
-  scanButton: { minHeight: 46, paddingHorizontal: 14, borderRadius: 10, backgroundColor: "#61d7c7", alignItems: "center", justifyContent: "center" },
-  scanButtonText: { color: "#fff", fontWeight: "800" },
+  card: {
+    backgroundColor: theme.color.surface,
+    borderWidth: 1.5,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.lg,
+    padding: theme.space.md,
+    marginTop: theme.space.xs,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  statusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+  },
+  progressLabel: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.muted,
+    textTransform: "uppercase",
+  },
+  progressCount: {
+    ...(theme.type.labelSm as object),
+    color: theme.packer.primaryDark,
+    fontWeight: "700",
+  },
+  progress: {
+    height: 8,
+    backgroundColor: theme.color.surfaceContainerHigh,
+    borderRadius: 4,
+    overflow: "hidden",
+    marginTop: 6,
+    marginBottom: theme.space.sm,
+  },
+  fill: {
+    height: 8,
+    backgroundColor: theme.packer.primary,
+    borderRadius: 4,
+  },
+  scanRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  scanInput: {
+    flex: 1,
+    minHeight: 46,
+    borderWidth: 1.5,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: 12,
+    color: theme.color.ink,
+    backgroundColor: theme.color.surfaceContainerLow,
+    ...(theme.type.bodyMd as object),
+  },
+  camera: {
+    width: 46,
+    height: 46,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.packer.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scanButton: {
+    minHeight: 46,
+    paddingHorizontal: 16,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.primaryContainer,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scanButtonText: {
+    color: "#ffffff",
+    fontWeight: "800",
+    fontSize: 13,
+  },
   disabled: { opacity: 0.45 },
-  section: { ...(theme.type.labelLg as object), color: theme.color.ink, marginTop: theme.space.md, marginBottom: theme.space.xs },
-  item: { flexDirection: "row", alignItems: "center", backgroundColor: theme.color.surface, borderWidth: 1, borderColor: theme.color.line, borderRadius: theme.radius.md, padding: theme.space.sm, marginBottom: theme.space.xs },
-  itemDone: { borderColor: theme.color.primary, backgroundColor: theme.color.okBg },
-  check: { fontSize: 18, color: theme.color.primary, width: 26 },
-  itemMain: { flex: 1 },
-  name: { ...(theme.type.bodyMd as object), color: theme.color.ink, fontWeight: "700" },
-  specs: { ...(theme.type.secondary as object), color: theme.color.muted, marginTop: 2 },
-  barcodeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 },
-  sku: { ...(theme.type.caption as object), color: theme.color.muted, flex: 1 },
-  copyBarcode: { borderWidth: 1, borderColor: theme.color.line, borderRadius: theme.radius.sm, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: theme.color.surfaceContainerLow },
-  copyBarcodeText: { ...(theme.type.caption as object), color: theme.color.primary, fontWeight: "800" },
-  qty: { ...(theme.type.labelLg as object), color: theme.color.ink },
-  allPacked: { backgroundColor: theme.color.okBg, borderWidth: 1, borderColor: theme.color.primary, borderRadius: theme.radius.md, padding: theme.space.sm, marginTop: theme.space.sm },
-  allPackedTitle: { ...(theme.type.labelLg as object), color: theme.color.okInk },
-  allPackedText: { ...(theme.type.secondary as object), color: theme.color.okInk, marginTop: 2 },
-  assigned: { backgroundColor: theme.color.okBg, borderRadius: theme.radius.md, padding: theme.space.sm, marginTop: theme.space.sm },
-  assignedText: { ...(theme.type.labelLg as object), color: theme.color.okInk, textAlign: "center" },
-  recent: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: theme.color.line },
-  recentCheck: { color: theme.color.okInk, fontWeight: "800" },
-  recentBarcode: { ...(theme.type.caption as object), color: theme.color.ink, minWidth: 100 },
-  recentName: { flex: 1, ...(theme.type.caption as object), color: theme.color.muted },
-  recentTime: { ...(theme.type.caption as object), color: theme.color.muted },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 },
-  modal: { backgroundColor: theme.color.surface, borderRadius: theme.radius.lg, padding: theme.space.md },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: theme.space.sm },
-  modalTitle: { ...(theme.type.titleMd as object), color: theme.color.ink },
-  close: { fontSize: 28, color: theme.color.muted },
-  rider: { borderWidth: 1, borderColor: theme.color.line, borderRadius: theme.radius.md, padding: theme.space.sm, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: theme.space.xs },
+  section: {
+    ...(theme.type.section as object),
+    color: theme.color.ink,
+    marginTop: theme.space.lg,
+    marginBottom: theme.space.xs,
+  },
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.color.surface,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.lg,
+    padding: theme.space.sm,
+    marginBottom: theme.space.xs,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  itemDone: {
+    borderColor: theme.color.okBorder,
+    backgroundColor: "#fafdfb",
+  },
+  itemMain: { flex: 1, minWidth: 0 },
+  name: {
+    ...(theme.type.bodyMd as object),
+    color: theme.color.ink,
+    fontWeight: "700",
+  },
+  specs: {
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
+    marginTop: 1,
+  },
+  barcodeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    minWidth: 0,
+  },
+  sku: {
+    ...(theme.type.codeMd as object),
+    fontSize: 12,
+    color: theme.color.muted,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  copyBarcode: {
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: theme.color.surfaceContainer,
+  },
+  copyBarcodeText: {
+    fontSize: 10,
+    color: theme.color.primary,
+    fontWeight: "700",
+  },
+  qtyBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.color.surfaceContainerLow,
+  },
+  qty: {
+    ...(theme.type.codeLg as object),
+    fontSize: 15,
+    color: theme.color.ink,
+  },
+  allPacked: {
+    backgroundColor: theme.color.okBg,
+    borderWidth: 1,
+    borderColor: theme.color.okBorder,
+    borderRadius: theme.radius.md,
+    padding: theme.space.md,
+    marginBottom: theme.space.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  allPackedTitle: {
+    ...(theme.type.section as object),
+    color: theme.color.okInk,
+  },
+  allPackedText: {
+    ...(theme.type.secondary as object),
+    color: theme.color.okInk,
+    marginTop: 2,
+  },
+  assigned: {
+    backgroundColor: theme.color.okBg,
+    borderRadius: theme.radius.md,
+    padding: theme.space.sm,
+    marginTop: theme.space.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  assignedText: {
+    ...(theme.type.labelMd as object),
+    color: theme.color.okInk,
+    fontWeight: "700",
+  },
+  recentList: {
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    paddingHorizontal: theme.space.sm,
+  },
+  recent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.color.line,
+  },
+  recentBarcode: {
+    ...(theme.type.codeMd as object),
+    fontSize: 12,
+    color: theme.color.ink,
+    minWidth: 100,
+  },
+  recentName: {
+    flex: 1,
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
+  },
+  recentTime: {
+    ...(theme.type.caption as object),
+    color: theme.color.muted,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modal: {
+    backgroundColor: theme.color.surface,
+    borderRadius: theme.radius.xl,
+    padding: theme.space.lg,
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: theme.space.md,
+  },
+  modalTitle: {
+    ...(theme.type.titleMd as object),
+    color: theme.color.ink,
+  },
+  rider: {
+    borderWidth: 1.5,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.lg,
+    padding: theme.space.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: theme.space.xs,
+    backgroundColor: theme.color.surface,
+  },
   riderMain: { flex: 1 },
-  riderName: { ...(theme.type.body as object), color: theme.color.ink, fontWeight: "700" },
-  riderPhone: { ...(theme.type.secondary as object), color: theme.color.muted },
-  riderType: { ...(theme.type.caption as object), color: theme.color.muted, marginTop: 2 },
-  available: { ...(theme.type.caption as object), color: theme.color.okInk, backgroundColor: theme.color.okBg, paddingHorizontal: 7, paddingVertical: 4, borderRadius: theme.radius.pill },
+  riderName: {
+    ...(theme.type.body as object),
+    color: theme.color.ink,
+    fontWeight: "700",
+  },
+  riderPhone: {
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
+    marginTop: 2,
+  },
+  riderType: {
+    ...(theme.type.caption as object),
+    color: theme.color.primaryContainer,
+    marginTop: 2,
+    fontWeight: "600",
+  },
+  availablePill: {
+    backgroundColor: theme.color.okBg,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.color.okBorder,
+  },
+  available: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.okInk,
+  },
 });
