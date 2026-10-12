@@ -850,12 +850,12 @@ const s = StyleSheet.create({
   },
 
   // Progress
-  progressWrap: { marginTop: theme.space.xs, marginBottom: theme.space.xs },
+  progressWrap: { marginTop: 2, marginBottom: 2 },
   progressHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 3,
   },
   progressLabel: {
     ...(theme.type.labelSm as object),
@@ -868,14 +868,14 @@ const s = StyleSheet.create({
     fontWeight: "700",
   },
   progressTrack: {
-    height: 8,
-    borderRadius: 4,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: theme.color.surfaceContainerHigh,
     overflow: "hidden",
   },
   progressFill: {
-    height: 8,
-    borderRadius: 4,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: theme.color.primaryContainer,
   },
   progressText: {
@@ -890,12 +890,12 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: theme.color.surface,
-    paddingVertical: theme.space.sm,
-    paddingHorizontal: theme.space.md,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     borderColor: theme.color.line,
-    marginVertical: theme.space.xs,
+    marginVertical: 3,
   },
   stepperItemWrap: {
     flex: 1,

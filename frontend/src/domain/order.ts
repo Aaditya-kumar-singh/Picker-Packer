@@ -84,26 +84,26 @@ export function nextPendingLine(o: Order): OrderLine | null {
 // Every pick-screen entry point and every pick screen itself derives the
 // target from this, never from navigation history. The backend remains the
 // enforcer (LINE_NOT_READY); this keeps the UI from asking illegally.
-export type PickStep = "location" | "sku" | "quantity" | "complete";
+export type PickStep = "sku" | "quantity" | "complete";
 
 // A single line's status → the step that owns it. Terminal statuses return
 // null so callers advance to the next pending line instead of re-showing a
 // completed step.
-export function stepForLineStatus(status: string): "location" | "sku" | "quantity" | null {
-  if (status === "PENDING") return "location";
-  if (status === "LOCATION_VALIDATED") return "sku";
+export function stepForLineStatus(status: string): "sku" | "quantity" | null {
+  if (status === "PENDING" || status === "LOCATION_VALIDATED") return "sku";
+
   if (status === "SKU_VALIDATED") return "quantity";
   return null;
 }
 
 // First non-terminal line (route order) → its authoritative step.
 // No active line (all PICKED/EXCEPTION/SKIPPED) → "complete".
-// Unknown statuses fail closed to "location" (the first step); the backend
+// Unknown statuses fail closed to "sku" (the first step); the backend
 // rejects with LINE_NOT_READY if the line genuinely is not ready.
 export function resolvePickStep(o: Order): PickStep {
   const line = nextPendingLine(o);
   if (!line) return "complete";
-  return stepForLineStatus(line.status) ?? "location";
+  return stepForLineStatus(line.status) ?? "sku";
 }
 
 // Full pick-route path for an order, e.g. "/pick/<id>/quantity".

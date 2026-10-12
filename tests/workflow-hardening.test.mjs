@@ -40,6 +40,18 @@ test("offline replay handles every defined event type", () => {
   assert.match(offline, /payload: \{ qty, uom, sku: line\.skuBarcode \}/);
 });
 
+test("product scan starts from a pending line and camera scans count immediately", () => {
+  const domain = read("frontend/src/domain/order.ts");
+  const offline = read("frontend/src/sync/offlineApi.ts");
+  const screen = read("frontend/src/screens/SkuScanScreen.tsx");
+  assert.match(domain, /status === "PENDING"\s*\|\| status === "LOCATION_VALIDATED"\) return "sku"/);
+  assert.match(offline, /line\.status !== "PENDING" && line\.status !== "LOCATION_VALIDATED" && line\.status !== "SKU_VALIDATED"/);
+  assert.match(offline, /payload: \{ scanValue: normalize\(scanValue\) \}/);
+  assert.match(screen, /onScanned=\{\(value\) => \{\s*setManual\(value\);\s*void processItemBarcode\(value\);/);
+  assert.match(screen, /const quantity = 1/);
+  assert.match(screen, /setSkuVerified\(!completed\)/);
+});
+
 test("packer and evidence routes exist", () => {
   for (const file of [
     "frontend/src/app/(tabs)/packer-dashboard.tsx",
@@ -158,12 +170,24 @@ test("expanded product catalog has unique warehouse barcodes and six-line genera
   assert.match(sql, /ON CONFLICT \(sku\) DO UPDATE/);
 });
 
-test("barcode scanning is persisted and required before picking", () => {
-  const sql = read("supabase/migrations/0005_barcode_scan_workflow.sql");
-  assert.match(sql, /COALESCE\(v_item\.location_barcode, v_item\.location\)/);
-  assert.match(sql, /COALESCE\(v_item\.sku_barcode, v_item\.sku\)/);
-  assert.match(sql, /Location barcode must be scanned first/);
-  assert.match(sql, /Product barcode must be scanned first/);
+test("product-only picking keeps product validation and removes the location prerequisite", () => {
+  const legacy = read("supabase/migrations/0005_barcode_scan_workflow.sql");
+  const current = read("supabase/migrations/0014_product_only_picker_scan.sql");
+  const idempotency = read("supabase/migrations/0015_picker_idempotency_result.sql");
+  assert.match(legacy, /Location barcode must be scanned first/); // applied migration is preserved
+  assert.match(current, /Product barcode does not match/);
+  assert.match(current, /Product barcode must be scanned first/);
+  assert.doesNotMatch(current, /Location barcode must be scanned first/);
+  assert.match(current, /v_order\.warehouse_id <> v_user\.warehouse_id/);
+  assert.match(current, /Picked quantity cannot exceed required quantity/);
+  assert.match(current, /Re-check after acquiring the order lock/);
+  assert.match(current, /pg_advisory_xact_lock/);
+  assert.equal(current.split("$function$").length - 1, 2);
+  assert.equal((current.match(/COMMIT;/g) ?? []).length, 1);
+  assert.match(idempotency, /pg_advisory_xact_lock\(hashtextextended\(p_idempotency_key, 0\)\)/);
+  assert.match(idempotency, /Idempotency key is already used by another operation/);
+  assert.match(idempotency, /v_existing\.response_body::jsonb ->> 'pickedQty'/);
+  assert.doesNotMatch(idempotency, /Location barcode must be scanned first/);
 });
 
 test("test order generator caps the picker backlog at 30", () => {

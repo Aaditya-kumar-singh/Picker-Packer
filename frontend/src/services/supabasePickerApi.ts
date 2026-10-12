@@ -16,7 +16,7 @@ function mapStatus(s: string): Order["status"] {
 
 function toLine(l: client.OrderItem, idx = 0): OrderLine {
   return {
-    id: l.id, lineNo: idx + 1, skuCode: l.sku, skuName: l.productName, productSpecs: l.productSpecs, skuBarcode: l.skuBarcode,
+    id: l.id, lineNo: idx + 1, skuCode: l.sku, skuName: l.productName, productSpecs: l.productSpecs, productImageUrl: l.productImageUrl ?? null, skuBarcode: l.skuBarcode,
     locationCode: l.location, locationBarcode: l.locationBarcode, requiredQty: l.requiredQty,
     pickedQty: l.pickedQty, uom: "EA",
     status: l.lineStatus ?? (l.pickedQty >= l.requiredQty ? "PICKED" : "PENDING"),

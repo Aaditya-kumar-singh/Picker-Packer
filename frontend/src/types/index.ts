@@ -42,6 +42,7 @@ export interface OrderLine {
   skuCode: string;
   skuName: string;
   productSpecs: string;
+  productImageUrl?: string | null;
   skuBarcode: string;
   locationCode: string;
   locationBarcode: string;

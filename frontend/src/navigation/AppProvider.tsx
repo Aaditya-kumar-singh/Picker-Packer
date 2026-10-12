@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/api/supabase";
 import { pickerRepository } from "@/repositories/pickerRepository";
 import type { PickerProfile } from "@/types";
@@ -12,11 +13,12 @@ interface AuthState {
   error: string | null;
   requestOtp: (pickerId: string) => Promise<{ expiresIn: number; masked: string } | null>;
   verifyOtp: (pickerId: string, otp: string) => Promise<boolean>;
-  loginWithEmail: (email: string, password: string) => Promise<boolean>;
+  loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
 const AuthCtx = createContext<AuthState | null>(null);
+const REMEMBER_ME_KEY = "ybm.auth.remember-me";
 
 async function loadProfile(userId: string): Promise<PickerProfile> {
   const { data, error } = await supabase.from("users").select("*").eq("id", userId).single();
@@ -41,8 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     const restore = async () => {
       try {
+        const rememberMe = (await AsyncStorage.getItem(REMEMBER_ME_KEY)) !== "false";
         const { data } = await supabase.auth.getSession();
-        if (data.session && mounted) setPicker(await loadProfile(data.session.user.id));
+        if (!rememberMe && data.session) {
+          await supabase.auth.signOut();
+        } else if (data.session && mounted) {
+          setPicker(await loadProfile(data.session.user.id));
+        }
       } catch (e) {
         if (mounted) setError(e instanceof Error ? e.message : "Session restore failed");
       } finally {
@@ -82,13 +89,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
-  const loginWithEmail = useCallback(async (email: string, password: string) => {
+  const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = true) => {
     setLoading(true);
     setError(null);
     try {
+      await AsyncStorage.setItem(REMEMBER_ME_KEY, rememberMe ? "true" : "false");
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError || !data.user) throw new Error(authError?.message || "Login failed");
       setPicker(await loadProfile(data.user.id));
+      if (!rememberMe) {
+        // Keep the current shift active in memory, but discard the persisted
+        // Supabase session so the next app launch requires sign-in again.
+        await supabase.auth.signOut({ scope: "local" });
+        setPicker(await loadProfile(data.user.id));
+      }
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");

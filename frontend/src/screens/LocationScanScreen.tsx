@@ -44,7 +44,7 @@ export function LocationScanScreen() {
   const line = order ? nextPendingLine(order) : null;
   const step = order ? resolvePickStep(order) : null;
   useEffect(() => {
-    if (order && step !== null && step !== "location") {
+    if (order && step !== null) {
       router.replace(`/pick/${order.id}/${step}` as never);
     }
   }, [order, step]);
@@ -89,7 +89,7 @@ export function LocationScanScreen() {
     }
   }
 
-  if (!order || !line || step !== "location") {
+  if (!order || !line) {
     return (
       <Screen>
         <AppHeader title="Location Scan" sub={!order ? "Loading…" : "Resuming correct step…"} />

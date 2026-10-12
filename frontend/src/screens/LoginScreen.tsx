@@ -1,38 +1,16 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { AppHeader, ErrorBanner, FieldInput, PrimaryButton, Screen, theme } from "@/components/ui";
+import { ErrorBanner, FieldInput, PrimaryButton, Screen, theme } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
-
-const DEV_QUICK_LOGIN = process.env.EXPO_PUBLIC_DEV_QUICK_LOGIN === "true";
-const DEV_ACCOUNTS = {
-  picker: {
-    label: "TEST LOGIN • PICKER",
-    email: process.env.EXPO_PUBLIC_DEV_PICKER_EMAIL ?? "",
-    password: process.env.EXPO_PUBLIC_DEV_PICKER_PASSWORD ?? "",
-  },
-  packer: {
-    label: "TEST LOGIN • PACKER",
-    email: process.env.EXPO_PUBLIC_DEV_PACKER_EMAIL ?? "",
-    password: process.env.EXPO_PUBLIC_DEV_PACKER_PASSWORD ?? "",
-  },
-} as const;
 
 export function LoginScreen() {
   const { loginWithEmail, loading, error } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
-
-  const quickLoginVisible = useMemo(() => __DEV__ || DEV_QUICK_LOGIN, []);
-  const quickLoginReady = useMemo(
-    () => ({
-      picker: Boolean(DEV_ACCOUNTS.picker.email && DEV_ACCOUNTS.picker.password),
-      packer: Boolean(DEV_ACCOUNTS.packer.email && DEV_ACCOUNTS.packer.password),
-    }),
-    [],
-  );
 
   async function onContinue() {
     if (!email.trim() || !password.trim()) {
@@ -40,20 +18,7 @@ export function LoginScreen() {
       return;
     }
     setLocalError(null);
-    const success = await loginWithEmail(email.trim(), password.trim());
-    if (success) router.replace("/");
-  }
-
-  async function onQuickLogin(role: "picker" | "packer") {
-    const account = DEV_ACCOUNTS[role];
-    if (!account.email || !account.password) {
-      setLocalError("Development quick login is not configured.");
-      return;
-    }
-    setLocalError(null);
-    setEmail(account.email);
-    setPassword(account.password);
-    const success = await loginWithEmail(account.email, account.password);
+    const success = await loginWithEmail(email.trim(), password.trim(), rememberMe);
     if (success) router.replace("/");
   }
 
@@ -90,6 +55,7 @@ export function LoginScreen() {
         onChangeText={setEmail}
         autoCapitalize="none"
         autoCorrect={false}
+        keyboardType="email-address"
         placeholder="username@ybm.internal"
         returnKeyType="next"
         editable={!busy}
@@ -108,6 +74,22 @@ export function LoginScreen() {
         error={localError}
         editable={!busy}
       />
+
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: rememberMe, disabled: busy }}
+        accessibilityLabel="Remember me on this device"
+        onPress={() => setRememberMe((value) => !value)}
+        disabled={busy}
+        style={ls.rememberRow}
+        hitSlop={6}
+      >
+        <View style={[ls.checkbox, rememberMe && ls.checkboxChecked]}>
+          {rememberMe ? <Ionicons name="checkmark" size={14} color="#ffffff" /> : null}
+        </View>
+        <Text style={ls.rememberText}>Remember me</Text>
+      </Pressable>
+
       <ErrorBanner message={localError ? null : error} />
       <PrimaryButton
         label={busy ? "Authenticating…" : "LOG IN TO SHIFT"}
@@ -115,40 +97,6 @@ export function LoginScreen() {
         onPress={onContinue}
         disabled={busy}
       />
-
-      {quickLoginVisible ? (
-        <View style={ls.quickButtons}>
-          <Text style={ls.quickSectionLabel}>DEVELOPMENT QUICK ACCESS</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: busy || !quickLoginReady.picker }}
-            onPress={() => void onQuickLogin("picker")}
-            disabled={busy || !quickLoginReady.picker}
-            style={({ pressed }) => [
-              ls.quickPicker,
-              (busy || !quickLoginReady.picker) && ls.quickDisabled,
-              pressed && !busy && quickLoginReady.picker && ls.quickPressed,
-            ]}
-          >
-            <Ionicons name="cart-outline" size={18} color="#ffffff" />
-            <Text style={ls.quickButtonText}>QUICK LOGIN • PICKER</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: busy || !quickLoginReady.packer }}
-            onPress={() => void onQuickLogin("packer")}
-            disabled={busy || !quickLoginReady.packer}
-            style={({ pressed }) => [
-              ls.quickPacker,
-              (busy || !quickLoginReady.packer) && ls.quickDisabled,
-              pressed && !busy && quickLoginReady.packer && ls.quickPressed,
-            ]}
-          >
-            <Ionicons name="cube-outline" size={18} color="#ffffff" />
-            <Text style={ls.quickButtonText}>QUICK LOGIN • PACKER</Text>
-          </Pressable>
-        </View>
-      ) : null}
 
       <View style={ls.footer}>
         <Ionicons name="shield-checkmark-outline" size={14} color={theme.color.muted} style={{ marginRight: 4 }} />
@@ -261,45 +209,35 @@ const ls = StyleSheet.create({
     fontWeight: "800",
     color: theme.color.okInk,
   },
-  quickButtons: {
-    marginTop: theme.space.md,
-    gap: theme.space.xs,
-  },
-  quickSectionLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-    color: theme.color.muted,
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  quickPicker: {
-    backgroundColor: theme.picker.primary,
-    minHeight: 48,
-    justifyContent: "center",
-    borderRadius: theme.radius.md,
-    alignItems: "center",
+  rememberRow: {
+    minHeight: 44,
     flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: theme.space.md,
-  },
-  quickPacker: {
-    backgroundColor: theme.packer.primary,
-    minHeight: 48,
-    justifyContent: "center",
-    borderRadius: theme.radius.md,
     alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: theme.space.md,
+    alignSelf: "flex-start",
+    gap: 10,
+    marginTop: theme.space.xs,
+    marginBottom: theme.space.xs,
+    paddingHorizontal: 2,
   },
-  quickButtonText: {
-    ...(theme.type.button as object),
-    color: "#ffffff",
-    fontSize: 13,
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: theme.color.muted,
+    backgroundColor: theme.color.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  quickDisabled: { opacity: 0.45 },
-  quickPressed: { opacity: 0.88 },
+  checkboxChecked: {
+    backgroundColor: theme.color.primaryContainer,
+    borderColor: theme.color.primaryContainer,
+  },
+  rememberText: {
+    ...(theme.type.bodyMd as object),
+    color: theme.color.ink,
+    fontWeight: "600",
+  },
   footer: {
     flexDirection: "row",
     alignItems: "center",

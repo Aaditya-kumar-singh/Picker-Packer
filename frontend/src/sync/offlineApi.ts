@@ -238,8 +238,8 @@ export class OfflineFirstPickerApi implements IPickerApi {
     if (TERMINAL.includes(line.status)) {
       return { ok: false, apiError: { error: "LINE_ALREADY_PICKED", message: "This line is already complete", details: [], requestId: "", timestamp: new Date().toISOString() } };
     }
-    if (line.status !== "LOCATION_VALIDATED") {
-      return offline("Scan the location barcode first.");
+    if (line.status !== "PENDING" && line.status !== "LOCATION_VALIDATED" && line.status !== "SKU_VALIDATED") {
+      return offline(`Line is ${line.status} locally.`);
     }
     if (normalize(scanValue) !== normalize(line.skuBarcode)) {
       return { ok: false, apiError: { error: "WRONG_SKU", message: "Scanned item does not match the cached expected SKU", details: [], requestId: "", timestamp: new Date().toISOString() } };
@@ -267,7 +267,7 @@ export class OfflineFirstPickerApi implements IPickerApi {
     if (!found) return offline("Line not cached. Connect to continue.");
     const { order, line } = found;
     if (order.status !== "IN_PROGRESS") return offline(`Order is ${order.status} locally.`);
-    if (line.status !== "SKU_VALIDATED") return offline("Validate location and SKU first.");
+    if (line.status !== "SKU_VALIDATED") return offline("Scan the product barcode first.");
     const remaining = line.requiredQty - line.pickedQty;
     if (!Number.isFinite(qty) || qty <= 0) {
       return { ok: false, apiError: { error: "INVALID_QTY", message: "Quantity must be greater than 0", details: [], requestId: "", timestamp: new Date().toISOString() } };

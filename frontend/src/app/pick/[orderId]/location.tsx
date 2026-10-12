@@ -1,4 +1,6 @@
-import { LocationScanScreen } from "@/screens/LocationScanScreen";
+// Legacy deep links now enter the product-only picking screen directly.
+import { SkuScanScreen } from "@/screens/SkuScanScreen";
+
 export default function Route() {
-  return <LocationScanScreen />;
+  return <SkuScanScreen />;
 }

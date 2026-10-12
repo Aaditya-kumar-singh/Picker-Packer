@@ -16,6 +16,7 @@ export type OrderItem = {
   sku: string;
   productName: string;
   productSpecs: string;
+  productImageUrl?: string | null;
   productType: string;
   skuBarcode: string;
   location: string;
@@ -145,6 +146,7 @@ function mapItem(i: any): OrderItem {
     sku: i.sku,
     productName: i.product_name,
     productSpecs: i.product_specs ?? "",
+    productImageUrl: i.product_image_url ?? null,
     productType: i.product_type ?? "STANDARD",
     skuBarcode: i.sku_barcode ?? i.sku,
     location: i.location,
@@ -199,6 +201,22 @@ async function detail(id: string): Promise<OrderDetail> {
   if (se) error(se.message);
   if (ce) error(ce.message);
 
+  // Product images live in the catalog and are joined by SKU so all order
+  // lines use one canonical image reference instead of duplicating URLs.
+  const { data: catalogImages } = await supabase
+    .from("product_catalog")
+    .select("sku,image_path")
+    .in("sku", (items ?? []).map((item: any) => item.sku));
+  const imageUrlBySku = new Map<string, string>();
+  for (const product of catalogImages ?? []) {
+    if (product.image_path) {
+      imageUrlBySku.set(
+        product.sku,
+        supabase.storage.from("product-images").getPublicUrl(product.image_path).data.publicUrl,
+      );
+    }
+  }
+
   const scanState = new Map<string, { location: boolean; sku: boolean }>();
   for (const scan of scans ?? []) {
     if (!scan.item_id) continue;
@@ -214,6 +232,7 @@ async function detail(id: string): Promise<OrderDetail> {
     items: (items ?? []).map((i: any) => ({
       id: i.id, sku: i.sku, productName: i.product_name,
       productSpecs: i.product_specs ?? "",
+      productImageUrl: imageUrlBySku.get(i.sku) ?? null,
       productType: i.product_type ?? "STANDARD",
       skuBarcode: i.sku_barcode ?? i.sku,
       location: i.location,
@@ -223,7 +242,7 @@ async function detail(id: string): Promise<OrderDetail> {
         ? "PICKED"
         : ((scanState.get(i.id)?.sku)
           ? "SKU_VALIDATED"
-          : (scanState.get(i.id)?.location ? "LOCATION_VALIDATED" : "PENDING")),
+          : "PENDING"),
     })),
     exceptions: (exceptions ?? []).map((e: any) => ({
       id: e.id, itemId: e.item_id, type: e.type, reason: e.reason, quantity: e.quantity,
@@ -306,8 +325,6 @@ async function listOrders(statuses: string[], role: Role) {
         item.lineStatus = "PICKED";
       } else if (state?.sku) {
         item.lineStatus = "SKU_VALIDATED";
-      } else if (state?.location) {
-        item.lineStatus = "LOCATION_VALIDATED";
       } else {
         item.lineStatus = "PENDING";
       }

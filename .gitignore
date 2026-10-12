@@ -27,3 +27,7 @@
 
 # Temporary/legacy working files
 temp-WarehousePicker/**/*.log
+
+# Product catalog photos are uploaded to Supabase Storage; keep local source assets out of Git
+/product-images/
+/product-images.zip
