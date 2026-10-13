@@ -26,6 +26,7 @@ export function LoginScreen() {
 
   return (
     <Screen center backgroundColor={theme.color.bg}>
+      {/* Brand */}
       <View style={ls.brandBox}>
         <View style={ls.logoCircle}>
           <Text style={ls.logoLetter}>Y</Text>
@@ -34,19 +35,10 @@ export function LoginScreen() {
         <Text style={ls.version}>Warehouse Execution System</Text>
       </View>
 
-      <View style={ls.heroCard}>
-        <View style={ls.heroCopy}>
-          <Text style={ls.heroTitle}>Staff Sign In</Text>
-          <Text style={ls.heroDesc}>Enter your warehouse credentials to begin your active shift</Text>
-        </View>
-        <View style={ls.scannerBar}>
-          <Ionicons name="barcode-outline" size={20} color={theme.color.primaryContainer} />
-          <Text style={ls.scannerLabel}>HARDWARE SCANNER</Text>
-          <View style={ls.activeChip}>
-            <View style={ls.activeDot} />
-            <Text style={ls.activeText}>ONLINE</Text>
-          </View>
-        </View>
+      {/* Sign In heading */}
+      <View style={ls.headingCard}>
+        <Text style={ls.headingTitle}>Sign In</Text>
+        <Text style={ls.headingDesc}>Enter your credentials to start your shift</Text>
       </View>
 
       <FieldInput
@@ -60,7 +52,6 @@ export function LoginScreen() {
         returnKeyType="next"
         editable={!busy}
       />
-      <View style={{ height: 8 }} />
       <FieldInput
         label="Password"
         value={password}
@@ -92,15 +83,15 @@ export function LoginScreen() {
 
       <ErrorBanner message={localError ? null : error} />
       <PrimaryButton
-        label={busy ? "Authenticating…" : "LOG IN TO SHIFT"}
+        label={busy ? "Authenticating…" : "LOG IN"}
         icon="log-in-outline"
         onPress={onContinue}
         disabled={busy}
       />
 
       <View style={ls.footer}>
-        <Ionicons name="shield-checkmark-outline" size={14} color={theme.color.muted} style={{ marginRight: 4 }} />
-        <Text style={ls.footerText}>Protected by YBM Enterprise Multi-Tenant Security</Text>
+        <Ionicons name="shield-checkmark-outline" size={13} color={theme.color.muted} style={{ marginRight: 4 }} />
+        <Text style={ls.footerText}>Protected by YBM Enterprise Security</Text>
       </View>
     </Screen>
   );
@@ -109,12 +100,11 @@ export function LoginScreen() {
 const ls = StyleSheet.create({
   brandBox: {
     alignItems: "center",
-    marginBottom: theme.space.md,
-    paddingTop: theme.space.xs,
+    marginBottom: 20,
   },
   logoCircle: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
     borderRadius: theme.radius.md,
     backgroundColor: theme.color.primary,
     borderWidth: 2,
@@ -122,20 +112,20 @@ const ls = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 3,
-    marginBottom: theme.space.xs,
+    marginBottom: 8,
   },
   logoLetter: {
-    fontSize: 36,
+    fontSize: 30,
     fontWeight: "900",
     fontStyle: "italic",
     color: "#ffffff",
   },
   brandTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "900",
     color: theme.color.ink,
     letterSpacing: 2,
@@ -144,79 +134,27 @@ const ls = StyleSheet.create({
     ...(theme.type.secondary as object),
     color: theme.color.muted,
     marginTop: 2,
-    fontWeight: "600",
   },
-  heroCard: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1.5,
-    borderColor: theme.color.line,
-    padding: theme.space.md,
-    marginBottom: theme.space.sm,
-    shadowColor: theme.color.ink,
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+  headingCard: {
+    marginBottom: 6,
   },
-  heroCopy: { marginBottom: theme.space.xs },
-  heroTitle: {
+  headingTitle: {
     ...(theme.type.titleMd as object),
     color: theme.color.ink,
   },
-  heroDesc: {
+  headingDesc: {
     ...(theme.type.bodyMd as object),
     color: theme.color.muted,
     marginTop: 2,
   },
-  scannerBar: {
-    backgroundColor: theme.color.surfaceContainerLow,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: 8,
-    marginTop: theme.space.xs,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.space.xs,
-    borderWidth: 1,
-    borderColor: theme.color.line,
-  },
-  scannerLabel: {
-    ...(theme.type.labelSm as object),
-    color: theme.color.primaryContainer,
-    flex: 1,
-    fontWeight: "800",
-  },
-  activeChip: {
-    backgroundColor: theme.color.okBg,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: theme.radius.pill,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderWidth: 1,
-    borderColor: theme.color.okBorder,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.color.okInk,
-  },
-  activeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: theme.color.okInk,
-  },
   rememberRow: {
-    minHeight: 44,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
     gap: 10,
-    marginTop: theme.space.xs,
-    marginBottom: theme.space.xs,
+    marginTop: 8,
+    marginBottom: 4,
     paddingHorizontal: 2,
   },
   checkbox: {
@@ -242,7 +180,7 @@ const ls = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: theme.space.md,
+    marginTop: 16,
   },
   footerText: {
     fontSize: 11,

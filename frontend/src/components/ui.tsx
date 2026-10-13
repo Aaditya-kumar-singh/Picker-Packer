@@ -73,10 +73,12 @@ export function Screen({
   children,
   center,
   backgroundColor,
+  contentContainerStyle,
 }: {
   children: ReactNode;
   center?: boolean;
   backgroundColor?: string;
+  contentContainerStyle?: import("react-native").StyleProp<import("react-native").ViewStyle>;
 }) {
   return (
     <SafeAreaView style={[s.screen, backgroundColor ? { backgroundColor } : null]}>
@@ -85,7 +87,7 @@ export function Screen({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
-          contentContainerStyle={[s.body, center === true && s.center]}
+          contentContainerStyle={[s.body, center === true && s.center, contentContainerStyle]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -114,8 +116,7 @@ export function AppHeader({
           onPress={() => router.back()}
           style={({ pressed }) => [s.backButton, pressed ? s.pressedGhost : null]}
         >
-          <Ionicons name="arrow-back" size={18} color={theme.color.primary} />
-          <Text style={s.backText}>Back</Text>
+          <Ionicons name="arrow-back" size={20} color={theme.color.primary} />
         </Pressable>
       )}
       <Text style={s.headerTitle} numberOfLines={1}>{title}</Text>
@@ -128,7 +129,7 @@ export function AlertHeader({ title, sub }: { title: string; sub?: string }) {
   return (
     <View style={s.alertHeader} accessibilityRole="header">
       <View style={s.alertRow}>
-        <Ionicons name="warning" size={24} color={theme.color.warnInk} />
+        <Ionicons name="warning" size={22} color={theme.color.warnInk} />
         <Text style={s.alertTitle}>{title}</Text>
       </View>
       {sub ? <Text style={s.alertSub}>{sub}</Text> : null}
@@ -280,7 +281,7 @@ export function FieldInput({
       </View>
       {error ? (
         <View style={s.fieldErrorRow}>
-          <Ionicons name="alert-circle" size={16} color={theme.color.badInk} />
+          <Ionicons name="alert-circle" size={14} color={theme.color.badInk} />
           <Text style={s.fieldError}>{error}</Text>
         </View>
       ) : null}
@@ -292,7 +293,7 @@ export function ScanTarget({ label, value }: { label: string; value: string }) {
   return (
     <View style={s.scan}>
       <View style={s.scanHeader}>
-        <Ionicons name="scan-outline" size={18} color={theme.color.primaryContainer} />
+        <Ionicons name="scan-outline" size={16} color={theme.color.primaryContainer} />
         <Text style={s.scanLabel}>{label}</Text>
       </View>
       <Text selectable style={s.scanValue}>{value}</Text>
@@ -350,7 +351,7 @@ export function StatusBadge({ text, tone }: { text: string; tone: Tone }) {
   const ink = toneInk(tone);
   return (
     <View style={[s.badge, { backgroundColor: toneBg(tone), borderColor: toneBorder(tone) }]}>
-      <Ionicons name={icon} size={14} color={ink} style={{ marginRight: 4 }} />
+      <Ionicons name={icon} size={13} color={ink} style={{ marginRight: 3 }} />
       <Text style={[s.badgeText, { color: ink }]}>{text}</Text>
     </View>
   );
@@ -360,7 +361,7 @@ export function ErrorBanner({ message }: { message: string | null }) {
   if (!message) return null;
   return (
     <View style={s.error} accessibilityRole="alert">
-      <Ionicons name="alert-circle" size={20} color={theme.color.badInk} />
+      <Ionicons name="alert-circle" size={18} color={theme.color.badInk} />
       <Text style={s.errorText}>{message}</Text>
     </View>
   );
@@ -370,7 +371,7 @@ export function SuccessFeedback({ message }: { message: string | null }) {
   if (!message) return null;
   return (
     <View style={s.success}>
-      <Ionicons name="checkmark-circle" size={20} color={theme.color.okInk} />
+      <Ionicons name="checkmark-circle" size={18} color={theme.color.okInk} />
       <Text style={s.successText}>{message}</Text>
     </View>
   );
@@ -381,15 +382,12 @@ export function ProgressIndicator({ done, total }: { done: number; total: number
   return (
     <View style={s.progressWrap}>
       <View style={s.progressHeader}>
-        <Text style={s.progressLabel}>Overall Progress</Text>
-        <Text style={s.progressPercentage}>{pct}%</Text>
+        <Text style={s.progressLabel}>Progress</Text>
+        <Text style={s.progressPercentage}>{done}/{total} ({pct}%)</Text>
       </View>
       <View style={s.progressTrack}>
         <View style={[s.progressFill, { width: `${pct}%` }]} />
       </View>
-      <Text style={s.progressText}>
-        {done} of {total} lines resolved
-      </Text>
     </View>
   );
 }
@@ -423,11 +421,11 @@ export function PickStepStepper({
               ]}
             >
               {isDone ? (
-                <Ionicons name="checkmark" size={16} color="#ffffff" />
+                <Ionicons name="checkmark" size={14} color="#ffffff" />
               ) : (
                 <Ionicons
                   name={st.icon}
-                  size={14}
+                  size={12}
                   color={isActive ? "#ffffff" : theme.color.muted}
                 />
               )}
@@ -449,30 +447,6 @@ export function PickStepStepper({
       })}
     </View>
   );
-}
-
-export function SLAIndicator({ slaDueAt }: { slaDueAt: string }) {
-  const mins = Math.max(0, Math.round((+new Date(slaDueAt) - Date.now()) / 60000));
-  const urgent = mins < 30;
-  const soon = !urgent && mins < 60;
-  return (
-    <View style={[s.sla, urgent ? s.slaUrgent : soon ? s.slaSoon : s.slaCalm]}>
-      <Ionicons
-        name={urgent ? "warning" : "time-outline"}
-        size={15}
-        color={urgent ? theme.color.badInk : soon ? theme.color.warnInk : theme.color.infoInk}
-      />
-      <Text style={[s.slaText, urgent ? s.slaTextUrgent : soon ? s.slaTextSoon : s.slaTextCalm]}>
-        {urgent ? `SLA: ${mins}m left — URGENT` : `SLA: ${mins}m left`}
-      </Text>
-    </View>
-  );
-}
-
-export function WmsStatusBadge({ status }: { status: string }) {
-  const tone: Tone =
-    status === "SYNCED" ? "ok" : status === "PENDING" ? "warn" : status === "FAILED" ? "bad" : "info";
-  return <StatusBadge text={`WMS: ${status}`} tone={tone} />;
 }
 
 // ── Selection Chips ────────────────────────────────────────────────────
@@ -520,7 +494,7 @@ export function MetricCard({
 }) {
   const accentColor = tone ? toneInk(tone) : theme.color.primaryContainer;
   const inner = (
-    <View style={[s.metric, tone !== undefined && { borderTopColor: accentColor, borderTopWidth: 4 }]}>
+    <View style={[s.metric, tone !== undefined && { borderTopColor: accentColor, borderTopWidth: 3 }]}>
       <Text style={[s.metricValue, tone !== undefined && { color: accentColor }]}>{value}</Text>
       <Text style={s.metricLabel}>{label}</Text>
     </View>
@@ -557,12 +531,12 @@ export function EmptyState({
   return (
     <View style={s.stateBox}>
       <View style={s.emptyIconWrap}>
-        <Ionicons name="folder-open-outline" size={40} color={theme.color.faint} />
+        <Ionicons name="folder-open-outline" size={36} color={theme.color.faint} />
       </View>
       <Text style={s.emptyTitle}>{title}</Text>
       {body ? <Text style={s.stateText}>{body}</Text> : null}
       {actionLabel && onAction ? (
-        <View style={{ marginTop: theme.space.md, alignSelf: "center", minWidth: 160 }}>
+        <View style={{ marginTop: theme.space.sm, alignSelf: "center", minWidth: 140 }}>
           <SecondaryButton label={actionLabel} onPress={onAction} />
         </View>
       ) : null}
@@ -583,7 +557,7 @@ export function ErrorState({
     <View style={s.stateBox}>
       <ErrorBanner message={message} />
       {onRetry ? (
-        <View style={{ marginTop: theme.space.sm, alignSelf: "center", minWidth: 160 }}>
+        <View style={{ marginTop: theme.space.xs, alignSelf: "center", minWidth: 140 }}>
           <PrimaryButton label={retryLabel} onPress={onRetry} />
         </View>
       ) : null}
@@ -596,65 +570,59 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.color.bg },
   body: {
     flexGrow: 1,
-    paddingHorizontal: theme.space.md,
-    paddingTop: theme.space.sm,
-    paddingBottom: theme.space.xl,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   center: { justifyContent: "center" },
 
-  // Headers
-  header: { paddingVertical: theme.space.xs, marginBottom: theme.space.xs },
+  // Headers — tighter, cleaner
+  header: { paddingTop: 4, paddingBottom: 6, marginBottom: 4 },
   backButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     alignSelf: "flex-start",
-    marginBottom: theme.space.xs,
+    marginBottom: 2,
     borderRadius: theme.radius.sm,
   },
-  backText: {
-    ...(theme.type.bodyMd as object),
-    fontWeight: "700",
-    color: theme.color.primary,
-  },
-  headerTitle: { ...(theme.type.display as object), color: theme.color.ink },
+  pressedGhost: { backgroundColor: theme.color.surfaceContainer },
+  headerTitle: { ...(theme.type.title as object), color: theme.color.ink },
   headerSub: {
     ...(theme.type.secondary as object),
     color: theme.color.muted,
-    marginTop: 4,
-    letterSpacing: 0.3,
+    marginTop: 2,
   },
   alertHeader: {
     backgroundColor: theme.color.warnBg,
     borderRadius: theme.radius.md,
-    padding: theme.space.md,
-    marginBottom: theme.space.sm,
+    padding: 14,
+    marginBottom: 8,
     borderLeftWidth: 4,
     borderLeftColor: theme.color.warnInk,
     borderWidth: 1,
     borderColor: theme.color.warnBorder,
   },
   alertRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  alertTitle: { ...(theme.type.title as object), color: theme.color.warnInk },
-  alertSub: { ...(theme.type.secondary as object), color: theme.color.warnInk, marginTop: 4 },
+  alertTitle: { ...(theme.type.titleMd as object), color: theme.color.warnInk },
+  alertSub: { ...(theme.type.secondary as object), color: theme.color.warnInk, marginTop: 2 },
   sectionHead: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: theme.space.lg,
-    marginBottom: theme.space.xs,
+    marginTop: 16,
+    marginBottom: 6,
   },
   sectionTitle: {
     ...(theme.type.section as object),
     color: theme.color.ink,
-    letterSpacing: 0.2,
   },
   hintPill: {
     backgroundColor: theme.color.surfaceContainer,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 2,
     borderRadius: theme.radius.pill,
   },
   sectionHint: {
@@ -664,27 +632,26 @@ const s = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: theme.color.line,
-    marginVertical: theme.space.sm,
+    marginVertical: 10,
   },
 
-  // Buttons
+  // Buttons — slightly more compact
   primary: {
-    minHeight: theme.touch.primary,
+    minHeight: 52,
     justifyContent: "center",
     borderRadius: theme.radius.md,
     alignItems: "center",
-    marginTop: theme.space.sm,
+    marginTop: 10,
     flexDirection: "row",
-    gap: theme.space.xs,
-    paddingHorizontal: theme.space.md,
+    gap: 8,
+    paddingHorizontal: 16,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
   pressed: { opacity: 0.88, transform: [{ scale: 0.99 }] },
-  pressedGhost: { backgroundColor: theme.color.surfaceContainer },
   disabled: { opacity: 0.45 },
   primaryText: {
     ...(theme.type.button as object),
@@ -695,14 +662,14 @@ const s = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: theme.color.lineStrong,
     backgroundColor: theme.color.surface,
-    minHeight: theme.touch.min,
+    minHeight: 48,
     justifyContent: "center",
     borderRadius: theme.radius.md,
     alignItems: "center",
-    marginTop: theme.space.xs,
+    marginTop: 6,
     flexDirection: "row",
-    gap: theme.space.xs,
-    paddingHorizontal: theme.space.md,
+    gap: 8,
+    paddingHorizontal: 16,
   },
   secondaryText: {
     ...(theme.type.button as object),
@@ -711,12 +678,12 @@ const s = StyleSheet.create({
   },
   secondaryTextDisabled: { color: theme.color.faint },
 
-  // Inputs
-  field: { marginTop: theme.space.sm },
+  // Inputs — slightly more compact
+  field: { marginTop: 8 },
   fieldLabel: {
     ...(theme.type.labelMd as object),
     color: theme.color.inkSecondary,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   input: {
     borderWidth: 1.5,
@@ -724,10 +691,10 @@ const s = StyleSheet.create({
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.md,
     ...(theme.type.bodyMd as object),
-    padding: theme.space.sm,
-    paddingHorizontal: theme.space.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     color: theme.color.ink,
-    minHeight: theme.touch.primary,
+    minHeight: 50,
   },
   inputFocused: {
     borderColor: theme.color.primary,
@@ -749,36 +716,36 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: 6,
+    marginTop: 4,
   },
   fieldError: {
     color: theme.color.badInk,
     ...(theme.type.labelSm as object),
   },
 
-  // Scan targets
+  // Scan targets — slightly tighter padding
   scan: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
-    padding: theme.space.md,
-    marginVertical: theme.space.xs,
+    padding: 14,
+    marginVertical: 4,
     borderWidth: 1.5,
     borderColor: theme.color.primaryContainer,
     shadowColor: theme.color.primaryContainer,
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  scanHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  scanHeader: { flexDirection: "row", alignItems: "center", gap: 5 },
   scanLabel: {
-    ...(theme.type.labelMd as object),
+    ...(theme.type.labelSm as object),
     color: theme.color.primaryContainer,
     textTransform: "uppercase",
   },
   scanValue: {
     ...(theme.type.codeLg as object),
-    marginTop: 8,
+    marginTop: 6,
     color: theme.color.ink,
   },
   scanEntry: {
@@ -787,20 +754,19 @@ const s = StyleSheet.create({
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.md,
     ...(theme.type.codeLg as object),
-    padding: theme.space.sm,
-    marginTop: theme.space.xs,
+    padding: 10,
+    marginTop: 4,
     textAlign: "center",
     color: theme.color.ink,
-    minHeight: theme.touch.primary,
+    minHeight: 52,
   },
 
-  // Badges
+  // Badges — slightly tighter
   badge: {
     alignSelf: "flex-start",
     borderRadius: theme.radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
@@ -813,12 +779,12 @@ const s = StyleSheet.create({
     flexShrink: 1,
   },
 
-  // Feedback banners
+  // Feedback banners — slightly tighter
   error: {
     backgroundColor: theme.color.badBg,
     borderRadius: theme.radius.md,
-    padding: theme.space.sm,
-    marginTop: theme.space.xs,
+    padding: 10,
+    marginTop: 6,
     borderWidth: 1,
     borderColor: theme.color.badBorder,
     flexDirection: "row",
@@ -834,8 +800,8 @@ const s = StyleSheet.create({
   success: {
     backgroundColor: theme.color.okBg,
     borderRadius: theme.radius.md,
-    padding: theme.space.sm,
-    marginTop: theme.space.xs,
+    padding: 10,
+    marginTop: 6,
     borderWidth: 1,
     borderColor: theme.color.okBorder,
     flexDirection: "row",
@@ -849,13 +815,13 @@ const s = StyleSheet.create({
     flex: 1,
   },
 
-  // Progress
-  progressWrap: { marginTop: 2, marginBottom: 2 },
+  // Progress — cleaner, slimmer
+  progressWrap: { marginVertical: 6 },
   progressHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 3,
+    marginBottom: 4,
   },
   progressLabel: {
     ...(theme.type.labelSm as object),
@@ -868,34 +834,29 @@ const s = StyleSheet.create({
     fontWeight: "700",
   },
   progressTrack: {
-    height: 6,
+    height: 5,
     borderRadius: 3,
     backgroundColor: theme.color.surfaceContainerHigh,
     overflow: "hidden",
   },
   progressFill: {
-    height: 6,
+    height: 5,
     borderRadius: 3,
     backgroundColor: theme.color.primaryContainer,
   },
-  progressText: {
-    ...(theme.type.secondary as object),
-    marginTop: 4,
-    color: theme.color.muted,
-  },
 
-  // Stepper
+  // Stepper — more compact
   stepperWrap: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: theme.color.surface,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     borderColor: theme.color.line,
-    marginVertical: 3,
+    marginVertical: 4,
   },
   stepperItemWrap: {
     flex: 1,
@@ -903,13 +864,13 @@ const s = StyleSheet.create({
     position: "relative",
   },
   stepCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: theme.color.surfaceContainer,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 3,
     borderWidth: 1.5,
     borderColor: theme.color.lineStrong,
   },
@@ -922,7 +883,7 @@ const s = StyleSheet.create({
     borderColor: theme.color.okPrimary,
   },
   stepLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     color: theme.color.muted,
   },
@@ -935,7 +896,7 @@ const s = StyleSheet.create({
   },
   stepLine: {
     position: "absolute",
-    top: 14,
+    top: 13,
     right: -25,
     width: 50,
     height: 2,
@@ -946,49 +907,20 @@ const s = StyleSheet.create({
     backgroundColor: theme.color.okPrimary,
   },
 
-  // SLA
-  sla: {
-    borderRadius: theme.radius.pill,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    marginTop: theme.space.xs,
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-  },
-  slaCalm: {
-    backgroundColor: theme.color.infoBg,
-    borderColor: theme.color.infoBorder,
-  },
-  slaSoon: {
-    backgroundColor: theme.color.warnBg,
-    borderColor: theme.color.warnBorder,
-  },
-  slaUrgent: {
-    backgroundColor: theme.color.badBg,
-    borderColor: theme.color.badBorder,
-  },
-  slaText: { ...(theme.type.labelMd as object) },
-  slaTextCalm: { color: theme.color.infoInk },
-  slaTextSoon: { color: theme.color.warnInk },
-  slaTextUrgent: { color: theme.color.badInk, fontWeight: "700" },
-
-  // Chips
+  // Chips — tighter padding
   chip: {
     borderWidth: 1.5,
     borderColor: theme.color.line,
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.md,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginTop: theme.space.xs,
-    minHeight: theme.touch.min,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: 6,
+    minHeight: 46,
     justifyContent: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.space.xs,
+    gap: 8,
   },
   chipOn: {
     backgroundColor: theme.color.primaryContainer,
@@ -998,61 +930,63 @@ const s = StyleSheet.create({
   chipText: { ...(theme.type.bodyMd as object), color: theme.color.ink, fontWeight: "600" },
   chipTextOn: { color: "#ffffff", fontWeight: "700" },
 
-  // Cards
+  // Cards — slightly tighter
   card: {
     backgroundColor: theme.color.surface,
     borderWidth: 1,
     borderColor: theme.color.line,
     borderRadius: theme.radius.lg,
-    padding: theme.space.md,
-    marginTop: theme.space.xs,
+    padding: 14,
+    marginTop: 6,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
 
-  // Metric cards
+  // Metric cards — more compact
   metric: {
     backgroundColor: theme.color.surface,
     borderWidth: 1,
     borderColor: theme.color.line,
     borderRadius: theme.radius.md,
-    padding: theme.space.md,
-    minHeight: 104,
+    padding: 12,
+    minHeight: 80,
     justifyContent: "center",
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
   metricValue: {
-    ...(theme.type.display as object),
+    fontSize: 26,
+    fontWeight: "800",
+    letterSpacing: -0.3,
     color: theme.color.ink,
   },
   metricLabel: {
     ...(theme.type.labelSm as object),
     color: theme.color.muted,
-    marginTop: 4,
+    marginTop: 2,
     textTransform: "uppercase",
   },
 
   // Async states
   stateBox: {
-    paddingVertical: theme.space.xl,
+    paddingVertical: 24,
     alignItems: "center",
     justifyContent: "center",
   },
   emptyIconWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: theme.color.surfaceContainer,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: theme.space.xs,
+    marginBottom: 8,
   },
   stateText: {
     ...(theme.type.bodyMd as object),
@@ -1064,7 +998,7 @@ const s = StyleSheet.create({
   emptyTitle: {
     ...(theme.type.section as object),
     textAlign: "center",
-    marginTop: theme.space.xs,
+    marginTop: 4,
     color: theme.color.ink,
   },
 });

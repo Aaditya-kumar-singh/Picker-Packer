@@ -1,8 +1,7 @@
-// Screen 9 — Exception. All 6 documented types. Line -> EXCEPTION, then next item.
+// Screen 9 — Exception flow. All 6 types, reasons, shortage tracking & evidence upload.
 import { useCallback, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { Image, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   AlertHeader,
@@ -201,36 +200,51 @@ export function ExceptionScreen() {
     return (
       <Screen>
         <AlertHeader title="Exception Recorded" sub={`${order.externalId} • Line ${line?.lineNo ?? "-"}`} />
-        <SuccessFeedback message="Exception saved. You may attach photos or continue to the next item." />
-        <SectionHeader title="Photo Evidence" hint={type === "DAMAGED" ? "Recommended for damage" : "Optional"} />
+        <SuccessFeedback message="Exception saved. You may attach photo evidence or proceed." />
+
+        <SectionHeader title="Photo Evidence" hint={type === "DAMAGED" ? "Recommended for damaged items" : "Optional"} />
         {!online ? (
           <ErrorBanner message="Photo upload requires connection. The exception is safely stored offline." />
         ) : null}
+
         {photo ? (
           <View style={s.previewBox}>
             <Image source={{ uri: photo.uri }} style={s.preview} resizeMode="cover" />
-            <SecondaryButton label="Remove photo" onPress={() => { setPhoto(null); setUploadState("idle"); setUploadError(null); }} />
+            <SecondaryButton
+              label="Remove photo"
+              onPress={() => {
+                setPhoto(null);
+                setUploadState("idle");
+                setUploadError(null);
+              }}
+            />
           </View>
         ) : (
-          <View style={{ gap: theme.space.xs }}>
+          <View style={s.photoActions}>
             <PrimaryButton label="Take Photo" icon="camera-outline" onPress={() => void capture(true)} disabled={!online} />
             <SecondaryButton label="Choose from Library" icon="images-outline" onPress={() => void capture(false)} disabled={!online} />
           </View>
         )}
+
         {photo && uploadState !== "uploading" ? (
-          <PrimaryButton label="Upload Photo" icon="cloud-upload-outline" onPress={() => void upload()} disabled={!online} />
+          <View style={s.uploadBtnWrap}>
+            <PrimaryButton label="Upload Photo" icon="cloud-upload-outline" onPress={() => void upload()} disabled={!online} />
+          </View>
         ) : null}
+
         {uploadState === "uploading" ? <Text style={s.info}>Uploading photo…</Text> : null}
         <ErrorBanner message={uploadError} />
         {uploadState === "error" ? (
           <SecondaryButton label="Retry upload" onPress={() => void upload()} />
         ) : null}
+
         {uploaded.length > 0 ? (
           <Text style={s.info}>Uploaded photos: {uploaded.length}</Text>
         ) : null}
         {failed.length > 0 ? (
-          <Text style={s.info}>Failed uploads: {failed.length} (abandoned rows are cleaned server-side)</Text>
+          <Text style={s.info}>Failed uploads: {failed.length} (abandoned rows cleaned server-side)</Text>
         ) : null}
+
         <Divider />
         <PrimaryButton label="Continue Picking" icon="arrow-forward-circle" onPress={() => void continuePicking()} />
       </Screen>
@@ -241,11 +255,12 @@ export function ExceptionScreen() {
   return (
     <Screen>
       <AlertHeader title="Report Exception" sub={order ? `${order.externalId} • Line ${line?.lineNo ?? "—"}` : ""} />
+
       {!line ? (
-        <>
-          <ErrorBanner message="No active line to attach this exception to. Go back and scan a location first." />
+        <View style={s.emptyLineWrap}>
+          <ErrorBanner message="No active line to attach this exception to. Return to picking flow." />
           <SecondaryButton label="Back to picking" onPress={() => void continuePicking()} />
-        </>
+        </View>
       ) : (
         <>
           <SectionHeader title="Exception Type" />
@@ -263,7 +278,7 @@ export function ExceptionScreen() {
           </View>
 
           {type === "SHORT_PICK" ? (
-            <>
+            <View style={s.shortageSection}>
               <SectionHeader title="Shortage Breakdown" hint="Confirm missing quantity" />
               <View style={s.grid}>
                 <View style={s.cell}>
@@ -285,7 +300,7 @@ export function ExceptionScreen() {
                 textAlign="center"
                 returnKeyType="done"
               />
-            </>
+            </View>
           ) : null}
 
           <FieldInput
@@ -298,13 +313,15 @@ export function ExceptionScreen() {
 
           <ErrorBanner message={error} />
 
-          <PrimaryButton
-            label={busy ? "Saving Exception…" : "SUBMIT EXCEPTION"}
-            variant="danger"
-            icon="warning"
-            onPress={submit}
-            disabled={busy}
-          />
+          <View style={s.submitWrap}>
+            <PrimaryButton
+              label={busy ? "Saving Exception…" : "SUBMIT EXCEPTION"}
+              variant="danger"
+              icon="warning"
+              onPress={submit}
+              disabled={busy}
+            />
+          </View>
         </>
       )}
     </Screen>
@@ -312,17 +329,52 @@ export function ExceptionScreen() {
 }
 
 const s = StyleSheet.create({
-  grid: { flexDirection: "row", gap: theme.space.xs, marginTop: theme.space.xs, marginBottom: theme.space.xs },
+  grid: {
+    flexDirection: "row",
+    gap: theme.space.xs,
+    marginTop: 2,
+    marginBottom: theme.space.xs,
+  },
   cell: { flex: 1 },
-  chipGroup: { gap: theme.space.xxs },
-  info: { marginTop: theme.space.xs, ...(theme.type.bodyMd as object), color: theme.color.muted },
-  previewBox: { marginTop: theme.space.xs, gap: theme.space.xs },
+  chipGroup: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: theme.space.xs,
+  },
+  shortageSection: {
+    marginTop: 2,
+  },
+  submitWrap: {
+    marginTop: theme.space.xs,
+  },
+  emptyLineWrap: {
+    marginTop: theme.space.sm,
+    gap: theme.space.xs,
+  },
+  info: {
+    marginTop: 4,
+    ...(theme.type.bodyMd as object),
+    color: theme.color.muted,
+    fontSize: 12,
+  },
+  photoActions: {
+    gap: 6,
+    marginTop: 4,
+  },
+  previewBox: {
+    marginTop: theme.space.xs,
+    gap: 6,
+  },
   preview: {
     width: "100%",
-    height: 220,
-    borderRadius: theme.radius.lg,
+    height: 180,
+    borderRadius: theme.radius.md,
     backgroundColor: theme.color.surfaceContainerLow,
     borderWidth: 1,
     borderColor: theme.color.line,
+  },
+  uploadBtnWrap: {
+    marginTop: 6,
   },
 });

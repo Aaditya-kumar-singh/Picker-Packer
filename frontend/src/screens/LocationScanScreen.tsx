@@ -1,4 +1,4 @@
-// Screen 6 — Location Scan.
+// Location Scan — step 1 of pick flow.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -92,7 +92,7 @@ export function LocationScanScreen() {
   if (!order || !line) {
     return (
       <Screen>
-        <AppHeader title="Location Scan" sub={!order ? "Loading…" : "Resuming correct step…"} />
+        <AppHeader title="Location Scan" sub={!order ? "Loading…" : "Resuming…"} />
         <LoadingState label={!order ? "Loading order…" : "Resuming correct step…"} />
       </Screen>
     );
@@ -103,25 +103,25 @@ export function LocationScanScreen() {
     <Screen>
       <AppHeader
         title={order.externalId}
-        sub={`Line ${line.lineNo} of ${order.lines.length} — Go to aisle/shelf`}
+        sub={`Line ${line.lineNo} of ${order.lines.length}`}
       />
 
-      {/* Stepper navigation */}
       <PickStepStepper currentStep="location" />
-
       <ProgressIndicator done={done} total={order.lines.length} />
 
+      {/* Location card */}
       <View style={ls.locationCard}>
-        <View style={ls.locationBadgeRow}>
+        <View style={ls.badgeRow}>
           <View style={ls.badge}>
-            <Ionicons name="location-sharp" size={16} color={theme.colors.location.icon} />
+            <Ionicons name="location-sharp" size={14} color={theme.colors.location.icon} />
             <Text style={ls.badgeText}>TARGET LOCATION</Text>
           </View>
-          <Text style={ls.itemMeta}>{line.skuName}</Text>
         </View>
 
         <Text style={ls.locationCode}>{line.locationCode}</Text>
+        <Text style={ls.itemName} numberOfLines={1}>{line.skuName}</Text>
 
+        {/* Barcode */}
         <View style={ls.barcodeBox}>
           <View style={ls.barcodeHeader}>
             <Text style={ls.barcodeLabel}>LOCATION BARCODE</Text>
@@ -132,7 +132,7 @@ export function LocationScanScreen() {
             >
               <Ionicons
                 name={copied ? "checkmark" : "copy-outline"}
-                size={13}
+                size={12}
                 color={copied ? theme.color.okInk : theme.color.primary}
               />
               <Text style={[ls.copyText, copied && { color: theme.color.okInk }]}>
@@ -144,7 +144,7 @@ export function LocationScanScreen() {
         </View>
 
         <PrimaryButton
-          label={busy ? "Verifying Location…" : "Confirm & Proceed to SKU"}
+          label={busy ? "Verifying…" : "Confirm & Proceed"}
           icon="arrow-forward"
           onPress={() => void next()}
           disabled={busy}
@@ -164,19 +164,18 @@ const ls = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: theme.color.line,
     borderRadius: theme.radius.lg,
-    padding: theme.space.md,
-    marginTop: theme.space.xs,
+    padding: 14,
+    marginTop: 6,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  locationBadgeRow: {
+  badgeRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 4,
   },
   badge: {
     flexDirection: "row",
@@ -185,34 +184,32 @@ const ls = StyleSheet.create({
     backgroundColor: theme.colors.location.bg,
     borderWidth: 1,
     borderColor: theme.colors.location.border,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: theme.radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "800",
     color: theme.colors.location.text,
-    letterSpacing: 0.5,
-  },
-  itemMeta: {
-    ...(theme.type.secondary as object),
-    color: theme.color.muted,
-    maxWidth: "50%",
+    letterSpacing: 0.4,
   },
   locationCode: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "900",
     color: theme.color.ink,
-    letterSpacing: 0.5,
-    marginVertical: 4,
+    letterSpacing: 0.3,
+    marginVertical: 2,
+  },
+  itemName: {
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
+    marginBottom: 8,
   },
   barcodeBox: {
-    marginTop: theme.space.sm,
-    marginBottom: theme.space.sm,
     backgroundColor: theme.color.surfaceContainerLow,
     borderRadius: theme.radius.md,
-    padding: theme.space.md,
+    padding: 10,
     borderWidth: 1,
     borderColor: theme.color.line,
   },
@@ -222,30 +219,30 @@ const ls = StyleSheet.create({
     justifyContent: "space-between",
   },
   barcodeLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
     color: theme.color.muted,
   },
   copyBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 4,
     backgroundColor: theme.color.surface,
   },
   copyText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     color: theme.color.primary,
   },
   barcodeValue: {
     ...(theme.type.codeLg as object),
-    fontSize: 20,
+    fontSize: 18,
     color: theme.color.ink,
-    marginTop: 6,
+    marginTop: 4,
     letterSpacing: 1,
   },
 });

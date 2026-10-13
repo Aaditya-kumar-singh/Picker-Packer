@@ -1,4 +1,4 @@
-// Screen 8 — Quantity. qty>0, qty<=remaining, UOM match. Short -> exception, over -> blocked.
+// Quantity confirmation — step 3 of pick flow.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -12,7 +12,6 @@ import {
   PickStepStepper,
   PrimaryButton,
   Screen,
-  SecondaryButton,
   theme,
 } from "@/components/ui";
 import { isShortPick, nextPendingLine, resolvePickStep } from "@/domain/order";
@@ -96,35 +95,55 @@ export function QuantityScreen() {
     );
   }
 
+  const numQty = Number(qty) || 0;
+  const isValid = qty.trim() !== "" && numQty > 0;
+
   return (
     <Screen>
       <AppHeader title={order!.externalId} sub={`Line ${line.lineNo} • ${line.skuName}`} />
 
-      {/* Breadcrumb Stepper */}
+      {/* Stepper progress */}
       <PickStepStepper currentStep="quantity" />
 
+      {/* Item info row */}
+      <View style={s.itemInfoCard}>
+        <View style={s.itemInfoMain}>
+          <Text style={s.itemSkuCode}>{line.skuCode}</Text>
+          <Text style={s.itemLocation}>Loc: <Text style={s.itemLocationBold}>{line.locationCode}</Text></Text>
+        </View>
+        <View style={s.uomBadge}>
+          <Text style={s.uomText}>{line.uom}</Text>
+        </View>
+      </View>
+
+      {/* Metric summary */}
       <View style={s.grid}>
         <View style={s.cell}>
-          <MetricCard value={`${line.requiredQty} ${line.uom}`} label="Required" />
+          <MetricCard value={`${line.requiredQty}`} label="Required" />
         </View>
         <View style={s.cell}>
           <MetricCard value={String(line.pickedQty)} label="Picked" tone={line.pickedQty > 0 ? "info" : undefined} />
         </View>
         <View style={s.cell}>
-          <MetricCard value={`${remaining} ${line.uom}`} label="Remaining" tone={remaining === 0 ? "ok" : "warn"} />
+          <MetricCard value={`${remaining}`} label="Remaining" tone={remaining === 0 ? "ok" : "warn"} />
         </View>
       </View>
 
+      {/* Quantity input card */}
       <View style={s.inputCard}>
-        <Text style={s.inputHeading}>Confirm Quantity ({line.uom})</Text>
+        <Text style={s.inputHeading}>CONFIRM QUANTITY TO PICK</Text>
 
         <View style={s.stepperRow}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Decrement quantity"
             onPress={() => adjustQty(-1)}
-            disabled={busy || Number(qty) <= 0}
-            style={({ pressed }) => [s.stepperBtn, (busy || Number(qty) <= 0) && s.disabled, pressed ? { opacity: 0.7 } : null]}
+            disabled={busy || numQty <= 0}
+            style={({ pressed }) => [
+              s.stepperBtn,
+              (busy || numQty <= 0) && s.disabled,
+              pressed ? { opacity: 0.7 } : null,
+            ]}
           >
             <Ionicons name="remove" size={24} color={theme.color.ink} />
           </Pressable>
@@ -147,8 +166,12 @@ export function QuantityScreen() {
             accessibilityRole="button"
             accessibilityLabel="Increment quantity"
             onPress={() => adjustQty(1)}
-            disabled={busy || Number(qty) >= remaining}
-            style={({ pressed }) => [s.stepperBtn, (busy || Number(qty) >= remaining) && s.disabled, pressed ? { opacity: 0.7 } : null]}
+            disabled={busy || numQty >= remaining}
+            style={({ pressed }) => [
+              s.stepperBtn,
+              (busy || numQty >= remaining) && s.disabled,
+              pressed ? { opacity: 0.7 } : null,
+            ]}
           >
             <Ionicons name="add" size={24} color={theme.color.ink} />
           </Pressable>
@@ -159,30 +182,75 @@ export function QuantityScreen() {
             onPress={() => setQty(String(remaining))}
             style={({ pressed }) => [s.quickFillBtn, pressed ? { opacity: 0.8 } : null]}
           >
-            <Ionicons name="flash-outline" size={16} color={theme.color.primary} />
-            <Text style={s.quickFillText}>Select Full Quantity ({remaining} {line.uom})</Text>
+            <Ionicons name="flash" size={14} color={theme.color.primary} />
+            <Text style={s.quickFillText}>Select All ({remaining} {line.uom})</Text>
           </Pressable>
         ) : null}
       </View>
 
       <ErrorBanner message={error} />
 
-      <PrimaryButton
-        label={busy ? "Saving…" : "CONFIRM QUANTITY"}
-        icon="checkmark-circle"
-        onPress={confirm}
-        disabled={busy || !qty.trim()}
-      />
+      <View style={s.actionRow}>
+        <PrimaryButton
+          label={busy ? "Saving…" : "CONFIRM QUANTITY"}
+          icon="checkmark-circle"
+          onPress={confirm}
+          disabled={busy || !isValid}
+        />
+      </View>
     </Screen>
   );
 }
 
 const s = StyleSheet.create({
+  itemInfoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: theme.color.surface,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.space.md,
+    paddingVertical: theme.space.sm,
+    marginTop: theme.space.xs,
+  },
+  itemInfoMain: {
+    flex: 1,
+    gap: 2,
+  },
+  itemSkuCode: {
+    ...(theme.type.codeMd as object),
+    color: theme.color.ink,
+    fontWeight: "700",
+  },
+  itemLocation: {
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
+  },
+  itemLocationBold: {
+    fontWeight: "700",
+    color: theme.color.primary,
+  },
+  uomBadge: {
+    backgroundColor: theme.color.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: theme.color.line,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: theme.radius.sm,
+  },
+  uomText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: theme.color.ink,
+    letterSpacing: 0.5,
+  },
   grid: {
     flexDirection: "row",
     gap: theme.space.xs,
     marginTop: theme.space.xs,
-    marginBottom: theme.space.sm,
+    marginBottom: theme.space.xs,
   },
   cell: {
     flex: 1,
@@ -195,44 +263,45 @@ const s = StyleSheet.create({
     padding: theme.space.md,
     marginVertical: theme.space.xs,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.03,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   inputHeading: {
-    ...(theme.type.section as object),
-    color: theme.color.ink,
+    ...(theme.type.labelSm as object),
+    color: theme.color.muted,
     textAlign: "center",
-    marginBottom: theme.space.xs,
+    marginBottom: theme.space.sm,
+    letterSpacing: 0.5,
   },
   stepperRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.space.sm,
+    gap: theme.space.md,
   },
   stepperBtn: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: theme.color.surfaceContainer,
+    backgroundColor: theme.color.surfaceContainerLow,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: theme.color.line,
   },
   disabled: {
-    opacity: 0.4,
+    opacity: 0.35,
   },
   qtyWrap: {
-    width: 120,
+    width: 110,
   },
   qty: {
     fontSize: 32,
     fontWeight: "800",
     letterSpacing: 1,
-    height: 58,
+    height: 54,
     textAlign: "center",
   },
   quickFillBtn: {
@@ -240,8 +309,8 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    paddingVertical: 10,
-    marginTop: theme.space.sm,
+    paddingVertical: 9,
+    marginTop: theme.space.md,
     borderRadius: theme.radius.md,
     backgroundColor: theme.color.infoBg,
     borderWidth: 1,
@@ -251,5 +320,8 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: theme.color.infoInk,
+  },
+  actionRow: {
+    marginTop: theme.space.xs,
   },
 });

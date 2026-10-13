@@ -1,4 +1,4 @@
-// Assigned Orders — screenshot-aligned Picker work queue.
+// Assigned Orders — clean Picker work queue.
 import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -59,15 +59,16 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
     <Screen>
       <SectionHeader
         title={completed ? "Completed Orders" : "Assigned Orders"}
-        hint={visibleOrders.length ? `${visibleOrders.length} order${visibleOrders.length === 1 ? "" : "s"}` : undefined}
+        hint={visibleOrders.length ? `${visibleOrders.length}` : undefined}
       />
 
+      {/* Search bar */}
       <View style={os.searchWrap}>
-        <Ionicons name="search-outline" size={20} color={theme.color.muted} style={{ marginRight: 8 }} />
+        <Ionicons name="search-outline" size={18} color={theme.color.muted} style={{ marginRight: 6 }} />
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search Order ID, SKU, product or location"
+          placeholder="Search order, SKU or location…"
           placeholderTextColor={theme.color.faint}
           style={os.searchInput}
           autoCapitalize="none"
@@ -76,13 +77,13 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
         />
         {search.length > 0 ? (
           <Pressable onPress={() => setSearch("")} hitSlop={10}>
-            <Ionicons name="close-circle" size={18} color={theme.color.faint} />
+            <Ionicons name="close-circle" size={16} color={theme.color.faint} />
           </Pressable>
         ) : null}
       </View>
 
       {loading ? (
-        <LoadingState label="Loading assigned orders…" />
+        <LoadingState label="Loading orders…" />
       ) : error ? (
         <ErrorState message={error} onRetry={() => void load()} />
       ) : filtered.length === 0 ? (
@@ -90,12 +91,12 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
           title={search ? "No Matching Orders" : completed ? "No Completed Orders" : "No Assigned Orders"}
           body={
             search
-              ? "Try another order, SKU, product or location."
+              ? "Try a different search term."
               : completed
-                ? "Completed picking orders will appear here."
-                : "Assigned picking work will appear here when released."
+                ? "Completed orders will appear here."
+                : "Assigned work will appear when released."
           }
-          actionLabel="Refresh Orders"
+          actionLabel="Refresh"
           onAction={() => void load()}
         />
       ) : (
@@ -114,32 +115,27 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
               onPress={() => router.push(`/order/${o.id}` as never)}
               style={({ pressed }) => [os.orderCard, pressed && os.pressed]}
             >
+              {/* Top row: order ID + status */}
               <View style={os.header}>
-                <View style={os.headerLeft}>
-                  <Text style={os.orderId}>{o.externalId}</Text>
-                  <View style={os.locationPill}>
-                    <Ionicons name="location-outline" size={13} color={theme.colors.location.text} />
-                    <Text style={os.locationText}>{firstLocation}</Text>
-                  </View>
-                </View>
+                <Text style={os.orderId}>{o.externalId}</Text>
                 <StatusBadge text={o.status} tone={toneForOrderStatus(o.status)} />
               </View>
 
-              <View style={os.metaRow}>
-                <Text style={os.meta}>{resolved}/{o.totalLines} lines picked</Text>
-                <Text style={os.metaPct}>{pct}%</Text>
-              </View>
-
-              <View style={os.progressTrack}>
-                <View style={[os.progressFill, { width: `${pct}%` }]} />
-              </View>
-
-              <View style={os.footer}>
-                <View style={os.footerLeft}>
-                  <Ionicons name="list" size={14} color={theme.color.muted} />
-                  <Text style={os.lineCount}>{o.totalLines} pick lines</Text>
+              {/* Location + lines */}
+              <View style={os.infoRow}>
+                <View style={os.locationPill}>
+                  <Ionicons name="location-outline" size={12} color={theme.colors.location.text} />
+                  <Text style={os.locationText}>{firstLocation}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={theme.color.faint} />
+                <Text style={os.lineCount}>{o.totalLines} lines</Text>
+              </View>
+
+              {/* Progress */}
+              <View style={os.progressRow}>
+                <View style={os.progressTrack}>
+                  <View style={[os.progressFill, { width: `${pct}%` }]} />
+                </View>
+                <Text style={os.metaPct}>{pct}%</Text>
               </View>
             </Pressable>
           );
@@ -155,35 +151,30 @@ const os = StyleSheet.create({
     alignItems: "center",
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.md,
-    paddingHorizontal: theme.space.md,
-    marginBottom: theme.space.md,
-    minHeight: 48,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    minHeight: 44,
     borderWidth: 1.5,
     borderColor: theme.color.line,
-    shadowColor: theme.color.ink,
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
   },
   searchInput: {
     flex: 1,
     ...(theme.type.bodyMd as object),
     color: theme.color.ink,
-    minHeight: 44,
+    minHeight: 40,
   },
   orderCard: {
     backgroundColor: theme.color.surface,
     borderRadius: theme.radius.lg,
     borderWidth: 1,
     borderColor: theme.color.line,
-    padding: theme.space.md,
-    marginBottom: theme.space.sm,
+    padding: 14,
+    marginBottom: 8,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   pressed: {
     opacity: 0.85,
@@ -192,76 +183,64 @@ const os = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: theme.space.sm,
-  },
-  headerLeft: {
-    flex: 1,
+    alignItems: "center",
+    gap: 8,
   },
   orderId: {
     ...(theme.type.codeLg as object),
     color: theme.color.ink,
-    fontSize: 18,
+    fontSize: 17,
+    flex: 1,
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
   },
   locationPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 3,
     backgroundColor: theme.colors.location.bg,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: theme.radius.sm,
-    alignSelf: "flex-start",
-    marginTop: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: theme.colors.location.border,
   },
   locationText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: theme.colors.location.text,
   },
-  metaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: theme.space.sm,
-    alignItems: "center",
-  },
-  meta: {
+  lineCount: {
     ...(theme.type.secondary as object),
-    color: theme.color.inkSecondary,
-    fontWeight: "600",
+    color: theme.color.muted,
+  },
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: theme.color.surfaceContainerHigh,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: theme.color.primaryContainer,
   },
   metaPct: {
     ...(theme.type.labelSm as object),
     color: theme.color.primaryContainer,
     fontWeight: "800",
-  },
-  progressTrack: {
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: theme.color.surfaceContainerHigh,
-    overflow: "hidden",
-    marginVertical: 6,
-  },
-  progressFill: {
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: theme.color.primaryContainer,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 6,
-  },
-  footerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  lineCount: {
-    ...(theme.type.secondary as object),
-    color: theme.color.muted,
+    minWidth: 32,
+    textAlign: "right",
   },
 });

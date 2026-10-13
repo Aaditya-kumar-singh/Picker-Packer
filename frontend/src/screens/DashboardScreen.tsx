@@ -1,7 +1,7 @@
-// Picker Dashboard — screenshot-aligned compact warehouse dashboard.
+// Picker Dashboard — clean, compact warehouse dashboard.
 import { useCallback, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import {
   EmptyState,
@@ -23,9 +23,6 @@ export function DashboardScreen() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const { width } = useWindowDimensions();
-  const compact = width < 340;
-  const metricGap = compact ? 6 : 10;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,17 +57,11 @@ export function DashboardScreen() {
         />
       ) : (
         <>
-          <View style={ds.dashboardTitle}>
-            <View style={ds.dashboardIcon}>
-              <Ionicons name="grid" size={compact ? 22 : 26} color={theme.color.primaryContainer} />
-            </View>
-            <View style={ds.dashboardTitleCopy}>
-              <Text style={ds.dashboardTitleText}>Picker Dashboard</Text>
-              <Text style={ds.dashboardSubtitle}>Track your work and stay productive</Text>
-            </View>
-          </View>
+          {/* Title */}
+          <Text style={ds.title}>Picker Dashboard</Text>
 
-          <View style={[ds.grid, { gap: metricGap }]}>
+          {/* Metrics row */}
+          <View style={ds.grid}>
             <Pressable
               style={({ pressed }) => [ds.cell, pressed && ds.metricPressed]}
               accessibilityRole="button"
@@ -97,27 +88,22 @@ export function DashboardScreen() {
             </Pressable>
           </View>
 
+          {/* Active order card */}
           {data.activeOrder ? (
             <View style={ds.activeCard}>
               <View style={ds.activeBanner}>
-                <View style={ds.activeBannerTitle}>
-                  <Ionicons name="cube" size={compact ? 20 : 24} color="#ffffff" />
-                  <Text style={ds.activeBannerText}>ACTIVE ORDER</Text>
-                </View>
+                <Ionicons name="cube" size={20} color="#ffffff" />
+                <Text style={ds.activeBannerText}>ACTIVE ORDER</Text>
                 <View style={ds.activeStatus}>
-                  <Ionicons name="time-outline" size={compact ? 16 : 18} color={theme.color.warnInk} />
+                  <View style={ds.activeStatusDot} />
                   <Text style={ds.activeStatusText}>IN PROGRESS</Text>
                 </View>
               </View>
               <View style={ds.activeBody}>
-                <Text style={[ds.orderId, compact && ds.orderIdCompact]}>{data.activeOrder.externalId}</Text>
-                <View style={ds.activeMetaRow}>
-                  <Ionicons name="list" size={18} color={theme.color.muted} />
-                  <Text style={ds.activeMeta}>{data.activeOrder.lines.length} pick lines</Text>
-                  <View style={ds.metaDivider} />
-                  <Ionicons name="star" size={18} color={theme.color.warnPrimary} />
-                  <Text style={ds.activeMeta}>{data.activeOrder.priority >= 2 ? "High priority" : "Standard priority"}</Text>
-                </View>
+                <Text style={ds.orderId}>{data.activeOrder.externalId}</Text>
+                <Text style={ds.activeMeta}>
+                  {data.activeOrder.lines.length} pick lines • {data.activeOrder.priority >= 2 ? "High" : "Standard"} priority
+                </Text>
                 <PrimaryButton
                   label="RESUME PICKING"
                   icon="arrow-forward-circle"
@@ -133,7 +119,7 @@ export function DashboardScreen() {
             <View style={ds.offlineBanner}>
               <View style={ds.offlineDot} />
               <Text style={ds.offlineText}>
-                {sync.connectivity === "CHECKING" ? "Checking connection…" : "Offline — changes will sync when connection returns"}
+                {sync.connectivity === "CHECKING" ? "Checking connection…" : "Offline — changes sync when connected"}
               </Text>
             </View>
           ) : null}
@@ -144,37 +130,16 @@ export function DashboardScreen() {
 }
 
 const ds = StyleSheet.create({
-  dashboardTitle: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: theme.space.sm,
-    marginBottom: theme.space.md,
-    gap: 8,
-  },
-  dashboardIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.color.infoBg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dashboardTitleCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  dashboardTitleText: {
-    ...(theme.type.titleMd as object),
+  title: {
+    ...(theme.type.title as object),
     color: theme.color.ink,
-  },
-  dashboardSubtitle: {
-    ...(theme.type.bodyMd as object),
-    color: theme.color.muted,
-    marginTop: 1,
+    marginTop: 4,
+    marginBottom: 12,
   },
   grid: {
     flexDirection: "row",
-    marginBottom: theme.space.sm,
+    gap: 8,
+    marginBottom: 10,
   },
   cell: {
     flex: 1,
@@ -190,101 +155,84 @@ const ds = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1.5,
     borderColor: theme.color.primary,
-    marginTop: theme.space.md,
+    marginTop: 6,
     shadowColor: theme.color.primaryDark,
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
   activeBanner: {
-    minHeight: 64,
     backgroundColor: theme.color.primaryContainer,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.space.sm,
-  },
-  activeBannerTitle: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    flex: 1,
-    minWidth: 0,
   },
   activeBannerText: {
-    ...(theme.type.section as object),
+    ...(theme.type.labelMd as object),
     color: "#ffffff",
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
+    flex: 1,
+    fontWeight: "800",
   },
   activeStatus: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     backgroundColor: theme.color.warnBg,
     borderRadius: theme.radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderWidth: 1,
     borderColor: theme.color.warnBorder,
   },
+  activeStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.color.warnInk,
+  },
   activeStatusText: {
-    ...(theme.type.labelSm as object),
-    color: theme.color.warnInk,
+    fontSize: 10,
     fontWeight: "800",
+    color: theme.color.warnInk,
   },
   activeBody: {
-    padding: theme.space.md,
+    padding: 14,
   },
   orderId: {
     ...(theme.type.codeDisplay as object),
-    fontSize: 28,
+    fontSize: 24,
     color: theme.color.ink,
     letterSpacing: 1,
   },
-  orderIdCompact: {
-    fontSize: 24,
-    letterSpacing: 0.5,
-  },
-  activeMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: theme.space.sm,
-    minWidth: 0,
-    gap: 8,
-  },
   activeMeta: {
     ...(theme.type.secondary as object),
-    color: theme.color.secondary,
-    flexShrink: 1,
-  },
-  metaDivider: {
-    width: 1,
-    height: 16,
-    backgroundColor: theme.color.line,
+    color: theme.color.muted,
+    marginTop: 4,
   },
   stale: {
-    marginTop: theme.space.xs,
+    marginTop: 8,
     color: theme.color.secondary,
     ...(theme.type.secondary as object),
   },
   offlineBanner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.space.xs,
+    gap: 8,
     backgroundColor: theme.color.surfaceContainerLow,
     borderRadius: theme.radius.md,
-    padding: theme.space.md,
-    marginTop: theme.space.md,
+    padding: 12,
+    marginTop: 12,
     borderWidth: 1,
     borderColor: theme.color.line,
   },
   offlineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: theme.color.critical,
   },
   offlineText: {

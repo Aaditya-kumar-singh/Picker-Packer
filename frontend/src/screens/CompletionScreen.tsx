@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
+  AppHeader,
   Card,
   ErrorBanner,
   LoadingState,
@@ -61,6 +62,7 @@ export function CompletionScreen() {
   if (!order) {
     return (
       <Screen>
+        <AppHeader title="Completion" sub="Loading order details…" />
         <LoadingState label="Loading completion…" />
         <ErrorBanner message={error} />
       </Screen>
@@ -74,6 +76,11 @@ export function CompletionScreen() {
 
   return (
     <Screen>
+      <AppHeader
+        title={order.externalId}
+        sub={isReady ? "Ready for Packing" : "Review & Complete"}
+      />
+
       <View style={s.hero}>
         <View style={[s.iconBox, isReady ? s.iconBoxReady : s.iconBoxPending]}>
           <Ionicons
@@ -85,8 +92,8 @@ export function CompletionScreen() {
         <Text style={s.title}>{isReady ? "READY FOR PACKING" : "COMPLETE PICKING"}</Text>
         <Text style={s.subtitle}>
           {isReady
-            ? "All resolved lines have been handed to the packing queue."
-            : "Confirm that all picking work is resolved before completing the order."}
+            ? "All resolved lines handed over to the packing station."
+            : "Confirm that all picking work is verified before completing."}
         </Text>
       </View>
 
@@ -109,7 +116,7 @@ export function CompletionScreen() {
       <Card>
         <View style={s.statusRow}>
           <View>
-            <Text style={s.orderLabel}>ORDER NUMBER</Text>
+            <Text style={s.orderLabel}>ORDER STATUS</Text>
             <Text style={s.orderId}>{order.externalId}</Text>
           </View>
           <StatusBadge
@@ -122,8 +129,8 @@ export function CompletionScreen() {
       <ErrorBanner message={error} />
 
       {isReady ? (
-        <View style={{ marginTop: theme.space.md }}>
-          <SuccessFeedback message="PICKING COMPLETE — order is READY_FOR_PACKING." />
+        <View style={s.actionStack}>
+          <SuccessFeedback message="PICKING COMPLETE — order is in the packing queue." />
           <PrimaryButton
             label="Back to Assigned Orders"
             icon="list"
@@ -131,7 +138,7 @@ export function CompletionScreen() {
           />
         </View>
       ) : (
-        <View style={{ marginTop: theme.space.md }}>
+        <View style={s.actionStack}>
           <PrimaryButton
             label={busy ? "Completing…" : "COMPLETE PICKING"}
             icon="checkmark-done"
@@ -153,12 +160,12 @@ export function CompletionScreen() {
 const s = StyleSheet.create({
   hero: {
     alignItems: "center",
-    marginVertical: theme.space.md,
+    marginVertical: theme.space.sm,
   },
   iconBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: theme.space.xs,
@@ -170,21 +177,24 @@ const s = StyleSheet.create({
     backgroundColor: theme.color.okBg,
   },
   title: {
-    ...(theme.type.title as object),
+    ...(theme.type.section as object),
+    fontSize: 18,
     color: theme.color.ink,
     textAlign: "center",
+    letterSpacing: 0.3,
   },
   subtitle: {
     ...(theme.type.bodyMd as object),
     color: theme.color.muted,
     textAlign: "center",
-    marginTop: 4,
-    maxWidth: 320,
+    marginTop: 2,
+    maxWidth: 300,
+    fontSize: 13,
   },
   grid: {
     flexDirection: "row",
     gap: theme.space.xs,
-    marginBottom: theme.space.md,
+    marginBottom: theme.space.xs,
   },
   cell: {
     flex: 1,
@@ -203,6 +213,10 @@ const s = StyleSheet.create({
     ...(theme.type.codeLg as object),
     color: theme.color.ink,
     marginTop: 2,
-    fontSize: 18,
+    fontSize: 16,
+  },
+  actionStack: {
+    marginTop: theme.space.sm,
+    gap: theme.space.xs,
   },
 });

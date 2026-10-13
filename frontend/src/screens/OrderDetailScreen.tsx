@@ -1,19 +1,16 @@
-// Screen 5 — Order Detail + START PICKING.
+// Order Detail + START PICKING.
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   AppHeader,
-  Card,
-  Divider,
   ErrorBanner,
   ErrorState,
   LoadingState,
   PrimaryButton,
   ProgressIndicator,
   Screen,
-  SectionHeader,
   StatusBadge,
   theme,
   toneForLineStatus,
@@ -85,106 +82,93 @@ export function OrderDetailScreen() {
     <Screen>
       <AppHeader title="Order Details" sub={order.externalId} showBack />
 
-      {/* Order header card */}
+      {/* Order header */}
       <View style={od.headerRow}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={od.orderId}>{order.externalId}</Text>
           <Text style={od.orderMeta}>
-            Priority: {isPriorityHigh ? "High" : "Standard"} • {order.totalLines} Pick Lines
+            {isPriorityHigh ? "High" : "Standard"} priority • {order.totalLines} lines
           </Text>
         </View>
         <StatusBadge text={order.status} tone={toneForOrderStatus(order.status)} />
       </View>
 
-      {/* Summary banner */}
-      <View style={od.summaryBanner}>
+      {/* Summary stats */}
+      <View style={od.summaryRow}>
         <View style={od.summaryItem}>
           <Text style={od.summaryValue}>{order.totalLines}</Text>
-          <Text style={od.summaryLabel}>TOTAL LINES</Text>
+          <Text style={od.summaryLabel}>Total</Text>
         </View>
         <View style={od.summaryDivider} />
         <View style={od.summaryItem}>
-          <Text style={[od.summaryValue, { color: theme.color.okInk }]}>{done}/{order.totalLines}</Text>
-          <Text style={od.summaryLabel}>RESOLVED</Text>
+          <Text style={[od.summaryValue, { color: theme.color.okInk }]}>{done}</Text>
+          <Text style={od.summaryLabel}>Done</Text>
         </View>
         <View style={od.summaryDivider} />
         <View style={od.summaryItem}>
           <Text style={[od.summaryValue, isPriorityHigh && { color: theme.color.warnPrimary }]}>
-            {isPriorityHigh ? "HIGH" : "NORMAL"}
+            {isPriorityHigh ? "HIGH" : "STD"}
           </Text>
-          <Text style={od.summaryLabel}>PRIORITY</Text>
+          <Text style={od.summaryLabel}>Priority</Text>
         </View>
       </View>
 
       <ProgressIndicator done={done} total={order.lines.length} />
       <ErrorBanner message={error} />
 
-      {/* Picking Manifest */}
-      <SectionHeader title="Picking Manifest" hint={`${order.lines.length} items in route order`} />
+      {/* Pick lines */}
       {order.lines.map((l, idx) => {
         const isPicked = l.status === "PICKED";
         return (
           <View key={l.id} style={[od.lineCard, isPicked && od.lineCardPicked]}>
-            {/* Line number indicator */}
             <View style={[od.lineNumberBox, isPicked && od.lineNumberBoxPicked]}>
               <Text style={od.lineNumber}>{idx + 1}</Text>
-              {isPicked ? (
-                <Ionicons name="checkmark-circle" size={14} color="#ffffff" style={{ marginTop: 2 }} />
-              ) : null}
             </View>
             <View style={od.lineContent}>
-              {/* SKU code & status */}
-              <View style={od.skuBlock}>
+              <View style={od.lineTopRow}>
                 <View style={od.skuCodeTag}>
-                  <Ionicons name="barcode-outline" size={14} color={theme.colors.sku.icon} />
                   <Text style={od.skuCode}>{l.skuCode}</Text>
                 </View>
                 <StatusBadge text={l.status} tone={toneForLineStatus(l.status)} />
               </View>
-              <Text style={od.skuName}>{l.skuName}</Text>
-              {l.productSpecs ? <Text style={od.specs}>{l.productSpecs}</Text> : null}
-
-              {/* Location tag and Quantity row */}
-              <View style={od.locRow}>
+              <Text style={od.skuName} numberOfLines={2}>{l.skuName}</Text>
+              <View style={od.lineBottom}>
                 <View style={od.locTag}>
-                  <Ionicons name="location-outline" size={14} color={theme.colors.location.icon} />
+                  <Ionicons name="location-outline" size={12} color={theme.colors.location.icon} />
                   <Text style={od.locCode}>{l.locationCode}</Text>
                 </View>
-                <View style={od.qtyBadge}>
-                  <Text style={od.qtyText}>
-                    Required: <Text style={{ fontWeight: "700", color: theme.color.ink }}>{l.requiredQty} {l.uom}</Text>
-                  </Text>
-                  <Text style={od.qtyPicked}>
-                    Picked: <Text style={{ fontWeight: "700" }}>{l.pickedQty}</Text>
-                  </Text>
-                </View>
+                <Text style={od.qtyText}>
+                  {l.pickedQty}/{l.requiredQty} {l.uom}
+                </Text>
               </View>
             </View>
           </View>
         );
       })}
 
-      <Divider />
-      {order.status === "ASSIGNED" ? (
-        order.assignedPickerCode !== picker?.id ? (
-          <ErrorBanner message={`Assigned to ${order.assignedPickerCode}. Pick another order.`} />
-        ) : (
+      {/* Action button */}
+      <View style={{ marginTop: 4 }}>
+        {order.status === "ASSIGNED" ? (
+          order.assignedPickerCode !== picker?.id ? (
+            <ErrorBanner message={`Assigned to ${order.assignedPickerCode}. Pick another order.`} />
+          ) : (
+            <PrimaryButton
+              label={busy ? "Starting…" : "START PICKING"}
+              icon="play-circle"
+              onPress={onBegin}
+              disabled={busy}
+            />
+          )
+        ) : order.status === "IN_PROGRESS" ? (
           <PrimaryButton
-            label={busy ? "Starting…" : "START PICKING"}
-            icon="play-circle"
-            onPress={onBegin}
-            disabled={busy}
+            label="CONTINUE PICKING"
+            icon="arrow-forward-circle"
+            onPress={() => router.replace(pickStepPath(order.id, order) as never)}
           />
-        )
-      ) : order.status === "IN_PROGRESS" ? (
-        <PrimaryButton
-          label="CONTINUE PICKING"
-          icon="arrow-forward-circle"
-          onPress={() => router.replace(pickStepPath(order.id, order) as never)}
-        />
-      ) : (
-        <StatusBadge text={order.status} tone={toneForOrderStatus(order.status)} />
-      )}
+        ) : (
+          <StatusBadge text={order.status} tone={toneForOrderStatus(order.status)} />
+        )}
+      </View>
     </Screen>
   );
 }
@@ -194,32 +178,29 @@ const od = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingVertical: theme.space.xs,
+    gap: 8,
   },
   orderId: {
     ...(theme.type.codeLg as object),
     color: theme.color.ink,
-    fontSize: 20,
+    fontSize: 18,
   },
   orderMeta: {
     ...(theme.type.secondary as object),
     color: theme.color.muted,
     marginTop: 2,
   },
-  summaryBanner: {
+  summaryRow: {
     flexDirection: "row",
     backgroundColor: theme.color.surface,
     borderWidth: 1,
     borderColor: theme.color.line,
-    borderRadius: theme.radius.lg,
-    padding: theme.space.md,
-    marginVertical: theme.space.sm,
+    borderRadius: theme.radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    marginTop: 10,
+    marginBottom: 4,
     alignItems: "center",
-    shadowColor: theme.color.ink,
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   summaryItem: { flex: 1, alignItems: "center" },
   summaryValue: {
@@ -229,77 +210,65 @@ const od = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: "600",
     color: theme.color.muted,
-    marginTop: 3,
-    letterSpacing: 0.5,
+    marginTop: 1,
   },
   summaryDivider: {
     width: 1,
-    height: 28,
+    height: 24,
     backgroundColor: theme.color.line,
   },
   lineCard: {
     flexDirection: "row",
     backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.lg,
-    marginBottom: theme.space.sm,
+    borderRadius: theme.radius.md,
+    marginTop: 6,
     borderWidth: 1,
     borderColor: theme.color.line,
     overflow: "hidden",
-    shadowColor: theme.color.ink,
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
   },
   lineCardPicked: {
     borderColor: theme.color.okBorder,
     backgroundColor: "#fafdfb",
   },
   lineNumberBox: {
-    width: 38,
+    width: 32,
     backgroundColor: theme.color.primaryContainer,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   lineNumberBoxPicked: {
     backgroundColor: theme.color.okPrimary,
   },
   lineNumber: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "800",
     color: "#ffffff",
   },
   lineContent: {
     flex: 1,
-    padding: theme.space.sm,
+    padding: 10,
   },
-  skuBlock: {
-    alignItems: "flex-start",
-    alignSelf: "stretch",
-    gap: 6,
-    minWidth: 0,
-  },
-  skuCodeTag: {
+  lineTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  skuCodeTag: {
     backgroundColor: theme.colors.sku.bg,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: theme.radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
     flexShrink: 1,
     minWidth: 0,
-    maxWidth: "100%",
   },
   skuCode: {
     ...(theme.type.codeMd as object),
     color: theme.colors.sku.text,
-    fontSize: 13,
-    flexShrink: 1,
-    minWidth: 0,
+    fontSize: 12,
   },
   skuName: {
     ...(theme.type.bodyMd as object),
@@ -307,46 +276,31 @@ const od = StyleSheet.create({
     fontWeight: "600",
     marginTop: 4,
   },
-  specs: {
-    ...(theme.type.secondary as object),
-    color: theme.color.muted,
-    marginTop: 2,
-  },
-  locRow: {
+  lineBottom: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: theme.space.xs,
-    flexWrap: "wrap",
-    gap: 6,
+    marginTop: 6,
   },
   locTag: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 3,
     backgroundColor: theme.colors.location.bg,
     borderWidth: 1,
     borderColor: theme.colors.location.border,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: theme.radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   locCode: {
     ...(theme.type.codeMd as object),
     color: theme.colors.location.text,
-    fontSize: 13,
-  },
-  qtyBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    fontSize: 12,
   },
   qtyText: {
     fontSize: 12,
+    fontWeight: "700",
     color: theme.color.muted,
-  },
-  qtyPicked: {
-    fontSize: 12,
-    color: theme.color.okInk,
   },
 });

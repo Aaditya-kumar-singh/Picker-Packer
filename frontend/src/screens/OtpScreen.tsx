@@ -1,7 +1,7 @@
-// Screen 2 — OTP verification. Stitch design: shift authentication badge,
-// large 6-digit input, resend timer, industrial verify button. Dev code 123456.
+// Screen 2 — OTP verification. Shift authentication, 6-digit pin, and device session lock.
 import { useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { ErrorBanner, PrimaryButton, Screen, SecondaryButton, theme } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
@@ -18,7 +18,7 @@ export function OtpScreen() {
 
   async function onVerify() {
     if (otp.trim().length !== 6) {
-      setLocalError("Enter the 6-digit code");
+      setLocalError("Enter the 6-digit verification code");
       return;
     }
     setLocalError(null);
@@ -47,6 +47,7 @@ export function OtpScreen() {
         </View>
         {showExpires ? (
           <View style={os.expBadge}>
+            <Ionicons name="time-outline" size={13} color={theme.color.primary} />
             <Text style={os.expText}>{showExpires}s</Text>
           </View>
         ) : null}
@@ -55,11 +56,11 @@ export function OtpScreen() {
       <Text style={os.headline}>Enter Verification Code</Text>
       <Text style={os.maskedText}>
         {showMasked
-          ? `Security code sent to handheld terminal ${showMasked}`
-          : `Picker ${pickerId} — enter the code sent to your device`}
+          ? `Code sent to terminal ${showMasked}`
+          : `Operator ${pickerId} — enter your 6-digit shift code`}
       </Text>
 
-      {/* OTP digit input — large monospace for warehouse gloves */}
+      {/* OTP digit input */}
       <TextInput
         value={otp}
         onChangeText={setOtp}
@@ -72,28 +73,43 @@ export function OtpScreen() {
         onSubmitEditing={onVerify}
         editable={!loading}
         placeholderTextColor={theme.color.line}
+        autoFocus
       />
 
-      {/* Resend timer */}
+      {/* Resend info */}
       <View style={os.resendRow}>
         <Text style={os.resendText}>
-          {showExpires ? `Resend code in ${showExpires}s` : "Didn't receive the code?"}
+          {showExpires ? `Code expires in ${showExpires}s` : "Didn't receive code?"}
         </Text>
       </View>
 
       <ErrorBanner message={localError ? null : error} />
       {info ? (
         <View style={os.infoBanner}>
-          <Text style={os.infoText}>✓ {info}</Text>
+          <Ionicons name="checkmark-circle" size={16} color={theme.color.okInk} />
+          <Text style={os.infoText}>{info}</Text>
         </View>
       ) : null}
 
-      <PrimaryButton label={loading ? "Verifying…" : "VERIFY & START SHIFT"} onPress={onVerify} disabled={loading} />
-      <SecondaryButton label="Resend OTP" onPress={onResend} />
+      <View style={os.actions}>
+        <PrimaryButton
+          label={loading ? "Verifying…" : "VERIFY & START SHIFT"}
+          icon="shield-checkmark"
+          onPress={onVerify}
+          disabled={loading || otp.trim().length !== 6}
+        />
+        <SecondaryButton
+          label="Resend OTP"
+          icon="refresh"
+          onPress={onResend}
+          disabled={loading}
+        />
+      </View>
 
       {/* Session footer */}
       <View style={os.sessionFooter}>
-        <Text style={os.sessionText}>Session valid for 8 hours on this device</Text>
+        <Ionicons name="lock-closed-outline" size={13} color={theme.color.muted} />
+        <Text style={os.sessionText}>Active session locked to this device for shift duration</Text>
       </View>
     </Screen>
   );
@@ -104,88 +120,121 @@ const os = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: theme.space.lg,
+    marginBottom: theme.space.md,
   },
   authBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.space.xs,
+    gap: 6,
     backgroundColor: theme.color.surfaceContainerLow,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: theme.space.xxs,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.color.line,
   },
   authDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
     backgroundColor: theme.color.primaryContainer,
   },
   authLabel: {
-    ...(theme.type.labelMd as object),
+    fontSize: 10,
+    fontWeight: "800",
     color: theme.color.primaryContainer,
+    letterSpacing: 0.5,
   },
   expBadge: {
     backgroundColor: theme.color.surfaceContainerHigh,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: theme.space.xxs,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: theme.radius.pill,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   expText: {
     ...(theme.type.codeMd as object),
+    fontSize: 12,
     color: theme.color.primary,
+    fontWeight: "700",
   },
   headline: {
-    ...(theme.type.display as object),
+    ...(theme.type.title as object),
     color: theme.color.ink,
-    marginBottom: theme.space.xxs,
+    fontSize: 20,
+    textAlign: "center",
+    marginBottom: 4,
   },
   maskedText: {
     ...(theme.type.bodyMd as object),
     color: theme.color.muted,
-    marginBottom: theme.space.lg,
+    textAlign: "center",
+    marginBottom: theme.space.md,
+    fontSize: 13,
   },
   otpInput: {
     backgroundColor: theme.color.surface,
     borderWidth: 2,
     borderColor: theme.color.primaryContainer,
     borderRadius: theme.radius.lg,
-    fontSize: 36,
-    fontWeight: "700",
-    letterSpacing: 12,
-    padding: theme.space.md,
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: 10,
+    paddingVertical: theme.space.sm,
+    paddingHorizontal: theme.space.md,
     color: theme.color.ink,
-    minHeight: 72,
+    minHeight: 64,
+    textAlign: "center",
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   resendRow: {
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: theme.space.sm,
+    marginTop: theme.space.xs,
+    marginBottom: theme.space.xs,
   },
   resendText: {
     ...(theme.type.secondary as object),
     color: theme.color.muted,
+    fontSize: 12,
   },
   infoBanner: {
     backgroundColor: theme.color.okBg,
     borderRadius: theme.radius.md,
     padding: theme.space.sm,
-    marginTop: theme.space.xs,
-    borderLeftWidth: 4,
-    borderLeftColor: theme.color.okInk,
-  },
-  infoText: { ...(theme.type.bodyMd as object), color: theme.color.okInk, fontWeight: "600" },
-  sessionFooter: {
+    marginVertical: theme.space.xs,
+    borderWidth: 1,
+    borderColor: theme.color.okBorder,
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: theme.space.lg,
+    gap: 6,
+  },
+  infoText: {
+    ...(theme.type.bodyMd as object),
+    color: theme.color.okInk,
+    fontWeight: "600",
+    fontSize: 12,
+    flex: 1,
+  },
+  actions: {
+    marginTop: theme.space.xs,
+    gap: 6,
+  },
+  sessionFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    marginTop: theme.space.md,
   },
   sessionText: {
-    ...(theme.type.secondary as object),
+    fontSize: 11,
     color: theme.color.muted,
   },
 });

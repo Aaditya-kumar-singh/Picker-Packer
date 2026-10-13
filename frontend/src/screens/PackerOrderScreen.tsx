@@ -1,3 +1,4 @@
+// Packer Order Processing — Verify each item and prepare for dispatch.
 import { useCallback, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,7 +11,6 @@ import {
   PrimaryButton,
   Screen,
   StatusBadge,
-  SuccessFeedback,
   theme,
 } from "@/components/ui";
 import { newIdemKey } from "@/repositories/pickerRepository";
@@ -44,7 +44,11 @@ export function PackerOrderScreen() {
     }
   }, [id]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
   async function scan(value?: string) {
     const code = (value ?? barcode).trim();
@@ -58,8 +62,8 @@ export function PackerOrderScreen() {
       setOrder(result.order);
       setBarcode("");
       const item = result.item;
-      const packedText = item ? item.packedQty + "/" + item.pickedQty : "";
-      setSuccess("Item packed successfully: " + (item ? item.productName : "") + (packedText ? " (" + packedText + ")" : ""));
+      const packedText = item ? `${item.packedQty}/${item.pickedQty}` : "";
+      setSuccess(`Packed: ${item ? item.productName : "Item"}${packedText ? ` (${packedText})` : ""}`);
       if (result.allPacked) {
         setSuccess("All items packed! Order is ready for rider assignment.");
       }
@@ -74,7 +78,7 @@ export function PackerOrderScreen() {
     if (!value) return;
     await Clipboard.setStringAsync(value);
     setCopiedBarcode(value);
-    setTimeout(() => setCopiedBarcode(current => current === value ? null : current), 1400);
+    setTimeout(() => setCopiedBarcode((current) => (current === value ? null : current)), 1400);
   }
 
   async function assign(rider: client.Rider) {
@@ -82,11 +86,12 @@ export function PackerOrderScreen() {
     setAssigning(true);
     setError(null);
     try {
-      const result = await client.assignRider(order.id, rider.id, rider.name, newIdemKey());
-      setOrder(prev => prev ? { ...prev, status: "RIDER_ASSIGNED", riderId: rider.id, riderName: rider.name } : prev);
+      await client.assignRider(order.id, rider.id, rider.name, newIdemKey());
+      setOrder((prev) =>
+        prev ? { ...prev, status: "RIDER_ASSIGNED", riderId: rider.id, riderName: rider.name } : prev
+      );
       setRiderModal(false);
       setSuccess("Rider assigned successfully!");
-      void result;
       setTimeout(() => {
         router.replace({ pathname: "/packer-dashboard", params: { message: "Rider assigned successfully!" } } as never);
       }, 700);
@@ -111,73 +116,101 @@ export function PackerOrderScreen() {
   const picked = order.items.reduce((sum, item) => sum + item.pickedQty, 0);
   const allPacked = order.status === "PACKED" || order.status === "RIDER_ASSIGNED" || (picked > 0 && packed >= picked);
   const progress = picked > 0 ? Math.min(100, Math.round((packed / picked) * 100)) : 0;
+  const isEditable = !busy && order.status !== "PACKED" && order.status !== "RIDER_ASSIGNED";
 
   return (
     <Screen>
-      <AppHeader title={order.orderNumber} sub={order.customer || "Warehouse Customer"} showBack />
+      <AppHeader
+        title={order.orderNumber}
+        sub={order.customer || "Warehouse Customer"}
+        showBack
+      />
 
+      {/* Progress & Barcode Action Card */}
       <View style={s.card}>
         <View style={s.statusRow}>
-          <Text style={s.progressLabel}>Packing Progress</Text>
-          <Text style={s.progressCount}>{packed} of {picked} units packed ({progress}%)</Text>
+          <Text style={s.progressLabel}>PACKING PROGRESS</Text>
+          <Text style={s.progressCount}>
+            {packed} of {picked} units ({progress}%)
+          </Text>
         </View>
+
         <View style={s.progress}>
           <View style={[s.fill, { width: `${progress}%` }]} />
         </View>
 
-        <View style={s.scanRow}>
-          <TextInput
-            value={barcode}
-            onChangeText={setBarcode}
-            onSubmitEditing={() => void scan()}
-            placeholder="Scan or type item barcode…"
-            placeholderTextColor={theme.color.faint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!busy && order.status !== "PACKED" && order.status !== "RIDER_ASSIGNED"}
-            style={s.scanInput}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Scan with camera"
-            style={({ pressed }) => [s.camera, pressed ? { opacity: 0.85 } : null]}
-            onPress={() => setScannerVisible(true)}
-            disabled={busy}
-          >
-            <Ionicons name="camera-outline" size={20} color="#ffffff" />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Submit barcode"
-            style={({ pressed }) => [s.scanButton, busy && s.disabled, pressed ? { opacity: 0.85 } : null]}
-            onPress={() => void scan()}
-            disabled={busy}
-          >
-            <Text style={s.scanButtonText}>{busy ? "…" : "Verify"}</Text>
-          </Pressable>
-        </View>
+        {isEditable ? (
+          <View style={s.scanRow}>
+            <TextInput
+              value={barcode}
+              onChangeText={setBarcode}
+              onSubmitEditing={() => void scan()}
+              placeholder="Scan or type item barcode…"
+              placeholderTextColor={theme.color.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!busy}
+              style={s.scanInput}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Scan with camera"
+              style={({ pressed }) => [s.camera, pressed ? { opacity: 0.85 } : null]}
+              onPress={() => setScannerVisible(true)}
+              disabled={busy}
+            >
+              <Ionicons name="camera-outline" size={18} color="#ffffff" />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Submit barcode"
+              style={({ pressed }) => [s.scanButton, busy && s.disabled, pressed ? { opacity: 0.85 } : null]}
+              onPress={() => void scan()}
+              disabled={busy || !barcode.trim()}
+            >
+              <Text style={s.scanButtonText}>{busy ? "…" : "Verify"}</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
       <ErrorBanner message={error} />
-      <SuccessFeedback message={success} />
+      {success ? (
+        <View style={s.packedFeedback} accessibilityRole="alert">
+          <View style={s.packedFeedbackIcon}>
+            <Ionicons name="checkmark-circle" size={30} color={theme.color.okInk} />
+          </View>
+          <Text style={s.packedFeedbackText}>{success}</Text>
+        </View>
+      ) : null}
 
-      <Text style={s.section}>Order Items</Text>
-      {order.items.map(item => {
+      {/* Item Checklist Header */}
+      <View style={s.sectionHeader}>
+        <Text style={s.sectionTitle}>Order Items</Text>
+        <Text style={s.sectionHint}>{order.items.length} lines</Text>
+      </View>
+
+      {/* Item List */}
+      {order.items.map((item) => {
         const done = item.packedQty >= item.pickedQty;
         return (
           <View key={item.id} style={[s.item, done && s.itemDone]}>
             <Ionicons
               name={done ? "checkmark-circle" : "ellipse-outline"}
-              size={22}
+              size={20}
               color={done ? theme.color.okInk : theme.color.muted}
-              style={{ marginRight: 10 }}
+              style={s.checkIcon}
             />
+
             <View style={s.itemMain}>
               <Text style={s.name}>{item.productName}</Text>
               {item.productSpecs ? <Text style={s.specs}>{item.productSpecs}</Text> : null}
+
               <View style={s.barcodeRow}>
                 <Ionicons name="barcode-outline" size={13} color={theme.color.muted} />
-                <Text selectable style={s.sku}>{item.skuBarcode}</Text>
+                <Text selectable style={s.sku}>
+                  {item.skuBarcode}
+                </Text>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Copy barcode for ${item.productName}`}
@@ -185,11 +218,14 @@ export function PackerOrderScreen() {
                   style={s.copyBarcode}
                   hitSlop={6}
                 >
-                  <Text style={s.copyBarcodeText}>{copiedBarcode === item.skuBarcode ? "Copied" : "Copy"}</Text>
+                  <Text style={s.copyBarcodeText}>
+                    {copiedBarcode === item.skuBarcode ? "Copied" : "Copy"}
+                  </Text>
                 </Pressable>
               </View>
             </View>
-            <View style={s.qtyBadge}>
+
+            <View style={[s.qtyBadge, done && s.qtyBadgeDone]}>
               <Text style={[s.qty, done && { color: theme.color.okInk }]}>
                 {item.packedQty}/{item.pickedQty}
               </Text>
@@ -198,34 +234,41 @@ export function PackerOrderScreen() {
         );
       })}
 
+      {/* Recent Scans */}
       {order.recentScans.length > 0 ? (
-        <>
-          <Text style={s.section}>Recent Scans</Text>
+        <View style={s.recentSection}>
+          <Text style={s.recentSectionTitle}>Recent Scans</Text>
           <View style={s.recentList}>
-            {order.recentScans.map((scanItem, index) => {
-              const item = order.items.find(i => i.id === scanItem.itemId);
+            {order.recentScans.slice(-4).map((scanItem, index) => {
+              const item = order.items.find((i) => i.id === scanItem.itemId);
               return (
                 <View key={scanItem.createdAt + scanItem.itemId + index} style={s.recent}>
-                  <Ionicons name="checkmark-sharp" size={14} color={theme.color.okInk} />
+                  <Ionicons name="checkmark-sharp" size={13} color={theme.color.okInk} />
                   <Text style={s.recentBarcode}>{scanItem.barcode}</Text>
-                  <Text style={s.recentName} numberOfLines={1}>{item?.productName || "Item"}</Text>
-                  <Text style={s.recentTime}>{new Date(scanItem.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+                  <Text style={s.recentName} numberOfLines={1}>
+                    {item?.productName || "Item"}
+                  </Text>
+                  <Text style={s.recentTime}>
+                    {new Date(scanItem.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </Text>
                 </View>
               );
             })}
           </View>
-        </>
+        </View>
       ) : null}
 
+      {/* Completion & Rider Assignment */}
       {allPacked ? (
-        <View style={{ marginTop: theme.space.md }}>
+        <View style={s.completionWrap}>
           <View style={s.allPacked}>
-            <Ionicons name="checkmark-circle" size={24} color={theme.color.okInk} />
+            <Ionicons name="checkmark-circle" size={22} color={theme.color.okInk} />
             <View style={{ flex: 1 }}>
-              <Text style={s.allPackedTitle}>All items packed & verified!</Text>
-              <Text style={s.allPackedText}>Order is ready for dispatch rider assignment.</Text>
+              <Text style={s.allPackedTitle}>All items packed & verified</Text>
+              <Text style={s.allPackedText}>Ready for dispatch rider assignment.</Text>
             </View>
           </View>
+
           {order.status === "PACKED" ? (
             <PrimaryButton
               label="ASSIGN DISPATCH RIDER"
@@ -236,8 +279,8 @@ export function PackerOrderScreen() {
             />
           ) : (
             <View style={s.assigned}>
-              <Ionicons name="checkmark-done-circle" size={20} color={theme.color.okInk} />
-              <Text style={s.assignedText}>Rider assigned: {order.riderName || "Assigned"}</Text>
+              <Ionicons name="checkmark-done-circle" size={18} color={theme.color.okInk} />
+              <Text style={s.assignedText}>Rider: {order.riderName || "Assigned"}</Text>
             </View>
           )}
         </View>
@@ -246,20 +289,28 @@ export function PackerOrderScreen() {
       <BarcodeScannerModal
         visible={scannerVisible}
         title="Scan product barcode"
-        onScanned={value => { setScannerVisible(false); void scan(value); }}
+        onScanned={(value) => {
+          setScannerVisible(false);
+          void scan(value);
+        }}
         onClose={() => setScannerVisible(false)}
       />
 
+      {/* Rider Selection Modal */}
       <Modal visible={riderModal} transparent animationType="fade" onRequestClose={() => setRiderModal(false)}>
         <View style={s.modalBackdrop}>
           <View style={s.modal}>
             <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Select Dispatch Rider</Text>
+              <View>
+                <Text style={s.modalTitle}>Select Dispatch Rider</Text>
+                <Text style={s.modalSub}>Assign available courier for delivery</Text>
+              </View>
               <Pressable onPress={() => setRiderModal(false)} hitSlop={12}>
-                <Ionicons name="close" size={24} color={theme.color.muted} />
+                <Ionicons name="close" size={22} color={theme.color.muted} />
               </Pressable>
             </View>
-            {riders.map(rider => (
+
+            {riders.map((rider) => (
               <Pressable
                 key={rider.id}
                 style={({ pressed }) => [s.rider, pressed ? { opacity: 0.85 } : null]}
@@ -269,7 +320,6 @@ export function PackerOrderScreen() {
                 <View style={s.riderMain}>
                   <Text style={s.riderName}>{rider.name}</Text>
                   <Text style={s.riderPhone}>{rider.phone || "No phone listed"}</Text>
-                  <Text style={s.riderType}>Standard Delivery Bike</Text>
                 </View>
                 <View style={s.availablePill}>
                   <Text style={s.available}>AVAILABLE</Text>
@@ -286,29 +336,27 @@ export function PackerOrderScreen() {
 const s = StyleSheet.create({
   card: {
     backgroundColor: theme.color.surface,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.line,
     borderRadius: theme.radius.lg,
-    padding: theme.space.md,
+    padding: theme.space.sm,
     marginTop: theme.space.xs,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   statusRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 6,
-    minWidth: 0,
   },
   progressLabel: {
     ...(theme.type.labelSm as object),
     color: theme.color.muted,
-    textTransform: "uppercase",
+    fontSize: 10,
+    letterSpacing: 0.5,
   },
   progressCount: {
     ...(theme.type.labelSm as object),
@@ -316,46 +364,46 @@ const s = StyleSheet.create({
     fontWeight: "700",
   },
   progress: {
-    height: 8,
+    height: 6,
     backgroundColor: theme.color.surfaceContainerHigh,
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
-    marginTop: 6,
-    marginBottom: theme.space.sm,
+    marginTop: 4,
+    marginBottom: theme.space.xs,
   },
   fill: {
-    height: 8,
+    height: 6,
     backgroundColor: theme.packer.primary,
-    borderRadius: 4,
+    borderRadius: 3,
   },
   scanRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 4,
+    gap: 6,
+    marginTop: 2,
   },
   scanInput: {
     flex: 1,
-    minHeight: 46,
-    borderWidth: 1.5,
+    minHeight: 40,
+    borderWidth: 1,
     borderColor: theme.color.line,
     borderRadius: theme.radius.md,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     color: theme.color.ink,
     backgroundColor: theme.color.surfaceContainerLow,
-    ...(theme.type.bodyMd as object),
+    fontSize: 13,
   },
   camera: {
-    width: 46,
-    height: 46,
+    width: 40,
+    height: 40,
     borderRadius: theme.radius.md,
     backgroundColor: theme.packer.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   scanButton: {
-    minHeight: 46,
-    paddingHorizontal: 16,
+    minHeight: 40,
+    paddingHorizontal: 14,
     borderRadius: theme.radius.md,
     backgroundColor: theme.color.primaryContainer,
     alignItems: "center",
@@ -363,15 +411,60 @@ const s = StyleSheet.create({
   },
   scanButtonText: {
     color: "#ffffff",
-    fontWeight: "800",
-    fontSize: 13,
+    fontWeight: "700",
+    fontSize: 12,
   },
-  disabled: { opacity: 0.45 },
-  section: {
-    ...(theme.type.section as object),
-    color: theme.color.ink,
-    marginTop: theme.space.lg,
+  disabled: { opacity: 0.4 },
+  packedFeedback: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 88,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    marginTop: 10,
+    marginBottom: 8,
+    backgroundColor: "#DDF8EC",
+    borderWidth: 2,
+    borderColor: "#42C99A",
+    borderRadius: 20,
+    shadowColor: "#087F5B",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  packedFeedbackIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#B9F0D8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  packedFeedbackText: {
+    flex: 1,
+    flexShrink: 1,
+    fontSize: 17,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: "#075E46",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: theme.space.md,
     marginBottom: theme.space.xs,
+  },
+  sectionTitle: {
+    ...(theme.type.section as object),
+    fontSize: 14,
+    color: theme.color.ink,
+  },
+  sectionHint: {
+    ...(theme.type.secondary as object),
+    color: theme.color.muted,
   },
   item: {
     flexDirection: "row",
@@ -379,104 +472,75 @@ const s = StyleSheet.create({
     backgroundColor: theme.color.surface,
     borderWidth: 1,
     borderColor: theme.color.line,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     padding: theme.space.sm,
-    marginBottom: theme.space.xs,
-    shadowColor: theme.color.ink,
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    marginBottom: 6,
   },
   itemDone: {
     borderColor: theme.color.okBorder,
     backgroundColor: "#fafdfb",
   },
+  checkIcon: {
+    marginRight: 8,
+  },
   itemMain: { flex: 1, minWidth: 0 },
   name: {
-    ...(theme.type.bodyMd as object),
-    color: theme.color.ink,
+    fontSize: 13,
     fontWeight: "700",
+    color: theme.color.ink,
   },
   specs: {
-    ...(theme.type.secondary as object),
+    fontSize: 11,
     color: theme.color.muted,
     marginTop: 1,
   },
   barcodeRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     alignItems: "center",
-    gap: 6,
-    marginTop: 4,
-    minWidth: 0,
+    gap: 5,
+    marginTop: 3,
   },
   sku: {
     ...(theme.type.codeMd as object),
-    fontSize: 12,
+    fontSize: 11,
     color: theme.color.muted,
-    flexShrink: 1,
-    minWidth: 0,
   },
   copyBarcode: {
     borderWidth: 1,
     borderColor: theme.color.line,
     borderRadius: theme.radius.sm,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     backgroundColor: theme.color.surfaceContainer,
   },
   copyBarcodeText: {
-    fontSize: 10,
+    fontSize: 9,
     color: theme.color.primary,
     fontWeight: "700",
   },
   qtyBadge: {
-    marginLeft: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    marginLeft: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: theme.radius.sm,
     backgroundColor: theme.color.surfaceContainerLow,
   },
+  qtyBadgeDone: {
+    backgroundColor: theme.color.okBg,
+  },
   qty: {
     ...(theme.type.codeLg as object),
-    fontSize: 15,
+    fontSize: 13,
     color: theme.color.ink,
   },
-  allPacked: {
-    backgroundColor: theme.color.okBg,
-    borderWidth: 1,
-    borderColor: theme.color.okBorder,
-    borderRadius: theme.radius.md,
-    padding: theme.space.md,
-    marginBottom: theme.space.xs,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  allPackedTitle: {
-    ...(theme.type.section as object),
-    color: theme.color.okInk,
-  },
-  allPackedText: {
-    ...(theme.type.secondary as object),
-    color: theme.color.okInk,
-    marginTop: 2,
-  },
-  assigned: {
-    backgroundColor: theme.color.okBg,
-    borderRadius: theme.radius.md,
-    padding: theme.space.sm,
+  recentSection: {
     marginTop: theme.space.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
+    marginBottom: theme.space.xs,
   },
-  assignedText: {
-    ...(theme.type.labelMd as object),
-    color: theme.color.okInk,
-    fontWeight: "700",
+  recentSectionTitle: {
+    ...(theme.type.labelSm as object),
+    color: theme.color.muted,
+    marginBottom: 4,
   },
   recentList: {
     backgroundColor: theme.color.surface,
@@ -488,89 +552,131 @@ const s = StyleSheet.create({
   recent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
+    gap: 6,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: theme.color.line,
   },
   recentBarcode: {
     ...(theme.type.codeMd as object),
-    fontSize: 12,
+    fontSize: 11,
     color: theme.color.ink,
-    minWidth: 100,
+    minWidth: 80,
   },
   recentName: {
     flex: 1,
-    ...(theme.type.secondary as object),
+    fontSize: 11,
     color: theme.color.muted,
   },
   recentTime: {
-    ...(theme.type.caption as object),
+    fontSize: 10,
     color: theme.color.muted,
+  },
+  completionWrap: {
+    marginTop: theme.space.sm,
+  },
+  allPacked: {
+    backgroundColor: theme.color.okBg,
+    borderWidth: 1,
+    borderColor: theme.color.okBorder,
+    borderRadius: theme.radius.md,
+    padding: theme.space.sm,
+    marginBottom: theme.space.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  allPackedTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: theme.color.okInk,
+  },
+  allPackedText: {
+    fontSize: 11,
+    color: theme.color.okInk,
+    marginTop: 1,
+  },
+  assigned: {
+    backgroundColor: theme.color.okBg,
+    borderRadius: theme.radius.md,
+    paddingVertical: 8,
+    paddingHorizontal: theme.space.sm,
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  assignedText: {
+    ...(theme.type.labelMd as object),
+    color: theme.color.okInk,
+    fontWeight: "700",
+    fontSize: 12,
   },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
-    padding: 24,
+    padding: 20,
   },
   modal: {
     backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.xl,
-    padding: theme.space.lg,
+    borderRadius: theme.radius.lg,
+    padding: theme.space.md,
     shadowColor: "#000",
     shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowRadius: 12,
+    elevation: 6,
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: theme.space.md,
+    alignItems: "flex-start",
+    marginBottom: theme.space.sm,
   },
   modalTitle: {
-    ...(theme.type.titleMd as object),
+    fontSize: 16,
+    fontWeight: "800",
     color: theme.color.ink,
   },
+  modalSub: {
+    fontSize: 12,
+    color: theme.color.muted,
+    marginTop: 1,
+  },
   rider: {
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.line,
-    borderRadius: theme.radius.lg,
-    padding: theme.space.md,
+    borderRadius: theme.radius.md,
+    padding: theme.space.sm,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: theme.space.xs,
+    marginTop: 6,
     backgroundColor: theme.color.surface,
   },
   riderMain: { flex: 1 },
   riderName: {
-    ...(theme.type.body as object),
+    fontSize: 13,
     color: theme.color.ink,
     fontWeight: "700",
   },
   riderPhone: {
-    ...(theme.type.secondary as object),
+    fontSize: 11,
     color: theme.color.muted,
-    marginTop: 2,
-  },
-  riderType: {
-    ...(theme.type.caption as object),
-    color: theme.color.primaryContainer,
-    marginTop: 2,
-    fontWeight: "600",
+    marginTop: 1,
   },
   availablePill: {
     backgroundColor: theme.color.okBg,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: theme.radius.pill,
     borderWidth: 1,
     borderColor: theme.color.okBorder,
   },
   available: {
-    ...(theme.type.labelSm as object),
+    fontSize: 9,
+    fontWeight: "800",
     color: theme.color.okInk,
   },
 });

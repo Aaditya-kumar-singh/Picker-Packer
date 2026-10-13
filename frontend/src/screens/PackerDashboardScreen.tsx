@@ -1,3 +1,4 @@
+// Packer Dashboard — Work queue and station performance.
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,7 +29,7 @@ export function PackerDashboardScreen() {
     setLoading(true);
     try {
       const [queue, metrics] = await Promise.all([client.packerOrders(), client.packerDashboardStats()]);
-      setOrders(queue.orders.filter(o => o.status !== "RIDER_ASSIGNED"));
+      setOrders(queue.orders.filter((o) => o.status !== "RIDER_ASSIGNED"));
       setStats(metrics);
       setError(null);
     } catch (e) {
@@ -38,18 +39,28 @@ export function PackerDashboardScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load])
+  );
 
   return (
     <Screen>
-      <AppHeader title="Packer Dashboard" sub={picker ? `Welcome, ${picker.name}` : "Packaging Station"} />
+      <AppHeader
+        title="Packer Dashboard"
+        sub={picker ? `Welcome, ${picker.name}` : "Packaging Station"}
+      />
+
       {message ? (
         <View style={s.success}>
-          <Ionicons name="checkmark-circle" size={18} color={theme.color.okInk} />
+          <Ionicons name="checkmark-circle" size={16} color={theme.color.okInk} />
           <Text style={s.successText}>{message}</Text>
         </View>
       ) : null}
+
       <ErrorBanner message={error} />
+
       {loading ? (
         <LoadingState label="Loading packing queue…" />
       ) : (
@@ -62,7 +73,11 @@ export function PackerDashboardScreen() {
               <MetricCard value={String(stats.completed)} label="Completed" tone="ok" />
             </View>
             <View style={s.metric}>
-              <MetricCard value={String(stats.itemsPackedToday)} label="Items Packed" tone={stats.itemsPackedToday > 0 ? "info" : undefined} />
+              <MetricCard
+                value={String(stats.itemsPackedToday)}
+                label="Packed Today"
+                tone={stats.itemsPackedToday > 0 ? "info" : undefined}
+              />
             </View>
           </View>
 
@@ -74,40 +89,49 @@ export function PackerDashboardScreen() {
               onAction={() => void load()}
             />
           ) : (
-            orders.map(o => {
+            orders.map((o) => {
               const packed = o.packedCount ?? 0;
               const total = o.itemCount ?? 0;
               const complete = o.status === "PACKED";
               const pct = total ? Math.min(100, Math.round((packed / total) * 100)) : 0;
+
               return (
                 <View key={o.id} style={s.card}>
                   <View style={s.row}>
                     <Text style={s.id}>{o.orderNumber}</Text>
-                    <StatusBadge text={complete ? "PACKED" : "READY FOR PACKING"} tone={complete ? "ok" : "warn"} />
+                    <StatusBadge
+                      text={complete ? "PACKED" : "READY"}
+                      tone={complete ? "ok" : "warn"}
+                    />
                   </View>
+
                   <Text style={s.customer}>{o.customer || "Warehouse Customer"}</Text>
-                  
+
                   <View style={s.countRow}>
                     <Text style={s.meta}>{total} item lines</Text>
-                    <Text style={s.countHighlight}>{packed} of {total} packed ({pct}%)</Text>
+                    <Text style={s.countHighlight}>
+                      {packed} / {total} packed ({pct}%)
+                    </Text>
                   </View>
-                  
+
                   <View style={s.progress}>
                     <View style={[s.fill, { width: `${pct}%` }]} />
                   </View>
 
                   {complete ? (
                     <View style={s.complete}>
-                      <Ionicons name="checkmark-circle" size={18} color={theme.color.okInk} />
+                      <Ionicons name="checkmark-circle" size={16} color={theme.color.okInk} />
                       <Text style={s.completeText}>All items packed & verified</Text>
                     </View>
                   ) : (
-                    <PrimaryButton
-                      label="OPEN PACKING ORDER"
-                      icon="barcode-outline"
-                      variant="amber"
-                      onPress={() => router.push("/pack/order/" + o.id as never)}
-                    />
+                    <View style={s.btnWrap}>
+                      <PrimaryButton
+                        label="OPEN PACKING ORDER"
+                        icon="barcode-outline"
+                        variant="amber"
+                        onPress={() => router.push(`/pack/order/${o.id}` as never)}
+                      />
+                    </View>
                   )}
                 </View>
               );
@@ -123,22 +147,22 @@ const s = StyleSheet.create({
   metrics: {
     flexDirection: "row",
     gap: theme.space.xs,
-    marginBottom: theme.space.md,
+    marginBottom: theme.space.xs,
     marginTop: theme.space.xs,
   },
   metric: { flex: 1 },
   card: {
     backgroundColor: theme.color.surface,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.line,
     borderRadius: theme.radius.lg,
-    padding: theme.space.md,
-    marginBottom: theme.space.sm,
+    padding: theme.space.sm,
+    marginBottom: theme.space.xs,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   row: {
     flexDirection: "row",
@@ -148,22 +172,24 @@ const s = StyleSheet.create({
   id: {
     ...(theme.type.codeLg as object),
     color: theme.color.ink,
-    fontSize: 18,
+    fontSize: 16,
   },
   customer: {
     ...(theme.type.bodyMd as object),
     color: theme.color.muted,
-    marginTop: 4,
+    fontSize: 12,
+    marginTop: 2,
   },
   countRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: theme.space.sm,
+    marginTop: theme.space.xs,
   },
   meta: {
     ...(theme.type.secondary as object),
     color: theme.color.muted,
+    fontSize: 12,
   },
   countHighlight: {
     ...(theme.type.labelSm as object),
@@ -171,35 +197,38 @@ const s = StyleSheet.create({
     fontWeight: "700",
   },
   progress: {
-    height: 8,
+    height: 6,
     backgroundColor: theme.color.surfaceContainerHigh,
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
-    marginTop: 6,
-    marginBottom: 4,
+    marginTop: 4,
+    marginBottom: 6,
   },
   fill: {
-    height: 8,
+    height: 6,
     backgroundColor: theme.packer.primary,
-    borderRadius: 4,
+    borderRadius: 3,
   },
   complete: {
     backgroundColor: theme.color.okBg,
     borderWidth: 1,
     borderColor: theme.color.okBorder,
     borderRadius: theme.radius.md,
-    padding: theme.space.sm,
-    marginTop: theme.space.sm,
+    paddingVertical: 8,
+    paddingHorizontal: theme.space.sm,
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
   },
   completeText: {
-    ...(theme.type.button as object),
     color: theme.color.okInk,
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 12,
+  },
+  btnWrap: {
+    marginTop: 4,
   },
   success: {
     backgroundColor: theme.color.okBg,
@@ -207,15 +236,15 @@ const s = StyleSheet.create({
     borderColor: theme.color.okBorder,
     borderRadius: theme.radius.md,
     padding: theme.space.sm,
-    marginBottom: theme.space.sm,
+    marginBottom: theme.space.xs,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 6,
   },
   successText: {
     ...(theme.type.bodyMd as object),
     color: theme.color.okInk,
     fontWeight: "700",
+    fontSize: 13,
   },
 });

@@ -1,3 +1,4 @@
+// Packer Completed Orders — History of packed orders & courier dispatches.
 import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -34,12 +35,12 @@ export function PackerCompletedScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+    }, [load])
   );
 
   return (
     <Screen>
-      <AppHeader title="Completed Orders" sub="Packing history" />
+      <AppHeader title="Completed Orders" sub="Packaging history" />
       <ErrorBanner message={error} />
 
       {loading ? (
@@ -71,20 +72,33 @@ export function PackerCompletedScreen() {
                   tone="ok"
                 />
               </View>
+
               <Text style={s.customer}>{order.customer || "Warehouse Customer"}</Text>
+
               <View style={s.metaRow}>
                 <Text style={s.meta}>{total} item lines</Text>
-                <Text style={s.metaHighlight}>{packed} of {total} packed</Text>
+                <Text style={s.metaHighlight}>
+                  {packed} of {total} packed
+                </Text>
               </View>
+
               <View style={s.progress}>
-                <View style={[s.fill, { width: `${total ? Math.min(100, Math.round((packed / total) * 100)) : 0}%` }]} />
+                <View
+                  style={[
+                    s.fill,
+                    { width: `${total ? Math.min(100, Math.round((packed / total) * 100)) : 0}%` },
+                  ]}
+                />
               </View>
+
               <View style={s.footer}>
                 <View style={s.footerLeft}>
-                  <Ionicons name="checkmark-done" size={14} color={theme.color.okInk} />
-                  <Text style={s.footerText}>{riderAssigned ? `Rider: ${order.riderName ?? "Assigned"}` : "Ready for pickup"}</Text>
+                  <Ionicons name="checkmark-done" size={13} color={theme.color.okInk} />
+                  <Text style={s.footerText}>
+                    {riderAssigned ? `Rider: ${order.riderName ?? "Assigned"}` : "Ready for pickup"}
+                  </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={theme.color.faint} />
+                <Ionicons name="chevron-forward" size={14} color={theme.color.faint} />
               </View>
             </Pressable>
           );
@@ -97,20 +111,19 @@ export function PackerCompletedScreen() {
 const s = StyleSheet.create({
   card: {
     backgroundColor: theme.color.surface,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: theme.color.line,
     borderRadius: theme.radius.lg,
-    padding: theme.space.md,
-    marginBottom: theme.space.sm,
+    padding: theme.space.sm,
+    marginBottom: theme.space.xs,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   pressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.99 }],
   },
   row: {
     flexDirection: "row",
@@ -120,45 +133,48 @@ const s = StyleSheet.create({
   id: {
     ...(theme.type.codeLg as object),
     color: theme.color.ink,
-    fontSize: 17,
+    fontSize: 15,
   },
   customer: {
     ...(theme.type.bodyMd as object),
     color: theme.color.muted,
-    marginTop: 4,
+    fontSize: 12,
+    marginTop: 2,
   },
   metaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: theme.space.sm,
+    marginTop: theme.space.xs,
   },
   meta: {
     ...(theme.type.secondary as object),
     color: theme.color.muted,
+    fontSize: 11,
   },
   metaHighlight: {
     ...(theme.type.labelSm as object),
     color: theme.color.okInk,
     fontWeight: "700",
+    fontSize: 11,
   },
   progress: {
-    height: 7,
+    height: 5,
     backgroundColor: theme.color.surfaceContainerHigh,
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
-    marginTop: 6,
+    marginTop: 4,
     marginBottom: 6,
   },
   fill: {
-    height: 7,
+    height: 5,
     backgroundColor: theme.color.okPrimary,
-    borderRadius: 4,
+    borderRadius: 3,
   },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 2,
   },
   footerLeft: {
     flexDirection: "row",
@@ -168,6 +184,7 @@ const s = StyleSheet.create({
   footerText: {
     ...(theme.type.secondary as object),
     color: theme.color.okInk,
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: "600",
   },
 });
