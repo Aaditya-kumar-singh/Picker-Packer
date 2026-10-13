@@ -48,7 +48,7 @@ test("product scan starts from a pending line and camera scans count immediately
   assert.match(offline, /line\.status !== "PENDING" && line\.status !== "LOCATION_VALIDATED" && line\.status !== "SKU_VALIDATED"/);
   assert.match(offline, /payload: \{ scanValue: normalize\(scanValue\) \}/);
   assert.match(screen, /onScanned=\{\(value\) => \{\s*setManual\(value\);\s*void processItemBarcode\(value\);/);
-  assert.match(screen, /const quantity = 1/);
+  assert.match(screen, /pickerRepository\.pickQuantity\(line\.id,\s*1,\s*line\.uom,\s*newIdemKey\(\)\)/);
   assert.match(screen, /setSkuVerified\(!completed\)/);
 });
 
