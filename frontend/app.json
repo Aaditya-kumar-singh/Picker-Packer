@@ -2,7 +2,7 @@
   "expo": {
     "name": "ybm-picker-packer",
     "slug": "ybm-picker-packer",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "ybm-picker-packer",
@@ -11,7 +11,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow YBM Picker & Packer to use the camera to scan warehouse barcodes."
+          "cameraPermission": "Allow YBM Picker & Packer to use the camera to scan warehouse barcodes.",
+          "recordAudioAndroid": false
         }
       ],
       "expo-router",
@@ -28,8 +29,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ],
       "package": "com.aaditya001.ybmpickerpacker"
     },

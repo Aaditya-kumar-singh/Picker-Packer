@@ -2,6 +2,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -128,6 +129,14 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
         contentContainerStyle={os.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading && orders.length > 0}
+            onRefresh={() => void load()}
+            tintColor="#0D6EFD"
+            colors={["#0D6EFD"]}
+          />
+        }
       >
         {/* Title Row + Count Badge + Sort Button */}
         <View style={os.topHeaderRow}>

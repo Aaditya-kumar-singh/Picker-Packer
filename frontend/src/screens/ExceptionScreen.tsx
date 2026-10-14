@@ -190,7 +190,11 @@ export function ExceptionScreen() {
       router.replace(pickStepPath(r.data.id, r.data) as never);
       return;
     }
-    router.replace(`/pick/${orderId}/location` as never);
+    if (order) {
+      router.replace(pickStepPath(order.id, order) as never);
+      return;
+    }
+    router.replace(`/pick/${orderId}/sku` as never);
   }
 
   // ── Step 2: exception saved → photo evidence + continue ──────────────

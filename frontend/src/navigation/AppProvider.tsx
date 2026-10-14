@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/api/supabase";
+import { hydrateDeviceId } from "@/repositories/deviceId";
 import { pickerRepository } from "@/repositories/pickerRepository";
 import type { PickerProfile } from "@/types";
 
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     const restore = async () => {
       try {
+        await hydrateDeviceId();
         const rememberMe = (await AsyncStorage.getItem(REMEMBER_ME_KEY)) !== "false";
         const { data } = await supabase.auth.getSession();
         if (!rememberMe && data.session) {
@@ -97,12 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError || !data.user) throw new Error(authError?.message || "Login failed");
       setPicker(await loadProfile(data.user.id));
-      if (!rememberMe) {
-        // Keep the current shift active in memory, but discard the persisted
-        // Supabase session so the next app launch requires sign-in again.
-        await supabase.auth.signOut({ scope: "local" });
-        setPicker(await loadProfile(data.user.id));
-      }
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");

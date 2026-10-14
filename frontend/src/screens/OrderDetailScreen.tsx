@@ -4,6 +4,7 @@ import {
   Image,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -340,6 +341,14 @@ export function OrderDetailScreen() {
           { paddingBottom: 110 + Math.max(insets.bottom, 12) },
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={() => void load()}
+            tintColor="#0B65C6"
+            colors={["#0B65C6"]}
+          />
+        }
       >
         {/* Order Summary Card */}
         <View style={od.summaryCard}>

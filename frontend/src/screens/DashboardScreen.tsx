@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -85,6 +86,14 @@ export function DashboardScreen() {
         contentContainerStyle={ds.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading && Boolean(data)}
+            onRefresh={() => void load()}
+            tintColor="#0D6EFD"
+            colors={["#0D6EFD"]}
+          />
+        }
       >
         {loading && !data ? (
           <LoadingState label="Loading dashboard…" />

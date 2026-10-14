@@ -1,68 +1,30 @@
-# YBM Picker + Packer Mobile App
+# YBM Picker & Packer Mobile App
 
-React Native / Expo prototype for warehouse Picker and Packer operations.
+Cross-platform React Native + Expo warehouse execution system (Android, iOS & Web) for **Picker** and **Packer** operations, backed by Supabase PostgreSQL RPCs, Row-Level Security (RLS), and a durable SQLite offline outbox.
 
-## Scope
+## Core Architecture
 
-Only:
+- **Role-Separated Navigation (`src/app/_layout.tsx` & `src/app/(tabs)/_layout.tsx`)**:
+  - **Picker** (`PICKER`): Dashboard, Assigned Orders, Completed Orders, Profile, Picking Order Detail (with inline Quick-Scan & Zone Batches modals), Item Barcode Scan (`SkuScanScreen`), Exception & Photo Evidence (`ExceptionScreen`), and Order Completion (`CompletionScreen`).
+  - **Packer** (`PACKER`): Packer Dashboard, Assigned Packing Orders, Completed Packing Orders, Profile, Packing Order Verification (`PackerOrderScreen`), and Courier Dispatch (`DispatchScreen`).
+- **Unit-by-Unit Barcode Enforcement**:
+  - Every physical item barcode scan validates the SKU and records `1` unit via server RPC (`picker_pick_item` / `packer_confirm_item`).
+  - Wrong or mismatched barcode scans immediately trigger haptic feedback (`beepError`), display a cross-platform alert (`alertWrongBarcode`), and automatically clear and re-focus the barcode input field.
+- **Offline-First SQLite Outbox (`src/sync/` & `src/storage/`)**:
+  - `OfflineFirstPickerApi` caches active order snapshots in SQLite (`expo-sqlite`) and queues offline mutations (`ORDER_STARTED`, `LOCATION_SCANNED`, `SKU_SCANNED`, `QTY_CONFIRMED`, `EXCEPTION_RAISED`, `ORDER_COMPLETED`) with idempotency keys for automatic background replay via `SyncEngine`.
 
-- Picker
-- Packer
-
-The prototype demonstrates the complete handoff:
-
-Picker -> READY_FOR_PACKING -> Packer -> PACKED
-
-## Run
+## Quick Start
 
 ```powershell
-cd "C:\Users\WHITE-SNAKE\Desktop\picker And Packer\ybm-picker-packer"
+cd "C:\Users\WHITE-SNAKE\Desktop\picker And Packer\frontend"
 npm install
 npx expo start
 ```
 
-## Prototype login
+## Verification & Quality Gates
 
-The login screen provides:
-
-- Continue as Picker
-- Continue as Packer
-
-No real authentication is implemented yet.
-
-## Picker test
-
-1. Login as Picker.
-2. Open an assigned order.
-3. Start Picking.
-4. Enter the expected location, for example A-02-001.
-5. Enter the expected SKU, for example 1000000021.
-6. Confirm quantity.
-7. Continue through all items.
-8. Complete picking.
-9. The order changes to READY_FOR_PACKING.
-
-## Packer test
-
-1. Sign out.
-2. Login as Packer.
-3. The READY_FOR_PACKING order appears in the queue.
-4. Start Packing.
-5. Scan each SKU.
-6. Confirm quantity.
-7. Complete packing.
-8. The order changes to PACKED.
-
-## Production work still required
-
-- Real backend authentication
-- Real WMS API
-- Camera barcode scanning
-- Hardware scanner integration
-- Offline SQLite queue
-- Sync/idempotency
-- Exception persistence
-- Package persistence
-- Push notifications
-- Audit API
-- Production security
+```powershell
+cd "C:\Users\WHITE-SNAKE\Desktop\picker And Packer\frontend"
+npx tsc --noEmit
+npm test
+```

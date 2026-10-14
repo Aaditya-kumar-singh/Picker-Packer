@@ -2,6 +2,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -143,6 +144,14 @@ export function PackerDashboardScreen({
           contentContainerStyle={s.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading && orders.length > 0}
+              onRefresh={() => void load()}
+              tintColor="#D95D00"
+              colors={["#D95D00"]}
+            />
+          }
         >
           <View style={s.ordersHeaderRow}>
             <View style={s.ordersTitleLeft}>
@@ -383,6 +392,14 @@ export function PackerDashboardScreen({
         contentContainerStyle={s.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading && orders.length > 0}
+            onRefresh={() => void load()}
+            tintColor="#D95D00"
+            colors={["#D95D00"]}
+          />
+        }
       >
         {/* Greeting & Page Title */}
         <Text style={s.greetingText} maxFontSizeMultiplier={1.15}>

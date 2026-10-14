@@ -3,30 +3,23 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import {
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  NotificationCenterModal,
+  type AppNotification,
+} from "@/components/modals/NotificationCenterModal";
 import { useAuth } from "@/navigation/AppProvider";
 import { pickerRepository } from "@/repositories/pickerRepository";
 import * as client from "@/api/client";
 import { useSyncStatus } from "@/sync/SyncContext";
 import { theme } from "@/components/ui";
 import { formatPickByTime } from "@/utils/warehouse";
-
-interface AppNotification {
-  id: string;
-  title: string;
-  body: string;
-  timeLabel: string;
-  tone: "urgent" | "progress" | "info" | "ok";
-  targetRoute: string;
-}
 
 export function BrandHeader() {
   const { picker } = useAuth();
@@ -180,233 +173,23 @@ export function BrandHeader() {
   }
 
   const notificationModal = (
-    <Modal
+    <NotificationCenterModal
       visible={notifVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setNotifVisible(false)}
-    >
-      <Pressable
-        style={s.modalBackdrop}
-        onPress={() => setNotifVisible(false)}
-      >
-        <Pressable
-          style={[
-            s.notifSheet,
-            { marginTop: Math.max(insets.top, 12) + 56 },
-          ]}
-          onPress={(e) => e.stopPropagation()}
-        >
-          <View style={s.notifHeaderRow}>
-            <View style={s.notifTitleRow}>
-              <Ionicons
-                name="notifications"
-                size={19}
-                color={isPacker ? "#D95D00" : "#0D6EFD"}
-              />
-              <Text style={s.notifTitle}>Notifications</Text>
-              {unreadCount > 0 ? (
-                <View
-                  style={[
-                    s.unreadCountPill,
-                    isPacker && { backgroundColor: "#FFF1E6" },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      s.unreadCountText,
-                      isPacker && { color: "#D95D00" },
-                    ]}
-                  >
-                    {unreadCount} new
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            <View style={s.notifHeaderActions}>
-              {unreadCount > 0 ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Mark all notifications as read"
-                  onPress={markAllRead}
-                  style={({ pressed }) => [
-                    s.markReadBtn,
-                    pressed && { opacity: 0.75 },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      s.markReadText,
-                      isPacker && { color: "#D95D00" },
-                    ]}
-                  >
-                    Mark all read
-                  </Text>
-                </Pressable>
-              ) : null}
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Refresh notifications"
-                onPress={() => void loadNotifications()}
-                style={({ pressed }) => [
-                  s.iconCircleBtn,
-                  pressed && { opacity: 0.75 },
-                ]}
-              >
-                <Ionicons name="refresh" size={16} color="#334155" />
-              </Pressable>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close notifications"
-                onPress={() => setNotifVisible(false)}
-                style={({ pressed }) => [
-                  s.iconCircleBtn,
-                  pressed && { opacity: 0.75 },
-                ]}
-              >
-                <Ionicons name="close" size={18} color="#334155" />
-              </Pressable>
-            </View>
-          </View>
-
-          <ScrollView
-            style={s.notifList}
-            contentContainerStyle={s.notifListContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {notifications.length === 0 ? (
-              <View style={s.emptyNotifBox}>
-                <View style={s.emptyNotifIcon}>
-                  <Ionicons
-                    name="checkmark-done-circle-outline"
-                    size={32}
-                    color="#16A34A"
-                  />
-                </View>
-                <Text style={s.emptyNotifTitle}>
-                  {loadingNotifs ? "Checking alerts…" : "All caught up!"}
-                </Text>
-                <Text style={s.emptyNotifSub}>
-                  New order assignments and station alerts will appear here.
-                </Text>
-              </View>
-            ) : (
-              notifications.map((item) => {
-                const isUnread = !readIds[item.id];
-                const iconBg =
-                  item.tone === "urgent"
-                    ? "#FEE2E2"
-                    : item.tone === "progress"
-                      ? "#FFEDD5"
-                      : item.tone === "ok"
-                        ? "#DCFCE7"
-                        : "#E0F2FE";
-                const iconColor =
-                  item.tone === "urgent"
-                    ? "#DC2626"
-                    : item.tone === "progress"
-                      ? "#EA580C"
-                      : item.tone === "ok"
-                        ? "#16A34A"
-                        : "#0284C7";
-                const iconName =
-                  item.tone === "urgent"
-                    ? "flame"
-                    : item.tone === "progress"
-                      ? "time"
-                      : item.tone === "ok"
-                        ? "checkmark-circle"
-                        : "cube";
-
-                return (
-                  <Pressable
-                    key={item.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={item.title}
-                    onPress={() => handleSelectNotification(item)}
-                    style={({ pressed }) => [
-                      s.notifItem,
-                      isUnread && s.notifItemUnread,
-                      pressed && { opacity: 0.88 },
-                    ]}
-                  >
-                    <View
-                      style={[s.notifIconCircle, { backgroundColor: iconBg }]}
-                    >
-                      <Ionicons name={iconName} size={18} color={iconColor} />
-                    </View>
-
-                    <View style={s.notifCopy}>
-                      <View style={s.notifItemTopRow}>
-                        <Text
-                          style={[
-                            s.notifItemTitle,
-                            isUnread && { fontWeight: "900" },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {item.title}
-                        </Text>
-                        {isUnread ? (
-                          <View
-                            style={[
-                              s.unreadDot,
-                              isPacker && { backgroundColor: "#EA580C" },
-                            ]}
-                          />
-                        ) : null}
-                      </View>
-
-                      <Text style={s.notifItemBody} numberOfLines={2}>
-                        {item.body}
-                      </Text>
-
-                      <Text style={s.notifTimeLabel}>{item.timeLabel}</Text>
-                    </View>
-
-                    <Ionicons
-                      name="chevron-forward"
-                      size={16}
-                      color="#94A3B8"
-                    />
-                  </Pressable>
-                );
-              })
-            )}
-          </ScrollView>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              setNotifVisible(false);
-              router.push("/orders" as never);
-            }}
-            style={({ pressed }) => [
-              s.viewAllOrdersFooter,
-              isPacker && { backgroundColor: "#FFF5E5" },
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <Text
-              style={[
-                s.viewAllOrdersFooterText,
-                isPacker && { color: "#D95D00" },
-              ]}
-            >
-              View All Assigned Orders
-            </Text>
-            <Ionicons
-              name="arrow-forward"
-              size={15}
-              color={isPacker ? "#D95D00" : "#0D6EFD"}
-            />
-          </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+      isPacker={Boolean(isPacker)}
+      topOffset={Math.max(insets.top, 12) + 56}
+      notifications={notifications}
+      readIds={readIds}
+      unreadCount={unreadCount}
+      loading={loadingNotifs}
+      onClose={() => setNotifVisible(false)}
+      onRefresh={() => void loadNotifications()}
+      onMarkAllRead={markAllRead}
+      onSelectNotification={handleSelectNotification}
+      onViewAllOrders={() => {
+        setNotifVisible(false);
+        router.push("/orders" as never);
+      }}
+    />
   );
 
   if (!isPacker) {
@@ -529,7 +312,6 @@ export function BrandHeader() {
     );
   }
 
-  // Packer Header — matches reference Packer screenshots + working notification bell
   return (
     <>
       <StatusBar style="light" />
@@ -603,9 +385,28 @@ export function BrandHeader() {
 
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Open profile"
+              style={({ pressed }) => [
+                s.profileButton,
+                pressed && { opacity: 0.8 },
+              ]}
+              onPress={() => router.push("/profile" as never)}
+            >
+              <Ionicons
+                name="person-outline"
+                size={18}
+                color={theme.color.ink}
+              />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
               accessibilityLabel={`Notifications, ${unreadCount} unread`}
               hitSlop={8}
-              style={({ pressed }) => [s.bellBtn, pressed && { opacity: 0.8 }]}
+              style={({ pressed }) => [
+                s.bellBtn,
+                pressed && { opacity: 0.8 },
+              ]}
               onPress={openNotifications}
             >
               <Ionicons
@@ -621,41 +422,8 @@ export function BrandHeader() {
                 </View>
               ) : null}
             </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open profile"
-              style={({ pressed }) => [
-                s.profileButton,
-                pressed ? { opacity: 0.85 } : null,
-              ]}
-              onPress={() => router.push("/profile" as never)}
-            >
-              <Ionicons name="person" size={18} color="#091E3A" />
-            </Pressable>
           </View>
         </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Packer Workspace Profile"
-          style={({ pressed }) => [s.workspace, pressed && { opacity: 0.9 }]}
-          onPress={() => router.push("/profile" as never)}
-        >
-          <Ionicons name="cube" size={20} color="#EA580C" />
-          <Text style={s.workspaceRole} maxFontSizeMultiplier={1.1}>
-            Packer Workspace
-          </Text>
-          <View style={s.workspaceDivider} />
-          <Text
-            style={s.workspaceUser}
-            numberOfLines={1}
-            maxFontSizeMultiplier={1.1}
-          >
-            {picker?.name ?? "Test Packer"}
-          </Text>
-          <Ionicons name="chevron-forward" size={18} color="#D97706" />
-        </Pressable>
       </View>
       {notificationModal}
     </>
@@ -663,72 +431,222 @@ export function BrandHeader() {
 }
 
 const s = StyleSheet.create({
-  pickerHeaderWrap: { backgroundColor: "#0B2E6B", paddingHorizontal: 16, paddingBottom: 14, borderBottomLeftRadius: 18, borderBottomRightRadius: 18, shadowColor: "#071A3E", shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
-  pickerTopRow: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  pickerLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
-  menuBtn: { width: 32, height: 34, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  pickerBrandCopy: { flex: 1 },
-  pickerTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  pickerBrandName: { color: "#FFFFFF", fontSize: 21, fontWeight: "900", letterSpacing: 0.3 },
-  pickerRolePill: { backgroundColor: "#1D76DB", paddingHorizontal: 9, paddingVertical: 3, borderRadius: 7 },
-  pickerRolePillText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800", letterSpacing: 0.6 },
-  pickerSubtitle: { color: "#CBD5E1", fontSize: 12, fontWeight: "500", marginTop: 1 },
-  pickerRight: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0 },
-  livePill: { minHeight: 30, paddingHorizontal: 12, borderRadius: 999, flexDirection: "row", alignItems: "center", gap: 6 },
-  liveDot: { width: 8, height: 8, borderRadius: 4 },
-  liveText: { fontSize: 12, fontWeight: "800" },
-  pickerProfileBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
-  bellBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center", position: "relative" },
-  bellBadge: { position: "absolute", top: 1, right: 0, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "#EF4444", borderWidth: 1.5, borderColor: "#0B2E6B", alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
-  bellBadgeText: { color: "#FFFFFF", fontSize: 9.5, fontWeight: "900" },
-  header: { backgroundColor: "#091E3A", paddingHorizontal: 14, paddingTop: 6, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#1E3A5F" },
-  topRow: { minHeight: 54, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  brand: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
-  logo: { width: 44, height: 44, borderRadius: 11, backgroundColor: theme.color.primary, borderWidth: 1.5, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  logoText: { color: "#FFFFFF", fontSize: 25, fontWeight: "900", fontStyle: "italic" },
-  logoCompact: { width: 40, height: 40 },
-  logoTextCompact: { fontSize: 22 },
-  brandCopy: { flex: 1 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  name: { color: "#FFFFFF", fontSize: 18, fontWeight: "900", letterSpacing: -0.2 },
-  badgeWms: { backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5 },
-  badgeWmsText: { color: "#FFFFFF", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
-  tagline: { color: "#CBD5E1", fontSize: 11, fontWeight: "600" },
-  subTagline: { color: "#60A5FA", fontSize: 10, fontWeight: "500", marginTop: 1 },
-  actions: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0 },
-  profileButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
-  workspace: { marginTop: 10, minHeight: 42, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1.5, borderColor: "#F59E0B", backgroundColor: "#FFF5E5", flexDirection: "row", alignItems: "center", gap: 8 },
-  workspaceRole: { fontSize: 13, fontWeight: "800", color: "#D95D00" },
-  workspaceDivider: { width: 1.5, height: 15, backgroundColor: "#FCD34D", marginHorizontal: 2 },
-  workspaceUser: { flex: 1, fontSize: 13, fontWeight: "700", color: "#0F172A" },
-
-  // ── Notification Center Modal Styles ──
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.45)", paddingHorizontal: 12 },
-  notifSheet: { width: "100%", maxHeight: "76%", backgroundColor: "#FFFFFF", borderRadius: 20, borderWidth: 1, borderColor: "#E2E8F0", overflow: "hidden", shadowColor: "#0F172A", shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  notifHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#E2E8F0", backgroundColor: "#F8FAFC" },
-  notifTitleRow: { flexDirection: "row", alignItems: "center", gap: 7, flex: 1 },
-  notifTitle: { fontSize: 16, fontWeight: "900", color: "#0F172A" },
-  unreadCountPill: { backgroundColor: "#E0F2FE", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  unreadCountText: { fontSize: 11, fontWeight: "800", color: "#0284C7" },
-  notifHeaderActions: { flexDirection: "row", alignItems: "center", gap: 6 },
-  markReadBtn: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8 },
-  markReadText: { fontSize: 12, fontWeight: "800", color: "#0D6EFD" },
-  iconCircleBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#E2E8F0", alignItems: "center", justifyContent: "center" },
-  notifList: { maxHeight: 380 },
-  notifListContent: { padding: 10, gap: 8 },
-  notifItem: { width: "100%", flexDirection: "row", alignItems: "center", gap: 10, padding: 11, borderRadius: 14, backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E2E8F0" },
-  notifItemUnread: { backgroundColor: "#F8FAFF", borderColor: "#BFDBFE" },
-  notifIconCircle: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  notifCopy: { flex: 1 },
-  notifItemTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
-  notifItemTitle: { flex: 1, fontSize: 13.5, fontWeight: "700", color: "#0F172A" },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#0D6EFD", flexShrink: 0 },
-  notifItemBody: { fontSize: 12, color: "#475569", marginTop: 2 },
-  notifTimeLabel: { fontSize: 10.5, fontWeight: "700", color: "#64748B", marginTop: 4 },
-  emptyNotifBox: { paddingVertical: 32, paddingHorizontal: 20, alignItems: "center", justifyContent: "center" },
-  emptyNotifIcon: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center", marginBottom: 8 },
-  emptyNotifTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
-  emptyNotifSub: { fontSize: 12, color: "#64748B", textAlign: "center", marginTop: 4 },
-  viewAllOrdersFooter: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, backgroundColor: "#F0F7FF", borderTopWidth: 1, borderTopColor: "#E2E8F0" },
-  viewAllOrdersFooterText: { fontSize: 13, fontWeight: "800", color: "#0D6EFD" },
+  pickerHeaderWrap: {
+    width: "100%",
+    backgroundColor: "#0B2D6B",
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  pickerTopRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  pickerLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  menuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginRight: 8,
+  },
+  pickerBrandCopy: {
+    flex: 1,
+  },
+  pickerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  pickerBrandName: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+  },
+  pickerRolePill: {
+    backgroundColor: "#2563EB",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  pickerRolePillText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  pickerSubtitle: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 11,
+    fontWeight: "500",
+    marginTop: 1,
+  },
+  pickerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
+  livePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  liveText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  pickerProfileBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  bellBadge: {
+    position: "absolute",
+    top: 1,
+    right: 1,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#EF4444",
+    borderWidth: 1.5,
+    borderColor: "#0B2D6B",
+    paddingHorizontal: 3,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  header: {
+    width: "100%",
+    backgroundColor: "#091E3A",
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.12)",
+  },
+  topRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  brand: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  logo: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: "#1565C0",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginRight: 9,
+  },
+  logoCompact: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+  },
+  logoText: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "900",
+    fontStyle: "italic",
+  },
+  logoTextCompact: {
+    fontSize: 18,
+  },
+  brandCopy: {
+    flex: 1,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  name: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+  },
+  badgeWms: {
+    backgroundColor: "#F59E0B",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  badgeWmsText: {
+    color: "#091E3A",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.4,
+  },
+  tagline: {
+    color: "#E2E8F0",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  subTagline: {
+    color: "#94A3B8",
+    fontSize: 10,
+    fontWeight: "500",
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    flexShrink: 0,
+  },
+  profileButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

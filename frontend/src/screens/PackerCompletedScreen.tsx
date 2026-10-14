@@ -2,6 +2,7 @@
 import { useCallback, useState } from "react";
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -54,6 +55,14 @@ export function PackerCompletedScreen() {
         style={s.scroll}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading && orders.length > 0}
+            onRefresh={() => void load()}
+            tintColor="#D95D00"
+            colors={["#D95D00"]}
+          />
+        }
       >
         <View style={s.headerRow}>
           <Text
