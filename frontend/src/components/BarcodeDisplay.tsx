@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -32,6 +32,8 @@ export default function BarcodeDisplay({
 }: Props) {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [copied, setCopied] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+  const prevInputRef = useRef<string | undefined>(inputValue);
   const editable = inputValue !== undefined && onInputChange !== undefined;
 
   useEffect(() => {
@@ -39,6 +41,25 @@ export default function BarcodeDisplay({
     const timer = setTimeout(() => setCopied(false), 1600);
     return () => clearTimeout(timer);
   }, [copied]);
+
+  // Whenever inputValue is cleared to "" (e.g. after a wrong barcode alert or completed scan),
+  // ensure the native TextInput buffer is emptied and ready for the next scan.
+  useEffect(() => {
+    if (
+      editable &&
+      prevInputRef.current &&
+      prevInputRef.current.length > 0 &&
+      inputValue === ""
+    ) {
+      inputRef.current?.clear();
+      if (!disabled && !scannerVisible) {
+        const timer = setTimeout(() => inputRef.current?.focus(), 60);
+        prevInputRef.current = inputValue;
+        return () => clearTimeout(timer);
+      }
+    }
+    prevInputRef.current = inputValue;
+  }, [editable, inputValue, disabled, scannerVisible]);
 
   async function copy() {
     if (!value) return;
@@ -80,6 +101,7 @@ export default function BarcodeDisplay({
             <Text style={s.inputLabel}>VERIFY BARCODE</Text>
             <View style={[s.inputRow, match === true && s.inputSuccess, match === false && s.inputError]}>
               <TextInput
+                ref={inputRef}
                 value={inputValue}
                 onChangeText={onInputChange}
                 onSubmitEditing={onSubmit}
@@ -89,8 +111,24 @@ export default function BarcodeDisplay({
                 autoCorrect={false}
                 editable={!disabled}
                 returnKeyType="done"
+                blurOnSubmit={false}
                 style={s.input}
               />
+              {inputValue && inputValue.length > 0 && !disabled ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear barcode text"
+                  onPress={() => {
+                    inputRef.current?.clear();
+                    onInputChange?.("");
+                    inputRef.current?.focus();
+                  }}
+                  hitSlop={8}
+                  style={s.clearBtn}
+                >
+                  <Ionicons name="close-circle" size={17} color={theme.color.muted} />
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Confirm barcode"
@@ -111,7 +149,7 @@ export default function BarcodeDisplay({
             {match === false ? (
               <View style={s.matchErrorRow}>
                 <Ionicons name="close-circle" size={13} color={theme.color.badInk} />
-                <Text style={s.errorText}>Wrong barcode. Please scan matching SKU.</Text>
+                <Text style={s.errorText}>Wrong barcode. Submit or scan the matching SKU.</Text>
               </View>
             ) : null}
           </>
@@ -168,6 +206,7 @@ const s = StyleSheet.create({
   inputSuccess: { borderColor: theme.color.okPrimary, borderWidth: 1.5 },
   inputError: { borderColor: theme.color.badPrimary, borderWidth: 1.5 },
   input: { flex: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 6, fontSize: 14, color: theme.color.ink },
+  clearBtn: { paddingHorizontal: 6, paddingVertical: 4, alignItems: "center", justifyContent: "center" },
   confirmInline: { minHeight: 38, alignSelf: "stretch", paddingHorizontal: 10, backgroundColor: theme.color.okPrimary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
   confirmInlineText: { color: "#ffffff", fontSize: 12, fontWeight: "800" },
   scanBottom: { minHeight: 40, marginTop: 6, borderRadius: theme.radius.md, backgroundColor: theme.color.primaryContainer, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },

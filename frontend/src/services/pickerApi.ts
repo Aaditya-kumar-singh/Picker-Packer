@@ -23,6 +23,9 @@ export interface DashboardData {
   pickerCode: string;
   warehouseName: string;
   pendingCount: number;
+  inProgressCount?: number;
+  itemsToPickCount?: number;
+  assignedOrders?: Order[];
   activeOrder: Order | null;
   completedToday: number;
   online: boolean;

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui";
 import { nextPendingLine, resolvePickStep } from "@/domain/order";
 import { newIdemKey, pickerRepository } from "@/repositories/pickerRepository";
-import { beepError, beepSuccess } from "@/services/scanner";
+import { alertWrongBarcode, beepSuccess } from "@/services/scanner";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
 import type { Order } from "@/types";
 
@@ -69,8 +69,10 @@ export function SkuScanScreen() {
     if (!line || !order || busy) return;
     const barcode = value.trim();
     if (!barcode) {
-      beepError();
-      setError("Barcode is required. Scan the product or enter its barcode before confirming.");
+      setManual("");
+      const msg = "Barcode is required. Scan the product or enter its barcode before confirming.";
+      setError(msg);
+      alertWrongBarcode("", line.skuBarcode, msg);
       return;
     }
 
@@ -78,24 +80,21 @@ export function SkuScanScreen() {
     setBusy(true);
     setError(null);
     try {
-      if (!skuVerified) {
-        const verified = await pickerRepository.validateSku(line.id, barcode);
-        if (!verified.ok) {
-          beepError();
-          setError(`${verified.apiError.error}: ${verified.apiError.message}`);
-          return;
-        }
-        setSkuVerified(true);
-      } else if (barcode.toUpperCase() !== line.skuBarcode.trim().toUpperCase()) {
-        beepError();
-        setError("Wrong item barcode. Scan the expected product.");
+      // Validate and record every physical unit scan on the server, not just the first scan.
+      const verified = await pickerRepository.validateSku(line.id, barcode);
+      if (!verified.ok) {
+        setManual("");
+        setError(`Wrong barcode "${barcode}" — ${verified.apiError.error}: ${verified.apiError.message}`);
+        alertWrongBarcode(barcode, line.skuBarcode, verified.apiError.message);
         return;
       }
+      setSkuVerified(true);
 
       const picked = await pickerRepository.pickQuantity(line.id, 1, line.uom, newIdemKey());
       if (!picked.ok) {
-        beepError();
+        setManual("");
         setError(`${picked.apiError.error}: ${picked.apiError.message}`);
+        alertWrongBarcode(barcode, line.skuBarcode, picked.apiError.message);
         return;
       }
 
@@ -140,13 +139,22 @@ export function SkuScanScreen() {
   return (
     <Screen>
       <View style={sk.compactHeader}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={sk.backButton}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.replace(`/order/${order.id}` as never)} style={sk.backButton}>
           <Ionicons name="arrow-back" size={20} color={theme.color.primary} />
         </Pressable>
         <View style={sk.headerTextWrap}>
           <Text style={sk.orderTitle} numberOfLines={1}>{order.externalId}</Text>
           <Text style={sk.orderSubtitle} numberOfLines={1}>Line {line.lineNo} · {line.skuName}</Text>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Report exception"
+          onPress={() => router.replace({ pathname: "/pick/[orderId]/exception", params: { orderId: order.id, lineId: line.id } } as never)}
+          style={sk.exceptionChip}
+        >
+          <Ionicons name="warning-outline" size={14} color={theme.color.badInk} />
+          <Text style={sk.exceptionChipText}>Exception</Text>
+        </Pressable>
       </View>
 
       <ProgressIndicator done={done} total={order.lines.length} />
@@ -219,6 +227,8 @@ const sk = StyleSheet.create({
   headerTextWrap: { flex: 1, minWidth: 0 },
   orderTitle: { fontSize: 20, lineHeight: 24, fontWeight: "900", color: theme.color.ink },
   orderSubtitle: { fontSize: 11, lineHeight: 14, color: theme.color.muted, marginTop: 1 },
+  exceptionChip: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: theme.color.badBg, borderWidth: 1, borderColor: theme.color.badBorder, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
+  exceptionChipText: { fontSize: 11, fontWeight: "800", color: theme.color.badInk },
   rackLocationCard: { marginTop: 6, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.colors.location.bg, borderWidth: 1.5, borderColor: theme.colors.location.border, borderRadius: 12 },
   rackLocationRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   rackLocationValue: { fontSize: 20, fontWeight: "900", color: theme.colors.location.text, flex: 1 },

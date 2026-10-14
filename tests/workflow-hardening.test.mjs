@@ -52,6 +52,23 @@ test("product scan starts from a pending line and camera scans count immediately
   assert.match(screen, /setSkuVerified\(!completed\)/);
 });
 
+test("picker and packer count quantity from individual barcode scans only", () => {
+  const picker = read("frontend/src/screens/SkuScanScreen.tsx");
+  const packer = read("frontend/src/screens/PackerOrderScreen.tsx");
+  const scanner = read("frontend/src/scanner/BarcodeScannerModal.tsx");
+  assert.ok(picker.includes("pickerRepository.pickQuantity(line.id, 1,"));
+  assert.ok(picker.includes("const verified = await pickerRepository.validateSku(line.id, barcode);"));
+  assert.ok(packer.includes("async function scan(value?: string): Promise<boolean>"));
+  assert.ok(packer.includes("onScanned={enqueueCameraScan}"));
+  assert.ok(packer.includes("continuous"));
+  assert.ok(packer.includes("        1,\n      );"));
+  assert.doesNotMatch(packer, /setPackQty|Decrease pack quantity|Increase pack quantity|Confirm Pack|stepperBox|stepperBtn/);
+  assert.match(packer, /Scan each physical product separately/);
+  assert.ok(scanner.includes("continuous?: boolean"));
+  assert.ok(scanner.includes("if (!continuous)"));
+  assert.ok(scanner.includes("}, 750);"));
+});
+
 test("packer and evidence routes exist", () => {
   for (const file of [
     "frontend/src/app/(tabs)/packer-dashboard.tsx",
@@ -174,6 +191,7 @@ test("product-only picking keeps product validation and removes the location pre
   const legacy = read("supabase/migrations/0005_barcode_scan_workflow.sql");
   const current = read("supabase/migrations/0014_product_only_picker_scan.sql");
   const idempotency = read("supabase/migrations/0015_picker_idempotency_result.sql");
+  const timestampFix = read("supabase/migrations/0017_fix_picker_scan_timestamp_validation.sql");
   assert.match(legacy, /Location barcode must be scanned first/); // applied migration is preserved
   assert.match(current, /Product barcode does not match/);
   assert.match(current, /Product barcode must be scanned first/);
@@ -188,6 +206,10 @@ test("product-only picking keeps product validation and removes the location pre
   assert.match(idempotency, /Idempotency key is already used by another operation/);
   assert.match(idempotency, /v_existing\.response_body::jsonb ->> 'pickedQty'/);
   assert.doesNotMatch(idempotency, /Location barcode must be scanned first/);
+  assert.match(timestampFix, /upper\(trim\(se\.barcode\)\) = upper\(trim\(v_expected_barcode\)\)/);
+  assert.match(timestampFix, /upper\(trim\(se\.expected_value\)\) = upper\(trim\(v_expected_barcode\)\)/);
+  assert.doesNotMatch(timestampFix, /se\.created_at\s*>=\s*COALESCE/);
+  assert.match(timestampFix, /GRANT EXECUTE ON FUNCTION public\.picker_pick_item/);
 });
 
 test("test order generator caps the picker backlog at 30", () => {
@@ -211,7 +233,8 @@ test("picker step transitions use replacement navigation and cannot strand the f
   assert.doesNotMatch(sku, /awaitingNext|goNext/);
   assert.match(sku, /nextStep === "complete"/);
   assert.match(sku, /pathname: "\/pick\/\[orderId\]\/complete"/);
-  assert.match(quantity, /nextStep === "complete"/);
+  assert.match(quantity, /SkuScanScreen as QuantityScreen/);
+  assert.doesNotMatch(quantity, /Increment quantity|Decrement quantity|Select All/);
 });
 
 test("picker order reads reject stale in-flight responses after workflow mutations", () => {
@@ -227,7 +250,6 @@ test("all picker workflow screens derive the next step from authoritative line s
   for (const file of [
     "frontend/src/screens/LocationScanScreen.tsx",
     "frontend/src/screens/SkuScanScreen.tsx",
-    "frontend/src/screens/QuantityScreen.tsx",
     "frontend/src/screens/CompletionScreen.tsx",
     "frontend/src/screens/OrderDetailScreen.tsx",
     "frontend/src/screens/ExceptionScreen.tsx",

@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import type { ColorValue } from "react-native";
+import { StyleSheet, View, type ColorValue } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/navigation/AppProvider";
 import { theme } from "@/components/ui";
@@ -10,7 +10,9 @@ type IconName = keyof typeof Ionicons.glyphMap;
 
 function tabIcon(activeName: IconName, inactiveName: IconName) {
   return ({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) => (
-    <Ionicons name={focused ? activeName : inactiveName} color={color} size={size} />
+    <View style={[s.iconWrap, focused && s.iconWrapActive]}>
+      <Ionicons name={focused ? activeName : inactiveName} color={color} size={size} />
+    </View>
   );
 }
 
@@ -20,9 +22,10 @@ export default function TabLayout() {
   const isPacker = picker?.role === "PACKER";
   const isPicker = picker?.role === "PICKER";
 
-  const baseTabHeight = 62;
+  const baseTabHeight = 64;
   const bottomInset = Math.max(insets.bottom, 0);
-  const rolePrimary = isPacker ? theme.packer.primary : theme.picker.primary;
+  const rolePrimary = isPacker ? "#D95D00" : "#0D6EFD";
+  const roleActiveBg = isPacker ? "#FFF2E6" : "#E0EFFD";
 
   return (
     <Tabs
@@ -31,14 +34,15 @@ export default function TabLayout() {
         header: () => <BrandHeader />,
         tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: rolePrimary,
-        tabBarInactiveTintColor: theme.color.muted,
+        tabBarInactiveTintColor: "#64748B",
         tabBarStyle: {
-          backgroundColor: theme.color.surface,
-          borderTopColor: theme.color.line,
+          backgroundColor: "#FFFFFF",
+          borderTopColor: "#E2E8F0",
           borderTopWidth: 1,
           height: baseTabHeight + bottomInset,
-          paddingTop: 6,
-          paddingBottom: 6 + bottomInset,
+          paddingTop: 4,
+          paddingBottom: Math.max(bottomInset, 6),
+          paddingHorizontal: 8,
           shadowColor: theme.color.ink,
           shadowOpacity: 0.05,
           shadowRadius: 6,
@@ -48,10 +52,16 @@ export default function TabLayout() {
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: "700",
+          marginBottom: 2,
         },
         tabBarItemStyle: {
-          minHeight: 48,
+          height: 52,
+          marginVertical: 2,
+          marginHorizontal: 4,
+          borderRadius: 14,
+          overflow: "hidden",
         },
+        tabBarActiveBackgroundColor: roleActiveBg,
       }}
     >
       <Tabs.Screen
@@ -64,21 +74,21 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="orders"
-        options={{
-          title: "Orders",
-          tabBarLabel: "Orders",
-          tabBarIcon: tabIcon("list", "list-outline"),
-          href: isPicker ? "/orders" : null,
-        }}
-      />
-      <Tabs.Screen
         name="packer-dashboard"
         options={{
           title: "Home",
           tabBarLabel: "Home",
           tabBarIcon: tabIcon("home", "home-outline"),
           href: isPacker ? "/packer-dashboard" : null,
+        }}
+      />
+      <Tabs.Screen
+        name="orders"
+        options={{
+          title: "Orders",
+          tabBarLabel: "Orders",
+          tabBarIcon: tabIcon("list", "list-outline"),
+          href: isPicker || isPacker ? "/orders" : null,
         }}
       />
       <Tabs.Screen
@@ -102,3 +112,13 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const s = StyleSheet.create({
+  iconWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconWrapActive: {
+    transform: [{ scale: 1.03 }],
+  },
+});

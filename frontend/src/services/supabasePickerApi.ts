@@ -85,11 +85,26 @@ class SupabasePickerApi {
   async getDashboard() {
     try {
       const [metrics, me, orders] = await Promise.all([client.pickerMetrics(), client.me(), client.pickerOrders()]);
+      for (const o of orders.orders) {
+        for (const item of o.items ?? []) this.lineOrderIndex.set(item.id, o.id);
+      }
       const active = orders.orders.find(o => o.status === "PICKING");
       const activeOrder = active ? toOrder(active) : null;
+      const assignedList = orders.orders
+        .filter(o => o.status === "ASSIGNED" || o.status === "PICKING")
+        .map(toOrder);
+      const pendingCount = orders.orders.filter(o => o.status === "ASSIGNED").length;
+      const inProgressCount = orders.orders.filter(o => o.status === "PICKING").length;
+      const itemsToPickCount = assignedList.reduce(
+        (sum, o) => sum + o.lines.reduce((lineSum, l) => lineSum + Math.max(0, l.requiredQty - l.pickedQty), 0),
+        0,
+      );
       return { ok: true, data: {
         pickerName: me.user.name, pickerCode: me.user.email, warehouseName: me.user.warehouseId,
-        pendingCount: orders.orders.filter(o => o.status === "ASSIGNED").length,
+        pendingCount,
+        inProgressCount,
+        itemsToPickCount,
+        assignedOrders: assignedList,
         activeOrder, completedToday: metrics.ordersPicked, online: true, metrics,
       }};
     } catch (e) { return err(e); }

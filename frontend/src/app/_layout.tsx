@@ -22,13 +22,15 @@ function RouteGuard() {
       return;
     }
 
-    const pickerRoots = new Set(["dashboard", "orders", "order", "pick"]);
+    const pickerRoots = new Set(["dashboard", "order", "pick"]);
     const packerRoots = new Set(["packer-dashboard", "pack"]);
 
     // Routes inside the persistent tab group are role-gated by their child route.
     if (root === "(tabs)") {
-      if (picker.role === "PACKER" && (child === "dashboard" || child === "orders")) {
+      if (picker.role === "PACKER" && child === "dashboard") {
         router.replace("/packer-dashboard" as never);
+      } else if (picker.role === "PICKER" && child === "packer-dashboard") {
+        router.replace("/dashboard" as never);
       }
       return;
     }
@@ -66,14 +68,14 @@ export default function RootLayout() {
             <Stack.Screen name="otp" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
-            <Stack.Screen name="order/[id]" options={{ title: "Picking Order" }} />
-            <Stack.Screen name="pick/[orderId]/location" options={{ title: "Location Scan" }} />
-            <Stack.Screen name="pick/[orderId]/sku" options={{ title: "SKU Scan" }} />
-            <Stack.Screen name="pick/[orderId]/quantity" options={{ title: "Quantity" }} />
+            <Stack.Screen name="order/[id]" options={{ title: "Picking Order", headerShown: false }} />
+            <Stack.Screen name="pick/[orderId]/location" options={{ title: "Location Scan", headerShown: false }} />
+            <Stack.Screen name="pick/[orderId]/sku" options={{ title: "SKU Scan", headerShown: false }} />
+            <Stack.Screen name="pick/[orderId]/quantity" options={{ title: "Quantity", headerShown: false }} />
             <Stack.Screen name="pick/[orderId]/exception" options={{ title: "Exception" }} />
             <Stack.Screen name="pick/[orderId]/complete" options={{ title: "Completion" }} />
 
-            <Stack.Screen name="pack/order/[id]" options={{ title: "Packing Order" }} />
+            <Stack.Screen name="pack/order/[id]" options={{ title: "Packing Order", headerShown: false }} />
           </Stack>
         </SyncProvider>
       </AuthProvider>

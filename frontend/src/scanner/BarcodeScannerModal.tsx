@@ -8,16 +8,22 @@ type Props = {
   title: string;
   onScanned: (value: string) => void;
   onClose: () => void;
+  continuous?: boolean;
 };
 
-export default function BarcodeScannerModal({ visible, title, onScanned, onClose }: Props) {
+export default function BarcodeScannerModal({ visible, title, onScanned, onClose, continuous = false }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [blocked, setBlocked] = useState(false);
   const scanLock = useRef(false);
+  const lastContinuousValue = useRef<string | null>(null);
+  const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!visible) {
       scanLock.current = false;
+      lastContinuousValue.current = null;
+      if (releaseTimer.current) clearTimeout(releaseTimer.current);
+      releaseTimer.current = null;
       setBlocked(false);
       return;
     }
@@ -28,10 +34,35 @@ export default function BarcodeScannerModal({ visible, title, onScanned, onClose
 
   const handleScan = (data: string) => {
     const value = data.trim();
-    if (!value || scanLock.current) return;
-    scanLock.current = true;
+    if (!value) return;
+
+    if (!continuous) {
+      if (scanLock.current) return;
+      scanLock.current = true;
+      onScanned(value);
+      onClose();
+      return;
+    }
+
+    // While a barcode stays in frame, repeated camera callbacks refresh this lock.
+    // A new barcode can be accepted immediately; the same one is accepted again
+    // only after it has been absent from camera callbacks for 750 ms.
+    if (lastContinuousValue.current === value) {
+      if (releaseTimer.current) clearTimeout(releaseTimer.current);
+      releaseTimer.current = setTimeout(() => {
+        lastContinuousValue.current = null;
+        releaseTimer.current = null;
+      }, 750);
+      return;
+    }
+
+    lastContinuousValue.current = value;
+    if (releaseTimer.current) clearTimeout(releaseTimer.current);
+    releaseTimer.current = setTimeout(() => {
+      lastContinuousValue.current = null;
+      releaseTimer.current = null;
+    }, 750);
     onScanned(value);
-    onClose();
   };
 
   return (
@@ -66,7 +97,11 @@ export default function BarcodeScannerModal({ visible, title, onScanned, onClose
                 </Pressable>
               </View>
               <View style={s.target} />
-              <Text style={s.hint}>Align the barcode inside the frame</Text>
+              <Text style={s.hint}>
+                {continuous
+                  ? "Scan each unit. Keep camera open and move each barcode away before scanning the next."
+                  : "Align the barcode inside the frame"}
+              </Text>
             </View>
           </>
         ) : (

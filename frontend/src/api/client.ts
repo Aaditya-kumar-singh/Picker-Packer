@@ -140,17 +140,59 @@ async function profile() {
   return data;
 }
 
-function mapItem(i: any): OrderItem {
+type CatalogProduct = {
+  sku: string;
+  name: string;
+  product_type: string;
+  specs: string;
+  barcode: string;
+  zone: string;
+  slot: string;
+  image_path: string | null;
+};
+
+function catalogImageUrl(imagePath?: string | null): string | null {
+  if (!imagePath) return null;
+  return supabase.storage.from("product-images").getPublicUrl(imagePath).data.publicUrl;
+}
+
+async function loadCatalogProducts(items: Array<{ sku?: string | null }>) {
+  const skus = Array.from(new Set(items.map((item) => item.sku).filter((sku): sku is string => Boolean(sku))));
+  if (skus.length === 0) return new Map<string, CatalogProduct>();
+
+  const { data, error: catalogError } = await supabase
+    .from("product_catalog")
+    .select("sku,name,product_type,specs,barcode,zone,slot,image_path")
+    .eq("active", true)
+    .not("image_path", "is", null)
+    .neq("image_path", "")
+    .in("sku", skus);
+
+  if (catalogError) error(`Could not load warehouse product catalog: ${catalogError.message}`);
+
+  return new Map<string, CatalogProduct>(
+    ((data ?? []) as CatalogProduct[]).map((product) => [product.sku, product]),
+  );
+}
+
+function mapItem(i: any, catalog?: CatalogProduct): OrderItem {
+  const location = catalog
+    ? `WH-A-${catalog.zone}-${catalog.slot}`
+    : i.location;
+  const locationBarcode = catalog
+    ? `LOC-WHA-${catalog.zone}-${catalog.slot}`
+    : (i.location_barcode ?? i.location);
+
   return {
     id: i.id,
-    sku: i.sku,
-    productName: i.product_name,
-    productSpecs: i.product_specs ?? "",
-    productImageUrl: i.product_image_url ?? null,
-    productType: i.product_type ?? "STANDARD",
-    skuBarcode: i.sku_barcode ?? i.sku,
-    location: i.location,
-    locationBarcode: i.location_barcode ?? i.location,
+    sku: catalog?.sku ?? i.sku,
+    productName: catalog?.name ?? i.product_name ?? i.sku,
+    productSpecs: catalog?.specs ?? i.product_specs ?? "",
+    productImageUrl: catalogImageUrl(catalog?.image_path) ?? i.product_image_url ?? null,
+    productType: catalog?.product_type ?? i.product_type ?? "STANDARD",
+    skuBarcode: catalog?.barcode ?? i.sku_barcode ?? i.sku,
+    location,
+    locationBarcode,
     requiredQty: Number(i.required_qty ?? 0),
     pickedQty: Number(i.picked_qty ?? 0),
     packedQty: Number(i.packed_qty ?? 0),
@@ -167,7 +209,7 @@ function mapOrderSummary(o: any, items: OrderItem[] = []): OrderSummary {
     slaMinutes: o.sla_minutes, status: o.status, pickerId: o.picker_id, packerId: o.packer_id,
     riderId: o.rider_id ?? null, riderName: o.rider_name ?? null,
     createdAt: o.created_at, updatedAt: o.updated_at,
-    itemCount: items.length || Number(o.item_count ?? 0),
+    itemCount: items.length,
     pickedCount,
     packedCount: items.reduce((sum, i) => sum + i.packedQty, 0),
     packageCount: Number(o.package_count ?? 0),
@@ -201,21 +243,9 @@ async function detail(id: string): Promise<OrderDetail> {
   if (se) error(se.message);
   if (ce) error(ce.message);
 
-  // Product images live in the catalog and are joined by SKU so all order
-  // lines use one canonical image reference instead of duplicating URLs.
-  const { data: catalogImages } = await supabase
-    .from("product_catalog")
-    .select("sku,image_path")
-    .in("sku", (items ?? []).map((item: any) => item.sku));
-  const imageUrlBySku = new Map<string, string>();
-  for (const product of catalogImages ?? []) {
-    if (product.image_path) {
-      imageUrlBySku.set(
-        product.sku,
-        supabase.storage.from("product-images").getPublicUrl(product.image_path).data.publicUrl,
-      );
-    }
-  }
+  // Resolve product identity from the shared warehouse catalog so Picker
+  // and Packer use the same name, specifications, barcode, bin and photo.
+  const catalogBySku = await loadCatalogProducts(items ?? []);
 
   const scanState = new Map<string, { location: boolean; sku: boolean }>();
   for (const scan of scans ?? []) {
@@ -226,24 +256,24 @@ async function detail(id: string): Promise<OrderDetail> {
     scanState.set(scan.item_id, state);
   }
 
-  const summary = await mapOrderSummary(o);
+  // Never expose order lines whose active warehouse catalog product has
+  // no image. Picker scanning and Packer verification use this same list.
+  const visibleItems = (items ?? []).filter((i: any) => {
+    const product = catalogBySku.get(i.sku);
+    return Boolean(product?.image_path && catalogImageUrl(product.image_path));
+  });
+  const mappedItems: OrderItem[] = visibleItems.map((i: any): OrderItem => ({
+    ...mapItem(i, catalogBySku.get(i.sku)),
+    lineStatus: i.picked_qty >= i.required_qty
+      ? "PICKED"
+      : ((scanState.get(i.id)?.sku)
+        ? "SKU_VALIDATED"
+        : "PENDING"),
+  }));
+  const summary = await mapOrderSummary(o, mappedItems);
   return {
     ...summary,
-    items: (items ?? []).map((i: any) => ({
-      id: i.id, sku: i.sku, productName: i.product_name,
-      productSpecs: i.product_specs ?? "",
-      productImageUrl: imageUrlBySku.get(i.sku) ?? null,
-      productType: i.product_type ?? "STANDARD",
-      skuBarcode: i.sku_barcode ?? i.sku,
-      location: i.location,
-      locationBarcode: i.location_barcode ?? i.location,
-      requiredQty: i.required_qty, pickedQty: i.picked_qty, packedQty: i.packed_qty,
-      lineStatus: i.picked_qty >= i.required_qty
-        ? "PICKED"
-        : ((scanState.get(i.id)?.sku)
-          ? "SKU_VALIDATED"
-          : "PENDING"),
-    })),
+    items: mappedItems,
     exceptions: (exceptions ?? []).map((e: any) => ({
       id: e.id, itemId: e.item_id, type: e.type, reason: e.reason, quantity: e.quantity,
       note: e.note, status: e.status, createdAt: e.created_at,
@@ -296,6 +326,10 @@ async function listOrders(statuses: string[], role: Role) {
   // Scan progress is persisted in scan_events. Include it in picker order
   // summaries so Dashboard/Orders resume from the real server step after a
   // screen reload or app restart.
+  // Both roles resolve item identity from the same active catalog. This
+  // keeps Picker cards and Packer verification aligned on names, photos,
+  // product barcodes and warehouse bin locations.
+  const catalogBySku = await loadCatalogProducts(itemRows ?? []);
   const scanState = new Map<string, { location: boolean; sku: boolean }>();
   if (role === "PICKER") {
     const { data: scans, error: se } = await supabase
@@ -316,9 +350,16 @@ async function listOrders(statuses: string[], role: Role) {
     }
   }
 
+  // Filter at the shared API boundary, not just in the UI. This keeps the
+  // Picker dashboard, Picker orders, Packer queue and packer detail consistent.
+  const visibleItemRows = (itemRows ?? []).filter((row: any) => {
+    const product = catalogBySku.get(row.sku);
+    return Boolean(product?.image_path && catalogImageUrl(product.image_path));
+  });
+
   const byOrder = new Map<string, OrderItem[]>();
-  for (const row of itemRows ?? []) {
-    const item = mapItem(row);
+  for (const row of visibleItemRows) {
+    const item = mapItem(row, catalogBySku.get(row.sku));
     if (role === "PICKER") {
       const state = scanState.get(item.id);
       if (item.pickedQty >= item.requiredQty) {
@@ -334,7 +375,9 @@ async function listOrders(statuses: string[], role: Role) {
     byOrder.set(row.order_id, list);
   }
 
-  return rows.map((o: any) => mapOrderSummary(o, byOrder.get(o.id) ?? []));
+  return rows
+    .map((o: any) => mapOrderSummary(o, byOrder.get(o.id) ?? []))
+    .filter((order) => (order.items?.length ?? 0) > 0);
 }
 
 export function setAccessToken(_token: string | null) {}
@@ -495,7 +538,7 @@ export async function packerCompletedOrders() {
 
 export async function packerOrder(id: string) { return { order: await detail(id) }; }
 
-export async function packerScanBarcode(id: string, barcode: string, key: string) {
+export async function packerScanBarcode(id: string, barcode: string, key: string, quantity = 1) {
   const value = barcode.trim();
   if (!value) error("Scan a product barcode");
 
@@ -509,18 +552,19 @@ export async function packerScanBarcode(id: string, barcode: string, key: string
   const normalized = value.toUpperCase();
   const item = d.items.find(i =>
     i.packedQty < i.pickedQty &&
-    i.skuBarcode.trim().toUpperCase() === normalized,
+    (i.skuBarcode.trim().toUpperCase() === normalized || i.sku.trim().toUpperCase() === normalized),
   );
   if (!item) error("Barcode does not match any remaining item in this order");
 
   const left = item.pickedQty - item.packedQty;
+  const packQty = Math.min(Math.max(1, Math.floor(quantity || 1)), left);
   const scanKey = newClientEventId();
   const { error: scanError } = await supabase.rpc("sync_scan_event", {
     p_id: newClientEventId(),
     p_order_id: id,
     p_item_id: item.id,
     p_scan_type: "SKU",
-    p_barcode: value,
+    p_barcode: item.skuBarcode,
     p_expected_value: item.skuBarcode,
     p_result: "SUCCESS",
     p_idempotency_key: scanKey,
@@ -528,13 +572,13 @@ export async function packerScanBarcode(id: string, barcode: string, key: string
   });
   if (scanError) error(scanError.message);
 
-  const packed = await confirmPackItem(
+  await confirmPackItem(
     id,
     item.id,
     item.productName,
     item.productType,
     item.skuBarcode,
-    Math.min(1, left),
+    packQty,
     "GOOD",
     key,
   );

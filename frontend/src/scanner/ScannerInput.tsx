@@ -29,10 +29,13 @@ export default function ScannerInput({ mode, onScanResult, disabled = false }: P
   const submit = (raw: string, method: ScanMethod) => {
     const result = buildScanResult(raw, method);
     if (!result) {
-      setStatus("Duplicate or invalid scan ignored");
+      setManual("");
+      inputRef.current?.clear();
+      setStatus("Duplicate or invalid scan ignored — input cleared");
       return;
     }
     setManual("");
+    inputRef.current?.clear();
     setStatus("Barcode captured successfully");
     onScanResult(result);
   };
