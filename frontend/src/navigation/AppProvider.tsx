@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "@/api/supabase";
+import * as client from "@/api/client";
+import { getAuthToken, setAuthToken, apiRequest } from "@/api/http";
 import { pickerRepository } from "@/repositories/pickerRepository";
 import type { PickerProfile } from "@/types";
 
@@ -20,16 +21,14 @@ interface AuthState {
 const AuthCtx = createContext<AuthState | null>(null);
 const REMEMBER_ME_KEY = "ybm.auth.remember-me";
 
-async function loadProfile(userId: string): Promise<PickerProfile> {
-  const { data, error } = await supabase.from("users").select("*").eq("id", userId).single();
-  if (error || !data) throw new Error("User profile not found in database.");
+function userToProfile(user: client.User): PickerProfile {
   return {
-    id: data.id,
-    pickerCode: data.email,
-    name: data.name,
-    role: data.role,
-    warehouseId: data.warehouse_id,
-    warehouseName: data.warehouse_id,
+    id: user.id,
+    pickerCode: user.email,
+    name: user.name,
+    role: user.role === "PACKER" ? "PACKER" : "PICKER",
+    warehouseId: user.warehouseId,
+    warehouseName: `Warehouse ${user.warehouseId}`,
   };
 }
 
@@ -44,11 +43,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const restore = async () => {
       try {
         const rememberMe = (await AsyncStorage.getItem(REMEMBER_ME_KEY)) !== "false";
-        const { data } = await supabase.auth.getSession();
-        if (!rememberMe && data.session) {
-          await supabase.auth.signOut();
-        } else if (data.session && mounted) {
-          setPicker(await loadProfile(data.session.user.id));
+        const token = await getAuthToken();
+
+        if (!rememberMe && token) {
+          await setAuthToken(null);
+        } else if (token && mounted) {
+          const { user } = await client.me();
+          if (mounted) {
+            setPicker(userToProfile(user));
+          }
         }
       } catch (e) {
         if (mounted) setError(e instanceof Error ? e.message : "Session restore failed");
@@ -58,35 +61,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     void restore();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // getSession() above already restores INITIAL_SESSION. Avoid loading the
-      // same profile a second time when Supabase emits that event.
-      if (event === "INITIAL_SESSION") return;
-      if (!mounted) return;
-      if (!session) {
-        setPicker(null);
-        return;
-      }
-      try {
-        setPicker(await loadProfile(session.user.id));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Profile load failed");
-      }
-    });
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
     };
   }, []);
 
-  const requestOtp = useCallback(async (_pickerId: string) => {
-    setError("OTP login has been replaced by Supabase email/password authentication.");
-    return null;
+  const requestOtp = useCallback(async (identifier: string) => {
+    setError(null);
+    try {
+      const res = await apiRequest<{ expiresInSeconds?: number; maskedContact?: string }>(
+        "/api/auth/otp/request",
+        {
+          method: "POST",
+          body: JSON.stringify({ identifier }),
+        }
+      );
+      return {
+        expiresIn: res.data?.expiresInSeconds ?? 60,
+        masked: res.data?.maskedContact ?? identifier,
+      };
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to request OTP");
+      return null;
+    }
   }, []);
 
-  const verifyOtp = useCallback(async (_pickerId: string, _otp: string) => {
-    setError("OTP login has been replaced by Supabase email/password authentication.");
-    return false;
+  const verifyOtp = useCallback(async (identifier: string, otp: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiRequest<{ token?: string }>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          identifier,
+          otp,
+          loginMethod: "OTP",
+        }),
+      });
+      const token = res.data?.token;
+      if (!token) throw new Error("No token returned for OTP login");
+      await setAuthToken(token);
+      const { user } = await client.me();
+      setPicker(userToProfile(user));
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "OTP verification failed");
+      return false;
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = true) => {
@@ -94,15 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       await AsyncStorage.setItem(REMEMBER_ME_KEY, rememberMe ? "true" : "false");
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError || !data.user) throw new Error(authError?.message || "Login failed");
-      setPicker(await loadProfile(data.user.id));
-      if (!rememberMe) {
-        // Keep the current shift active in memory, but discard the persisted
-        // Supabase session so the next app launch requires sign-in again.
-        await supabase.auth.signOut({ scope: "local" });
-        setPicker(await loadProfile(data.user.id));
-      }
+      const { user } = await client.login(email, password);
+      setPicker(userToProfile(user));
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");
@@ -113,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await supabase.auth.signOut();
+    await setAuthToken(null);
     await pickerRepository.logout();
     setPicker(null);
     router.replace("/login" as never);
@@ -121,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout }),
-    [picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout],
+    [picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout]
   );
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

@@ -1,5 +1,5 @@
 import { AppState } from "react-native";
-import { supabase } from "@/api/supabase";
+import { getAuthToken, API_BASE_URL } from "@/api/http";
 import { getDeviceId } from "@/repositories/deviceId";
 import { supabasePickerApi } from "@/services/supabasePickerApi";
 import { openExpoStore } from "@/storage/drivers/expoStore";
@@ -8,21 +8,24 @@ import { createSyncRuntime, type SyncRuntime } from "./runtime";
 let runtime: SyncRuntime | null = null;
 let initPromise: Promise<SyncRuntime> | null = null;
 
-async function probeSupabase(): Promise<"ONLINE" | "OFFLINE" | "SERVER_UNREACHABLE"> {
+async function probeBackend(): Promise<"ONLINE" | "OFFLINE" | "SERVER_UNREACHABLE"> {
   try {
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) return "SERVER_UNREACHABLE";
-    if (!sessionData.session) return "OFFLINE";
+    const token = await getAuthToken();
+    if (!token) return "OFFLINE";
 
-    const { error } = await supabase.from("orders").select("id").limit(1);
-    if (!error) return "ONLINE";
-    if (error.code === "PGRST301" || /fetch|network|timeout|connection/i.test(error.message)) {
-      return "SERVER_UNREACHABLE";
-    }
-    // Authenticated Supabase is reachable even when an RLS/query error occurs.
-    return "ONLINE";
+    const res = await fetch(`${API_BASE_URL}/api/picker-app/stats`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (res.status === 401) return "OFFLINE";
+    if (res.ok) return "ONLINE";
+    return "SERVER_UNREACHABLE";
   } catch {
-    return "OFFLINE";
+    return "SERVER_UNREACHABLE";
   }
 }
 
@@ -32,11 +35,11 @@ async function create(): Promise<SyncRuntime> {
     store: await openExpoStore(),
     deviceId,
     online: supabasePickerApi,
-    uploadBatch: async batch => ({ ok: true as const, data: await supabasePickerApi.syncEvents(batch) }),
-    probe: probeSupabase,
+    uploadBatch: async (batch) => ({ ok: true as const, data: await supabasePickerApi.syncEvents(batch) }),
+    probe: probeBackend,
     pollMs: 30000,
-    onForeground: cb => {
-      const sub = AppState.addEventListener("change", s => {
+    onForeground: (cb) => {
+      const sub = AppState.addEventListener("change", (s) => {
         if (s === "active") cb();
       });
       return () => sub.remove();
@@ -48,13 +51,11 @@ export function getSyncRuntime(): Promise<SyncRuntime> {
   if (runtime) return Promise.resolve(runtime);
   if (!initPromise) {
     initPromise = create()
-      .then(r => {
+      .then((r) => {
         runtime = r;
         return r;
       })
-      .catch(error => {
-        // Allow a later foreground attempt to rebuild the runtime after a
-        // transient native SQLite/Expo lifecycle failure.
+      .catch((error) => {
         initPromise = null;
         runtime = null;
         throw error;

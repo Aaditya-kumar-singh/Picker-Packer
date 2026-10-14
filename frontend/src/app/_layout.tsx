@@ -22,23 +22,28 @@ function RouteGuard() {
       return;
     }
 
+    const role = (picker.role || "").toUpperCase();
+    const isPacker = role.includes("PACKER");
+
     const pickerRoots = new Set(["dashboard", "orders", "order", "pick"]);
     const packerRoots = new Set(["packer-dashboard", "pack"]);
 
     // Routes inside the persistent tab group are role-gated by their child route.
     if (root === "(tabs)") {
-      if (picker.role === "PACKER" && (child === "dashboard" || child === "orders")) {
+      if (isPacker && (child === "dashboard" || child === "orders")) {
         router.replace("/packer-dashboard" as never);
+      } else if (!isPacker && child === "packer-dashboard") {
+        router.replace("/dashboard" as never);
       }
       return;
     }
 
-    if (picker.role === "PICKER" && packerRoots.has(root ?? "")) {
+    if (!isPacker && packerRoots.has(root ?? "")) {
       router.replace("/dashboard" as never);
       return;
     }
 
-    if (picker.role === "PACKER" && pickerRoots.has(root ?? "")) {
+    if (isPacker && pickerRoots.has(root ?? "")) {
       router.replace("/packer-dashboard" as never);
     }
   }, [picker, ready, segments]);

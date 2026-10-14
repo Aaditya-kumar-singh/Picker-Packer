@@ -2,7 +2,7 @@ import type { IPickerApi } from "@/services/pickerApi";
 import type { SyncBatchResponse } from "@/sync/events";
 import type { Order, OrderLine, PickerProfile, Result, WmsMode, AuthResponse, EvidenceItem, EvidenceUploadGrant, LineException } from "@/types";
 import * as client from "@/api/client";
-import { newClientEventId } from "@/sync/events";
+import { setAuthToken } from "@/api/http";
 
 let expiredHandler: (() => void) | null = null;
 export function setSessionExpiredHandler(fn: (() => void) | null) { expiredHandler = fn; }
@@ -37,7 +37,7 @@ function toOrder(o: client.OrderSummary): Order {
 
 function err(e: unknown): Result<any> {
   return { ok: false, apiError: {
-    error: "SUPABASE_ERROR", message: e instanceof Error ? e.message : "Supabase request failed",
+    error: "API_ERROR", message: e instanceof Error ? e.message : "API request failed",
     details: [], requestId: "", timestamp: new Date().toISOString(),
   }};
 }
@@ -50,9 +50,6 @@ class SupabasePickerApi {
   private orderGeneration = new Map<string, number>();
   private readonly cacheMs = 3000;
 
-  // Every workflow mutation advances the generation before and after the
-  // server write. Any older in-flight read is therefore discarded instead of
-  // restoring stale line state after the user has already moved forward.
   private invalidateOrder(id: string) {
     this.orderGeneration.set(id, (this.orderGeneration.get(id) ?? 0) + 1);
     this.orderCache.delete(id);
@@ -68,16 +65,15 @@ class SupabasePickerApi {
   setSessionPicker(picker: PickerProfile) { this.picker = picker; }
 
   async requestOtp(_pickerId: string): Promise<Result<{ expiresInSeconds: number; maskedContact: string }>> {
-    return { ok: false, apiError: { error: "UNSUPPORTED", message: "Use Supabase email/password authentication", details: [], requestId: "", timestamp: new Date().toISOString() } };
+    return { ok: false, apiError: { error: "UNSUPPORTED", message: "Use email/password authentication", details: [], requestId: "", timestamp: new Date().toISOString() } };
   }
 
   async verifyOtp(_pickerId: string, _otp: string, _deviceId: string): Promise<Result<AuthResponse>> {
-    return { ok: false, apiError: { error: "UNSUPPORTED", message: "Use Supabase email/password authentication", details: [], requestId: "", timestamp: new Date().toISOString() } };
+    return { ok: false, apiError: { error: "UNSUPPORTED", message: "Use email/password authentication", details: [], requestId: "", timestamp: new Date().toISOString() } };
   }
 
   async logout() {
-    const { supabase } = await import("@/api/supabase");
-    await supabase.auth.signOut();
+    await setAuthToken(null);
     this.picker = null;
     client.setAccessToken(null);
   }
@@ -117,8 +113,6 @@ class SupabasePickerApi {
       return { ok: true, data: toOrder(cached.detail) };
     }
 
-    // A read can overlap a scan/pick mutation. Retry once when the mutation
-    // invalidates the generation while this request is in flight.
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const generation = this.orderGeneration.get(id) ?? 0;
       try {
@@ -133,8 +127,6 @@ class SupabasePickerApi {
       }
     }
 
-    // The order changed while both reads were racing. A final read is
-    // intentionally uncached so the caller receives the authoritative state.
     try {
       const detail = (await client.pickerOrder(id)).order;
       this.orderCache.set(id, { detail, cachedAt: Date.now() });
@@ -159,8 +151,8 @@ class SupabasePickerApi {
 
   async beginPicking(id: string, _deviceId: string, key: string) { return this.startOrder(id, key); }
 
-  async cancelOrder() { return err(new Error("Order cancellation is not implemented in Supabase workflow")); }
-  async skipLine() { return err(new Error("Line skipping is not implemented in Supabase workflow")); }
+  async cancelOrder() { return err(new Error("Order cancellation is not implemented")); }
+  async skipLine() { return err(new Error("Line skipping is not implemented")); }
 
   private cachedLine(lineId: string) {
     const orderId = this.lineOrderIndex.get(lineId);
@@ -174,7 +166,7 @@ class SupabasePickerApi {
     if (!orderId || !item) return err(new Error("Line context expired. Reload the order."));
     this.invalidateOrder(orderId);
     try {
-      const r = await client.validateLocation(orderId, lineId, scanValue, newClientEventId());
+      const r = await client.validateLocation(orderId, lineId, scanValue, "");
       if (!r.valid) return err(new Error("Location barcode does not match"));
 
       this.invalidateOrder(orderId);
@@ -195,7 +187,7 @@ class SupabasePickerApi {
     if (!orderId || !item) return err(new Error("Line context expired. Reload the order."));
     this.invalidateOrder(orderId);
     try {
-      await client.validatePickSku(orderId, lineId, scanValue, newClientEventId());
+      await client.validatePickSku(orderId, lineId, scanValue, "");
 
       this.invalidateOrder(orderId);
       const fresh = await this.getOrder(orderId);
@@ -218,9 +210,6 @@ class SupabasePickerApi {
     try {
       await client.pickItem(orderId, lineId, item.skuBarcode, qty, key);
 
-      // Re-read the authoritative server state after every physical-unit
-      // pick. The generation guard prevents an older focus read from putting
-      // the previous 5/6 state back over the new 6/6 state.
       this.invalidateOrder(orderId);
       const fresh = await this.getOrder(orderId);
       if (!fresh.ok) return fresh;
@@ -271,11 +260,9 @@ class SupabasePickerApi {
     try {
       const d = await client.completeEvidenceUpload(exceptionId, evidenceId);
       return { ok: true, data: {
-        id: String(d.id), objectKey: String(d.objectKey), mimeType: String(d.mimeType),
-        fileSizeBytes: d.fileSizeBytes == null ? null : Number(d.fileSizeBytes),
-        status: String(d.status), uploadAttempts: Number(d.uploadAttempts ?? 0),
-        lastError: d.lastError == null ? null : String(d.lastError),
-        createdAt: String(d.createdAt), uploadedAt: d.uploadedAt == null ? null : String(d.uploadedAt),
+        id: String(d.id), objectKey: String(evidenceId), mimeType: "image/jpeg",
+        fileSizeBytes: null, status: String(d.status), uploadAttempts: 1,
+        lastError: null, createdAt: new Date().toISOString(), uploadedAt: new Date().toISOString(),
       }};
     } catch (e) { return err(e); }
   }
@@ -291,7 +278,7 @@ class SupabasePickerApi {
       })) };
     } catch (e) { return err(e); }
   }
-  async refreshToken(): Promise<Result<AuthResponse>> { return err(new Error("Supabase Auth manages session refresh")); }
+  async refreshToken(): Promise<Result<AuthResponse>> { return err(new Error("JWT manages session refresh")); }
   async syncEvents(batch: any): Promise<Result<SyncBatchResponse>> {
     try { return { ok: true, data: await client.syncEvents(batch) }; } catch (e) { return err(e); }
   }

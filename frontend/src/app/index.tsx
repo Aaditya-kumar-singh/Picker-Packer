@@ -7,7 +7,8 @@ export default function Index() {
   const { picker, ready } = useAuth();
   useEffect(() => {
     if (!ready) return;
-    router.replace((picker ? (picker.role === "PACKER" ? "/packer-dashboard" : "/dashboard") : "/login") as never);
+    const isPacker = (picker?.role || "").toUpperCase().includes("PACKER");
+    router.replace((picker ? (isPacker ? "/packer-dashboard" : "/dashboard") : "/login") as never);
   }, [picker, ready]);
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>

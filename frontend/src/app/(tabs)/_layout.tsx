@@ -17,8 +17,10 @@ function tabIcon(activeName: IconName, inactiveName: IconName) {
 export default function TabLayout() {
   const { picker } = useAuth();
   const insets = useSafeAreaInsets();
-  const isPacker = picker?.role === "PACKER";
-  const isPicker = picker?.role === "PICKER";
+
+  const role = (picker?.role || "").toUpperCase();
+  const isPacker = role.includes("PACKER");
+  const isPicker = !isPacker;
 
   const baseTabHeight = 62;
   const bottomInset = Math.max(insets.bottom, 0);
@@ -26,6 +28,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      key={isPacker ? "tabs-packer" : "tabs-picker"}
       screenOptions={{
         headerShown: true,
         header: () => <BrandHeader />,
@@ -87,7 +90,7 @@ export default function TabLayout() {
           title: "Completed",
           tabBarLabel: "Completed",
           tabBarIcon: tabIcon("checkmark-done", "checkmark-done-outline"),
-          href: isPicker || isPacker ? "/completed-orders" : null,
+          href: "/completed-orders",
         }}
       />
       <Tabs.Screen
@@ -96,7 +99,7 @@ export default function TabLayout() {
           title: "Profile",
           tabBarLabel: "Profile",
           tabBarIcon: tabIcon("person", "person-outline"),
-          href: picker ? "/profile" : null,
+          href: "/profile",
         }}
       />
     </Tabs>
