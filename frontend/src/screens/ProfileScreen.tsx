@@ -6,7 +6,7 @@ import { AppHeader, PrimaryButton, Screen, theme } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 
 export function ProfileScreen() {
-  const { picker, logout } = useAuth();
+  const { picker, logout, switchRole } = useAuth();
   if (!picker) return null;
 
   const isPacker = picker.role === "PACKER";
@@ -67,6 +67,18 @@ export function ProfileScreen() {
             <Text style={s.value}>Operational Execution • Multi-Tenant Isolated</Text>
           </View>
         </View>
+      </View>
+
+      {/* Switch Role Button */}
+      <View style={{ marginTop: 12 }}>
+        <PrimaryButton
+          label={`SWITCH TO ${isPacker ? "PICKER" : "PACKER"} DASHBOARD`}
+          icon="swap-horizontal-outline"
+          onPress={() => {
+            switchRole();
+            router.replace((isPacker ? "/dashboard" : "/packer-dashboard") as never);
+          }}
+        />
       </View>
 
       {/* Logout Action */}

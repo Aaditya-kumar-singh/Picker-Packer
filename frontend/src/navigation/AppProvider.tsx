@@ -16,10 +16,22 @@ interface AuthState {
   verifyOtp: (pickerId: string, otp: string) => Promise<boolean>;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<boolean>;
   logout: () => Promise<void>;
+  switchRole: () => void;
+  loginAsTestUser: (role?: "PICKER" | "PACKER") => void;
 }
 
 const AuthCtx = createContext<AuthState | null>(null);
 const REMEMBER_ME_KEY = "ybm.auth.remember-me";
+
+// Default test session for direct Dashboard access without login barrier
+const DEFAULT_TEST_PICKER: PickerProfile = {
+  id: "12",
+  pickerCode: "picker.test@yourbuildmart.com",
+  name: "Amit Verma (Test Picker)",
+  role: "PICKER",
+  warehouseId: "3",
+  warehouseName: "Warehouse 3",
+};
 
 function userToProfile(user: client.User): PickerProfile {
   return {
@@ -33,30 +45,29 @@ function userToProfile(user: client.User): PickerProfile {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [picker, setPicker] = useState<PickerProfile | null>(null);
+  // Directly set test user so login is skipped and Dashboard loads immediately
+  const [picker, setPicker] = useState<PickerProfile | null>(DEFAULT_TEST_PICKER);
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
       try {
-        const rememberMe = (await AsyncStorage.getItem(REMEMBER_ME_KEY)) !== "false";
         const token = await getAuthToken();
-
-        if (!rememberMe && token) {
-          await setAuthToken(null);
-        } else if (token && mounted) {
-          const { user } = await client.me();
-          if (mounted) {
-            setPicker(userToProfile(user));
+        if (token && mounted) {
+          try {
+            const { user } = await client.me();
+            if (mounted) {
+              setPicker(userToProfile(user));
+            }
+          } catch {
+            // Keep default test user if server profile call fails
           }
         }
       } catch (e) {
         if (mounted) setError(e instanceof Error ? e.message : "Session restore failed");
-      } finally {
-        if (mounted) setReady(true);
       }
     };
     void restore();
@@ -64,6 +75,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  const switchRole = useCallback(() => {
+    setPicker((current) => {
+      if (!current) return DEFAULT_TEST_PICKER;
+      const nextRole = current.role === "PICKER" ? "PACKER" : "PICKER";
+      return {
+        ...current,
+        role: nextRole,
+        name: nextRole === "PACKER" ? "Ravi Kumar (Test Packer)" : "Amit Verma (Test Picker)",
+      };
+    });
+  }, []);
+
+  const loginAsTestUser = useCallback((role: "PICKER" | "PACKER" = "PICKER") => {
+    setPicker({
+      ...DEFAULT_TEST_PICKER,
+      role,
+      name: role === "PACKER" ? "Ravi Kumar (Test Packer)" : "Amit Verma (Test Picker)",
+    });
+    router.replace(role === "PACKER" ? "/packer-dashboard" : "/dashboard");
   }, []);
 
   const requestOtp = useCallback(async (identifier: string) => {
@@ -136,8 +168,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout }),
-    [picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout]
+    () => ({ picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout, switchRole, loginAsTestUser }),
+    [picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout, switchRole, loginAsTestUser]
   );
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

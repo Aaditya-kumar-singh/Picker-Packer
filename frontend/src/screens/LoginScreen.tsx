@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { ErrorBanner, FieldInput, PrimaryButton, Screen, theme } from "@/components/ui";
+import { ErrorBanner, FieldInput, PrimaryButton, SecondaryButton, Screen, theme } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 
 export function LoginScreen() {
-  const { loginWithEmail, loading, error } = useAuth();
+  const { loginWithEmail, loading, error, loginAsTestUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -88,6 +88,32 @@ export function LoginScreen() {
         onPress={onContinue}
         disabled={busy}
       />
+
+      {/* Direct Test Mode Options */}
+      <View style={{ marginTop: 16, width: "100%", gap: 8 }}>
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: "700",
+            color: theme.color.muted,
+            textAlign: "center",
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+          }}
+        >
+          Direct Test Access (No Live Server Required)
+        </Text>
+        <PrimaryButton
+          label="TEST AS PICKER (4 TABS)"
+          icon="flash-outline"
+          onPress={() => loginAsTestUser("PICKER")}
+        />
+        <SecondaryButton
+          label="TEST AS PACKER (3 TABS)"
+          icon="cube-outline"
+          onPress={() => loginAsTestUser("PACKER")}
+        />
+      </View>
 
       <View style={ls.footer}>
         <Ionicons name="shield-checkmark-outline" size={13} color={theme.color.muted} style={{ marginRight: 4 }} />

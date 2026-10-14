@@ -79,6 +79,7 @@ export default function RootLayout() {
             <Stack.Screen name="pick/[orderId]/complete" options={{ title: "Completion" }} />
 
             <Stack.Screen name="pack/order/[id]" options={{ title: "Packing Order" }} />
+            <Stack.Screen name="dispatch" options={{ title: "Dispatch Hub" }} />
           </Stack>
         </SyncProvider>
       </AuthProvider>
