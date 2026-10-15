@@ -7,7 +7,7 @@ const TOKEN_KEY = "ybm.auth.jwt";
 const ROLE_KEY = "ybm.auth.role";
 
 function getBaseUrl(): string {
-  // If running in a web browser on localhost, route through Metro proxy to avoid browser CORS preflight blocks.
+  // Local web development uses Metro's proxy to avoid browser CORS preflight blocks.
   if (
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
@@ -16,26 +16,17 @@ function getBaseUrl(): string {
     return `${window.location.origin}/api`;
   }
 
-  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (!envUrl) {
-    // Keep a convenient development default, but never silently send a production app to staging.
-    return __DEV__ ? "https://test.yourbuildmart.com/api" : "";
-  }
-
+  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || "https://test.yourbuildmart.com/api";
   try {
-    const parsed = new URL(envUrl);
-    const isStagingHost =
-      parsed.hostname === "test.yourbuildmart.com" ||
-      parsed.hostname === "test-admin.yourbuildmart.com";
-    if (!__DEV__ && isStagingHost) {
-      return "";
-    }
-
-    // Preserve the legacy admin hostname migration only for development/test builds.
+    const parsed = new URL(configuredUrl);
+    if (parsed.protocol !== "https:") return "";
     if (parsed.hostname === "test-admin.yourbuildmart.com") {
       parsed.hostname = "test.yourbuildmart.com";
     }
-    return parsed.toString().replace(/\/+$/, "");
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/, "");
   } catch {
     return "";
   }
