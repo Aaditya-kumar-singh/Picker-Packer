@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   View,
+  type TextInputInstance,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -53,7 +54,7 @@ export function OrderDetailScreen() {
   const [cameraVisible, setCameraVisible] = useState(false);
   const [manualBarcode, setManualBarcode] = useState("");
   const [batchesVisible, setBatchesVisible] = useState(false);
-  const scanInputRef = useRef<TextInput>(null);
+  const scanInputRef = useRef<TextInputInstance>(null);
 
   const load = useCallback(async () => {
     setLoading(true);

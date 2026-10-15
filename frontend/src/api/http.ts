@@ -7,7 +7,7 @@ const TOKEN_KEY = "ybm.auth.jwt";
 const ROLE_KEY = "ybm.auth.role";
 
 function getBaseUrl(): string {
-  // If running in a web browser on localhost, route through Metro proxy to avoid browser CORS preflight blocks
+  // If running in a web browser on localhost, route through Metro proxy to avoid browser CORS preflight blocks.
   if (
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
@@ -16,18 +16,29 @@ function getBaseUrl(): string {
     return `${window.location.origin}/api`;
   }
 
-  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-  if (envUrl && envUrl.trim().length > 0) {
-    let clean = envUrl.trim().replace(/\/+$/, "");
-    if (clean.includes("test-admin.yourbuildmart.com")) {
-      clean = clean.replace("test-admin.yourbuildmart.com", "test.yourbuildmart.com");
-      if (!clean.endsWith("/api")) {
-        clean = `${clean}/api`;
-      }
-    }
-    return clean;
+  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (!envUrl) {
+    // Keep a convenient development default, but never silently send a production app to staging.
+    return __DEV__ ? "https://test.yourbuildmart.com/api" : "";
   }
-  return "https://test.yourbuildmart.com/api";
+
+  try {
+    const parsed = new URL(envUrl);
+    const isStagingHost =
+      parsed.hostname === "test.yourbuildmart.com" ||
+      parsed.hostname === "test-admin.yourbuildmart.com";
+    if (!__DEV__ && isStagingHost) {
+      return "";
+    }
+
+    // Preserve the legacy admin hostname migration only for development/test builds.
+    if (parsed.hostname === "test-admin.yourbuildmart.com") {
+      parsed.hostname = "test.yourbuildmart.com";
+    }
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
 }
 
 export const API_BASE_URL = getBaseUrl();
@@ -38,10 +49,9 @@ export function resolvePhotoUrl(filePath?: string | null): string | null {
   if (filePath.startsWith("http://") || filePath.startsWith("https://") || filePath.startsWith("data:")) {
     return filePath;
   }
+  if (!API_BASE_URL) return null;
   const clean = filePath.replace(/^\/+/, "");
-  const originBase = (API_BASE_URL.includes("localhost") || API_BASE_URL.includes("127.0.0.1"))
-    ? "https://test.yourbuildmart.com"
-    : API_BASE_URL.replace(/\/api$/, "");
+  const originBase = API_BASE_URL.replace(/\/api\/?$/, "");
   return `${originBase}/${clean}`;
 }
 
@@ -53,7 +63,9 @@ export class ApiHttpError extends Error {
   timestamp?: string;
 
   constructor(envelope: ApiErrorEnvelope) {
-    super(envelope.message || envelope.error || "API Request Failed");
+    const baseMessage = envelope.message || envelope.error || "API Request Failed";
+    const details = envelope.fieldErrors?.filter((item) => item?.field && item?.message).map((item) => `${item.field}: ${item.message}`) ?? [];
+    super(details.length > 0 ? `${baseMessage}\n${details.join("\n")}` : baseMessage);
     this.name = "ApiHttpError";
     this.error = envelope.error || "HTTP_ERROR";
     this.status = envelope.status || 500;
@@ -69,38 +81,68 @@ let memoryRole: "PICKER" | "PACKER" | null = null;
 
 export async function getStoredToken(): Promise<string | null> {
   if (memoryToken) return memoryToken;
-  try {
-    if (Platform.OS !== "web") {
-      const val = await SecureStore.getItemAsync(TOKEN_KEY);
-      if (val) {
-        memoryToken = val;
-        return val;
-      }
+
+  if (Platform.OS !== "web") {
+    let secureToken: string | null;
+    try {
+      secureToken = await SecureStore.getItemAsync(TOKEN_KEY);
+    } catch {
+      throw new Error("Secure session storage is unavailable. Restart the app and sign in again.");
     }
-  } catch {
-    // fallback to AsyncStorage
+
+    if (secureToken) {
+      memoryToken = secureToken;
+      return secureToken;
+    }
+
+    // One-time migration for tokens saved by older builds using AsyncStorage as a fallback.
+    const legacyToken = await AsyncStorage.getItem(TOKEN_KEY);
+    if (!legacyToken) return null;
+    try {
+      await SecureStore.setItemAsync(TOKEN_KEY, legacyToken);
+      await AsyncStorage.removeItem(TOKEN_KEY);
+      memoryToken = legacyToken;
+      return legacyToken;
+    } catch {
+      throw new Error("Could not migrate your session to secure storage. Please sign in again.");
+    }
   }
+
   const val = await AsyncStorage.getItem(TOKEN_KEY);
   memoryToken = val;
   return val;
 }
 
 export async function setStoredToken(token: string | null): Promise<void> {
-  memoryToken = token;
   if (!token) {
-    try {
-      if (Platform.OS !== "web") await SecureStore.deleteItemAsync(TOKEN_KEY);
-    } catch {}
+    memoryToken = null;
+    if (Platform.OS !== "web") {
+      try {
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+      } catch {
+        // Remove any legacy copy even if the secure store is temporarily unavailable.
+        await AsyncStorage.removeItem(TOKEN_KEY).catch(() => undefined);
+        throw new Error("Could not clear the secure session. Restart the app before signing in again.");
+      }
+    }
     await AsyncStorage.removeItem(TOKEN_KEY);
     return;
   }
-  try {
-    if (Platform.OS !== "web") {
+
+  if (Platform.OS !== "web") {
+    try {
       await SecureStore.setItemAsync(TOKEN_KEY, token);
+      await AsyncStorage.removeItem(TOKEN_KEY);
+      memoryToken = token;
       return;
+    } catch {
+      memoryToken = null;
+      throw new Error("Could not save the session securely. Please try signing in again.");
     }
-  } catch {}
+  }
+
   await AsyncStorage.setItem(TOKEN_KEY, token);
+  memoryToken = token;
 }
 
 export async function getStoredRole(): Promise<"PICKER" | "PACKER" | null> {
@@ -161,6 +203,15 @@ export async function apiRequest<T>(
   options: HttpRequestOptions = {}
 ): Promise<T> {
   const { skipAuth = false, headers = {}, ...rest } = options;
+  if (!API_BASE_URL) {
+    throw new ApiHttpError({
+      error: "API_CONFIGURATION_ERROR",
+      message: "The API server is not configured for this build. Set EXPO_PUBLIC_API_BASE_URL to the correct non-staging API URL and rebuild the app.",
+      status: 0,
+      fieldErrors: null,
+    });
+  }
+
   let normalizedPath = path.startsWith("/") ? path : `/${path}`;
   let base = API_BASE_URL;
   if (base.endsWith("/api") && normalizedPath.startsWith("/api/")) {

@@ -63,7 +63,7 @@ export function DashboardScreen() {
   const assignedList = orders;
   const assignedTotal = stats?.assignedOrdersCount ?? assignedList.length;
   const inProgressCount = assignedList.filter((o) => o.totalItemsScanned > 0).length;
-  const completedCount = stats?.completedOrdersCount ?? pickerAppApi.getSessionCompletedOrders().length;
+  const completedCount = stats?.completedOrdersCount ?? 0;
   const itemsToPickCount = assignedList.reduce(
     (sum, o) =>
       sum +

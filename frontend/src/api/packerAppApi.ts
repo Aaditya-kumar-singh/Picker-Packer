@@ -8,9 +8,8 @@ import type {
   RawSalesOrderItemDto,
 } from "@/types";
 
-// In-memory cache for assigned orders and dispatched orders in current session
+// In-memory cache for currently loaded order details. The server remains authoritative.
 let cachedAssignedOrders: FulfillmentOrderDto[] = [];
-let sessionDispatchedOrders: FulfillmentOrderDto[] = [];
 
 export const packerAppApi = {
   /** 2.1 GET /api/packer-app/orders/assigned */
@@ -70,15 +69,9 @@ export const packerAppApi = {
       }),
     });
 
-    // Order has moved to RIDER_ASSIGNED. Remove from assigned cache and store in session dispatched.
-    const idx = cachedAssignedOrders.findIndex((o) => o.orderId === orderId);
-    if (idx !== -1) {
-      const [order] = cachedAssignedOrders.splice(idx, 1);
-      if (order) {
-        order.orderStatus = "RIDER_ASSIGNED";
-        sessionDispatchedOrders.unshift(order);
-      }
-    }
+    // Update the local cache optimistically. The next list refresh reads persisted state from the API.
+    const order = cachedAssignedOrders.find((o) => o.orderId === orderId);
+    if (order) order.orderStatus = "RIDER_ASSIGNED";
 
     return typeof res === "string" ? res : "Rider assigned";
   },
@@ -120,14 +113,8 @@ export const packerAppApi = {
     return typeof res === "string" ? res : "Password updated";
   },
 
-  /** Returns orders dispatched in the current shift */
-  getSessionDispatchedOrders(): FulfillmentOrderDto[] {
-    return sessionDispatchedOrders;
-  },
-
-  /** Clears session state on logout */
+  /** Clears cached order details on logout. Persisted workflow state stays on the server. */
   clearSession(): void {
     cachedAssignedOrders = [];
-    sessionDispatchedOrders = [];
   },
 };

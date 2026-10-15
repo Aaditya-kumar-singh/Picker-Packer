@@ -224,14 +224,15 @@ returned. App needs only `id`, `name`, `phone`, `rating`, `photoFilePath`.
 | # | Method | Path | Payload | Response `data` |
 |---|---|---|---|---|
 | 2.1 | GET | `/api/picker-app/orders/assigned` | — | `Order[]` |
-| 2.2 | POST | `/api/picker-app/orders/{id}/scan` | `{ "barcode" }` | `ScanResponse` |
-| 2.3 | POST | `/api/picker-app/orders/{id}/assign-packer` | `{ "packerId" }` | `"Packer assigned"` |
-| 2.4 | GET | `/api/picker-app/orders/{id}/items` | — | `OrderItem[]` |
-| 2.5 | GET | `/api/picker-app/stats` | — | `Stats` |
-| 2.6 | GET | `/api/picker-app/available-packers` | — | `PackerStaff[]` |
-| 2.7 | GET | `/api/picker-app/profile` | — | `Profile` |
-| 2.8 | PUT | `/api/picker-app/profile` | `Profile` (partial) | `Profile` |
-| 2.9 | POST | `/api/picker-app/change-password` | `{ currentPassword, newPassword }` | `"Password updated"` |
+| 2.2 | GET | `/api/picker-app/orders/completed` | - | `Order[]` |
+| 2.3 | POST | `/api/picker-app/orders/{id}/scan` | `{ "barcode" }` | `ScanResponse` |
+| 2.4 | POST | `/api/picker-app/orders/{id}/assign-packer` | `{ "packerId" }` | `"Packer assigned"` |
+| 2.5 | GET | `/api/picker-app/orders/{id}/items` | — | `OrderItem[]` |
+| 2.6 | GET | `/api/picker-app/stats` | — | `Stats` |
+| 2.7 | GET | `/api/picker-app/available-packers` | — | `PackerStaff[]` |
+| 2.8 | GET | `/api/picker-app/profile` | — | `Profile` |
+| 2.9 | PUT | `/api/picker-app/profile` | `Profile` (partial) | `Profile` |
+| 2.10 | POST | `/api/picker-app/change-password` | `{ currentPassword, newPassword }` | `"Password updated"` |
 
 ### 2.1 Get assigned orders
 
@@ -249,7 +250,15 @@ No payload. Orders assigned to the logged-in picker with status `PICKING`.
 }
 ```
 
-### 2.2 Scan an item (pick one unit)
+### 2.2 Get completed picking orders
+
+```http
+GET /api/picker-app/orders/completed
+```
+
+No payload. Returns orders assigned to the authenticated picker that have moved beyond `PICKING` (`PACKING`, `PACKED`, or `RIDER_ASSIGNED`). This list is server-authoritative and remains available after app restarts or login on another device. Only picker-role sessions may call this endpoint.
+
+### 2.3 Scan an item (pick one unit)
 
 ```
 POST /api/picker-app/orders/{id}/scan

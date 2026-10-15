@@ -17,7 +17,7 @@ import { useAuth } from "@/navigation/AppProvider";
 import { resolvePhotoUrl } from "@/api/http";
 
 export function ProfileScreen() {
-  const { picker, logout, updateProfile, changePassword, refreshProfile } = useAuth();
+  const { picker, logout, updateProfile, changePassword, refreshProfile, error: authError } = useAuth();
 
   // Edit Profile Modal State
   const [editVisible, setEditVisible] = useState(false);
@@ -29,6 +29,7 @@ export function ProfileScreen() {
   const [editIdNumber, setEditIdNumber] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [failedPhotoUri, setFailedPhotoUri] = useState<string | null>(null);
 
   // Change Password Modal State
   const [passVisible, setPassVisible] = useState(false);
@@ -63,7 +64,7 @@ export function ProfileScreen() {
     setSavingProfile(true);
     setEditError(null);
     try {
-      const ok = await updateProfile({
+      const result = await updateProfile({
         name: editName.trim() || undefined,
         phone: editPhone.trim() || undefined,
         email: editEmail.trim() || null,
@@ -71,11 +72,11 @@ export function ProfileScreen() {
         idCardType: editIdType.trim() || null,
         idCardNumber: editIdNumber.trim() || null,
       });
-      if (ok) {
+      if (result.ok) {
         setEditVisible(false);
         await refreshProfile();
       } else {
-        setEditError("Failed to update profile. Please try again.");
+        setEditError(result.error || authError || "Failed to update profile. Please try again.");
       }
     } catch (e: any) {
       setEditError(e?.message || "Profile update failed.");
@@ -110,14 +111,14 @@ export function ProfileScreen() {
     setSavingPass(true);
     setPassError(null);
     try {
-      const ok = await changePassword(currentPass, newPass);
-      if (ok) {
+      const result = await changePassword(currentPass, newPass);
+      if (result.ok) {
         setPassSuccess("Password updated successfully!");
         setTimeout(() => {
           setPassVisible(false);
         }, 1200);
       } else {
-        setPassError("Failed to update password. Verify current password.");
+        setPassError(result.error || authError || "Failed to update password. Verify current password.");
       }
     } catch (e: any) {
       setPassError(e?.message || "Failed to change password.");
@@ -132,8 +133,8 @@ export function ProfileScreen() {
 
       {/* Operator Card */}
       <View style={s.card}>
-        {photoUri ? (
-          <Image source={{ uri: photoUri }} style={s.avatarImage} />
+        {photoUri && failedPhotoUri !== photoUri ? (
+          <Image source={{ uri: photoUri }} style={s.avatarImage} onError={() => setFailedPhotoUri(photoUri)} />
         ) : (
           <View style={[s.avatar, { backgroundColor: roleColor }]}>
             <Text style={s.avatarText}>{(picker.name || "U").charAt(0).toUpperCase()}</Text>

@@ -35,12 +35,9 @@ export function PackerCompletedScreen() {
     setLoading(true);
     try {
       const assigned = await packerAppApi.getAssignedOrders();
-      const packedOrders = assigned.filter((o) => o.orderStatus === "PACKED");
-      const dispatched = packerAppApi.getSessionDispatchedOrders();
-
-      // Combine packed orders (ready for rider) + session dispatched orders
-      const combined = [...packedOrders, ...dispatched];
-      setOrders(combined);
+      // Both ready-to-dispatch and dispatched orders come from the server, so history survives relaunches.
+      const completedOrders = assigned.filter((o) => o.orderStatus === "PACKED" || o.orderStatus === "RIDER_ASSIGNED");
+      setOrders(completedOrders);
       setError(null);
     } catch (e: any) {
       setError(e?.message || "Could not load completed orders");

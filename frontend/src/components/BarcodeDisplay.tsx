@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View, type TextInputInstance } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
@@ -32,7 +32,7 @@ export default function BarcodeDisplay({
 }: Props) {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [copied, setCopied] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
   const prevInputRef = useRef<string | undefined>(inputValue);
   const editable = inputValue !== undefined && onInputChange !== undefined;
 

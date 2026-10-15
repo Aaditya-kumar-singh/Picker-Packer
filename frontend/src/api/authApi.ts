@@ -27,10 +27,18 @@ export interface AuthSession {
   user?: any;
 }
 
+function normalizeRole(roleClaim: unknown): UserRole | null {
+  if (typeof roleClaim !== "string") return null;
+  const normalized = roleClaim.trim().toUpperCase().replace(/^ROLE[_: -]?/, "");
+  if (normalized === "PACKER") return "PACKER";
+  if (normalized === "PICKER") return "PICKER";
+  return null;
+}
+
 function parseJwtRole(token: string): UserRole | null {
   try {
     const parts = token.split(".");
-    if (parts.length < 2) return null;
+    if (parts.length !== 3) return null;
     const base64Url = parts[1];
     const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
     const jsonPayload = decodeURIComponent(
@@ -41,16 +49,14 @@ function parseJwtRole(token: string): UserRole | null {
     );
     const parsed = JSON.parse(jsonPayload);
     const roleClaim =
-      parsed.role ||
-      parsed.roles?.[0] ||
-      parsed.authorities?.[0] ||
+      parsed.role ??
+      parsed.roles?.[0] ??
+      parsed.authorities?.[0] ??
       parsed.authority;
-    if (typeof roleClaim === "string") {
-      if (roleClaim.toUpperCase().includes("PACKER")) return "PACKER";
-      if (roleClaim.toUpperCase().includes("PICKER")) return "PICKER";
-    }
-  } catch {}
-  return null;
+    return normalizeRole(roleClaim);
+  } catch {
+    return null;
+  }
 }
 
 function extractRole(data: any, token: string): UserRole {
@@ -61,16 +67,16 @@ function extractRole(data: any, token: string): UserRole {
     data?.authorities?.[0] ??
     data?.authority;
 
-  if (typeof directRole === "string") {
-    if (directRole.toUpperCase().includes("PACKER")) return "PACKER";
-    if (directRole.toUpperCase().includes("PICKER")) return "PICKER";
+  if (directRole !== undefined && directRole !== null) {
+    const normalized = normalizeRole(directRole);
+    if (normalized) return normalized;
+    throw new Error("Authentication response contained an unsupported staff role.");
   }
 
   const fromJwt = parseJwtRole(token);
   if (fromJwt) return fromJwt;
 
-  // Default fallback if unknown
-  return "PICKER";
+  throw new Error("Authentication response did not contain a recognized PICKER or PACKER role.");
 }
 
 function extractToken(res: any): string {
@@ -104,7 +110,7 @@ export async function loginWithPassword(payload: PasswordLoginPayload): Promise<
   return { token, role, user: res?.user ?? res?.data?.user };
 }
 
-export async function requestOtp(payload: OtpRequestPayload): Promise<{ success: boolean; message: string }> {
+export async function requestOtp(payload: OtpRequestPayload): Promise<{ success: boolean; message: string; developmentOtp?: string }> {
   const res = await apiRequest<any>("/api/auth/otp/request", {
     method: "POST",
     skipAuth: true,
@@ -116,6 +122,7 @@ export async function requestOtp(payload: OtpRequestPayload): Promise<{ success:
   return {
     success: true,
     message: typeof res === "string" ? res : (res?.message ?? "OTP requested successfully"),
+    developmentOtp: typeof res?.developmentOtp === "string" ? res.developmentOtp : undefined,
   };
 }
 

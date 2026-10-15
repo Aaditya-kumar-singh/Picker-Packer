@@ -9,9 +9,9 @@ import { BrandHeader } from "@/components/BrandHeader";
 type IconName = keyof typeof Ionicons.glyphMap;
 
 function tabIcon(activeName: IconName, inactiveName: IconName) {
-  return ({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) => (
+  return ({ focused, color, size }: { focused: boolean; color: ColorValue | null; size: number }) => (
     <View style={[s.iconWrap, focused && s.iconWrapActive]}>
-      <Ionicons name={focused ? activeName : inactiveName} color={color} size={size} />
+      <Ionicons name={focused ? activeName : inactiveName} color={typeof color === "string" ? color : "#64748B"} size={size} />
     </View>
   );
 }

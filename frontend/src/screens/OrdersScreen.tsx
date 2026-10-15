@@ -44,8 +44,8 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
     setLoading(true);
     try {
       if (completed) {
-        const sessionOrders = pickerAppApi.getSessionCompletedOrders();
-        setOrders(sessionOrders);
+        const completedOrders = await pickerAppApi.getCompletedOrders();
+        setOrders(completedOrders);
       } else {
         const assigned = await pickerAppApi.getAssignedOrders();
         setOrders(assigned || []);

@@ -8,9 +8,8 @@ import type {
   FulfillmentStaffProfileDto,
 } from "@/types";
 
-// In-memory cache for assigned orders and session-completed orders
+// In-memory cache is only for the active picking queue. Completed work is always read from the server.
 let cachedAssignedOrders: FulfillmentOrderDto[] = [];
-let sessionCompletedOrders: FulfillmentOrderDto[] = [];
 
 export const pickerAppApi = {
   /** 2.1 GET /api/picker-app/orders/assigned */
@@ -53,17 +52,8 @@ export const pickerAppApi = {
       body: JSON.stringify({ packerId }),
     });
 
-    // Order has moved to PACKING. Remove from assigned cache and add to session completed.
-    const idx = cachedAssignedOrders.findIndex((o) => o.orderId === orderId);
-    if (idx !== -1) {
-      const [order] = cachedAssignedOrders.splice(idx, 1);
-      if (order) {
-        order.orderStatus = "PACKING";
-        order.packerId = packerId;
-        order.packerAssignedAt = new Date().toISOString();
-        sessionCompletedOrders.unshift(order);
-      }
-    }
+    // The server is authoritative: remove it from the local active queue only after assignment succeeds.
+    cachedAssignedOrders = cachedAssignedOrders.filter((order) => order.orderId !== orderId);
 
     return typeof res === "string" ? res : "Packer assigned";
   },
@@ -111,14 +101,13 @@ export const pickerAppApi = {
     return typeof res === "string" ? res : "Password updated";
   },
 
-  /** Returns orders completed in the current shift */
-  getSessionCompletedOrders(): FulfillmentOrderDto[] {
-    return sessionCompletedOrders;
+  /** Completed picking work is fetched from the server so it survives app restarts and device changes. */
+  async getCompletedOrders(): Promise<FulfillmentOrderDto[]> {
+    return (await apiRequest<FulfillmentOrderDto[]>("/api/picker-app/orders/completed")) || [];
   },
 
-  /** Clears session state on logout */
+  /** Clears session-only active queue cache on logout. */
   clearSession(): void {
     cachedAssignedOrders = [];
-    sessionCompletedOrders = [];
   },
 };

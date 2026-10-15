@@ -38,6 +38,7 @@ export function CompletionScreen() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [failedPackerPhotos, setFailedPackerPhotos] = useState<number[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,8 +149,8 @@ export function CompletionScreen() {
                 onPress={() => setSelectedPackerId(packer.id)}
                 style={[s.packerCard, isSelected && s.packerCardSelected]}
               >
-                {photo ? (
-                  <Image source={{ uri: photo }} style={s.packerPhoto} />
+                {photo && !failedPackerPhotos.includes(packer.id) ? (
+                  <Image source={{ uri: photo }} style={s.packerPhoto} onError={() => setFailedPackerPhotos((ids) => ids.includes(packer.id) ? ids : [...ids, packer.id])} />
                 ) : (
                   <View style={s.packerAvatar}>
                     <Text style={s.packerAvatarText}>

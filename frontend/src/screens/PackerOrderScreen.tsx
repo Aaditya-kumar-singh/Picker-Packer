@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
   View,
+  type TextInputInstance,
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -53,7 +54,7 @@ export function PackerOrderScreen() {
   const [assigning, setAssigning] = useState(false);
   const [copiedBarcode, setCopiedBarcode] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInputInstance>(null);
 
   const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId);
 

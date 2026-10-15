@@ -26,20 +26,19 @@ Cross-platform React Native + Expo warehouse execution system (Android, iOS & We
 
 ## Environment Variables
 
-Create `.env` in the `frontend` directory:
+Create `.env` in the `frontend` directory for local development:
 
 ```env
 EXPO_PUBLIC_API_BASE_URL=https://test.yourbuildmart.com/api/
 ```
 
+The preview EAS profile is intentionally configured for the test API. **Do not reuse that URL for production.** Before building the production profile, configure `EXPO_PUBLIC_API_BASE_URL` in the Expo/EAS environment named `production` to the verified production API base URL (including `/api` if that is the API prefix), then rebuild. The app now refuses to send production requests to the known test hosts and reports a configuration error if the production URL is missing or invalid. This guard prevents accidental test-data access; it does not provision or verify the production API itself.
+
 ## Running Locally
 
-### 1. Start Reference Backend (Optional for local testing)
-```bash
-cd backend
-npm start
-```
-*Listens on `http://localhost:8080` with mock seed data and full API contract support.*
+### 1. Configure the API
+
+The standalone reference backend is not present in the current repository. Configure `EXPO_PUBLIC_API_BASE_URL` to point to an available REST API environment before testing workflows. The production EAS profile intentionally has no API URL override: set the verified production URL in the EAS `production` environment and rebuild. The app rejects the known staging hosts in production builds.
 
 ### 2. Start Frontend App
 ```bash

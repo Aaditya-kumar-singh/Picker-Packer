@@ -9,6 +9,12 @@ const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 
 test("Supabase is completely removed from frontend dependencies and config", () => {
   const pkg = JSON.parse(read("frontend/package.json"));
+  const lock = JSON.parse(read("frontend/package-lock.json"));
+  const app = JSON.parse(read("frontend/app.json")).expo;
+  assert.equal(pkg.version, lock.version);
+  assert.equal(pkg.version, lock.packages[""].version);
+  assert.equal(pkg.version, app.version);
+  assert.ok(app.android.blockedPermissions.includes("android.permission.RECORD_AUDIO"));
   assert.equal(pkg.dependencies["@supabase/supabase-js"], undefined);
   assert.equal(pkg.dependencies["expo-sqlite"], undefined);
   assert.equal(pkg.dependencies["react-native-url-polyfill"], undefined);
@@ -30,6 +36,12 @@ test("Supabase is completely removed from frontend dependencies and config", () 
 
   const eas = JSON.parse(read("frontend/eas.json"));
   assert.equal(eas.build.preview.env.EXPO_PUBLIC_API_BASE_URL, "https://test.yourbuildmart.com/api/");
+  assert.equal(eas.build.production.environment, "production");
+  assert.equal(eas.build.production.env?.EXPO_PUBLIC_API_BASE_URL, undefined);
+
+  const readme = read("frontend/README.md");
+  assert.match(readme, /Do not reuse that URL for production/);
+  assert.match(readme, /verified production API base URL/);
 });
 
 test("no legacy Supabase files remain in the project tree", () => {
@@ -87,14 +99,28 @@ test("REST API client layers implement required endpoints and envelope unwrappin
   assert.match(httpSource, /Bearer \$\{token\}/);
   assert.match(httpSource, /auth_token|TOKEN_KEY/);
   assert.match(httpSource, /onUnauthorized/);
+  assert.match(httpSource, /return __DEV__ \? "https:\/\/test\.yourbuildmart\.com\/api" : ""/);
+  assert.match(httpSource, /if \(!__DEV__ && isStagingHost\)/);
+  assert.match(httpSource, /API_CONFIGURATION_ERROR/);
+  assert.match(httpSource, /if \(!API_BASE_URL\) return null/);
+  assert.doesNotMatch(httpSource, /"https:\/\/test\.yourbuildmart\.com"\s*;/);
+  assert.match(httpSource, /One-time migration for tokens saved by older builds/);
+  assert.match(httpSource, /Could not save the session securely/);
+  assert.match(httpSource, /Secure session storage is unavailable/);
+  assert.doesNotMatch(httpSource, /fallback to AsyncStorage/);
 
   const authSource = read("frontend/src/api/authApi.ts");
   assert.match(authSource, /\/api\/auth\/login/);
   assert.match(authSource, /\/api\/auth\/otp\/request/);
+  assert.match(authSource, /unsupported staff role/);
+  assert.match(authSource, /did not contain a recognized PICKER or PACKER role/);
+  assert.doesNotMatch(authSource, /Default fallback if unknown/);
 
   const pickerSource = read("frontend/src/api/pickerAppApi.ts");
   assert.match(pickerSource, /\/api\/picker-app\/stats/);
   assert.match(pickerSource, /\/api\/picker-app\/orders\/assigned/);
+  assert.match(pickerSource, /\/api\/picker-app\/orders\/completed/);
+  assert.doesNotMatch(pickerSource, /sessionCompletedOrders|getSessionCompletedOrders/);
   assert.match(pickerSource, /\/api\/picker-app\/orders\/\$\{orderId\}\/items/);
   assert.match(pickerSource, /\/api\/picker-app\/orders\/\$\{orderId\}\/scan/);
   assert.match(pickerSource, /\/api\/picker-app\/available-packers/);
@@ -140,10 +166,21 @@ test("packer order dispatch is handled via assign-rider step", () => {
 
   const packerOrderScreen = read("frontend/src/screens/PackerOrderScreen.tsx");
   assert.match(packerOrderScreen, /assignRider/);
+
+  const completedScreen = read("frontend/src/screens/PackerCompletedScreen.tsx");
+  assert.match(completedScreen, /RIDER_ASSIGNED/);
+  assert.doesNotMatch(completedScreen, /getSessionDispatchedOrders/);
+  const packerApi = read("frontend/src/api/packerAppApi.ts");
+  assert.doesNotMatch(packerApi, /sessionDispatchedOrders|getSessionDispatchedOrders/);
 });
 
-// Integration tests with standalone reference backend
-test("reference REST backend integration and contract validation", async () => {
+// Integration tests require the optional standalone reference backend.
+test("reference REST backend integration and contract validation", async (t) => {
+  const backendPath = path.join(root, "backend", "server.js");
+  if (!fs.existsSync(backendPath)) {
+    t.skip("Reference backend is not present in this repository; live API integration must be tested against the separately deployed REST API.");
+    return;
+  }
   const server = (await import("../backend/server.js")).default || (await import("../backend/server.js"));
   
   await new Promise((resolve) => {
@@ -166,7 +203,38 @@ test("reference REST backend integration and contract validation", async () => {
   }
 
   try {
-    // 1. Auth login
+    // Development-only reference credentials and fixed OTP must be disabled in production mode.
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const productionLoginRes = await request("/api/auth/login", {
+        method: "POST", body: JSON.stringify({ identifier: "9876543210", password: "password123" })
+      });
+      assert.equal(productionLoginRes.status, 503);
+      assert.equal(productionLoginRes.data.error, "AUTH_PROVIDER_NOT_CONFIGURED");
+      const productionOtpRes = await request("/api/auth/otp/request", {
+        method: "POST", body: JSON.stringify({ identifier: "9876543210" })
+      });
+      assert.equal(productionOtpRes.status, 503);
+      assert.equal(productionOtpRes.data.error, "OTP_PROVIDER_NOT_CONFIGURED");
+      assert.equal(productionOtpRes.data.data, undefined);
+      const productionMockTokenRes = await request("/api/picker-app/stats", {
+        headers: { Authorization: "Bearer mock-jwt-token-1-picker" }
+      });
+      assert.equal(productionMockTokenRes.status, 401);
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+    }
+
+    // 1. Invalid credentials must never create a session.
+    const invalidLoginRes = await request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ identifier: "9876543210", password: "incorrect" })
+    });
+    assert.equal(invalidLoginRes.status, 401);
+
+    // 2. Auth login
     const loginRes = await request("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ identifier: "9876543210", password: "password123" })
@@ -177,7 +245,19 @@ test("reference REST backend integration and contract validation", async () => {
     const token = loginRes.data.data.token;
     assert.ok(token);
 
+    const otpRequestRes = await request("/api/auth/otp/request", {
+      method: "POST", body: JSON.stringify({ identifier: "9876543210" })
+    });
+    assert.equal(otpRequestRes.status, 200);
+    assert.equal(otpRequestRes.data.data.developmentOtp, "123456");
+    const otpLoginRes = await request("/api/auth/login", {
+      method: "POST", body: JSON.stringify({ identifier: "9876543210", otp: "123456", loginMethod: "OTP" })
+    });
+    assert.equal(otpLoginRes.status, 200);
+
     const authHeaders = { Authorization: `Bearer ${token}` };
+    const invalidTokenRes = await request("/api/picker-app/stats", { headers: { Authorization: "Bearer invalid-token" } });
+    assert.equal(invalidTokenRes.status, 401);
 
     // 2. Picker Stats
     const statsRes = await request("/api/picker-app/stats", { headers: authHeaders });
@@ -221,55 +301,134 @@ test("reference REST backend integration and contract validation", async () => {
     assert.equal(validScanRes.data.data.barcode, targetItem.barcode);
     assert.equal(validScanRes.data.data.scannedQty, targetItem.pickedQty + 1);
 
-    // 7. Available Packers
+    // 7. Invalid scan and premature assignment must not change workflow state.
+    const emptyScanRes = await request(`/api/picker-app/orders/${orderId}/scan`, {
+      method: "POST", headers: authHeaders, body: JSON.stringify({ barcode: "   " })
+    });
+    assert.equal(emptyScanRes.status, 400);
+    assert.match(emptyScanRes.data.message, /Empty barcode/);
+
     const packersRes = await request("/api/picker-app/available-packers", { headers: authHeaders });
     assert.equal(packersRes.status, 200);
     assert.ok(Array.isArray(packersRes.data.data));
     assert.ok(packersRes.data.data.length > 0);
     const selectedPacker = packersRes.data.data[0];
 
-    // 8. Assign Packer
+    const prematureAssignRes = await request(`/api/picker-app/orders/${orderId}/assign-packer`, {
+      method: "POST", headers: authHeaders, body: JSON.stringify({ packerId: selectedPacker.id })
+    });
+    assert.equal(prematureAssignRes.status, 400);
+    assert.match(prematureAssignRes.data.message, /Not all items have been picked/);
+
+    // Finish picking every ordered unit before assigning the packer.
+    const secondUnitRes = await request(`/api/picker-app/orders/${orderId}/scan`, {
+      method: "POST", headers: authHeaders, body: JSON.stringify({ barcode: targetItem.barcode })
+    });
+    assert.equal(secondUnitRes.status, 200);
+    assert.equal(secondUnitRes.data.data.scannedQty, 2);
+    const otherItem = itemsRes.data.data[1];
+    const finalPickRes = await request(`/api/picker-app/orders/${orderId}/scan`, {
+      method: "POST", headers: authHeaders, body: JSON.stringify({ barcode: otherItem.barcode })
+    });
+    assert.equal(finalPickRes.status, 200);
+    assert.equal(finalPickRes.data.data.orderFullyPicked, true);
+
+    const duplicatePickRes = await request(`/api/picker-app/orders/${orderId}/scan`, {
+      method: "POST", headers: authHeaders, body: JSON.stringify({ barcode: targetItem.barcode })
+    });
+    assert.equal(duplicatePickRes.status, 400);
+    assert.match(duplicatePickRes.data.message, /already fully scanned/i);
+
+    // 8. Assign Packer only after every item is fully picked.
     const assignPackerRes = await request(`/api/picker-app/orders/${orderId}/assign-packer`, {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify({ packerId: selectedPacker.id })
+      method: "POST", headers: authHeaders, body: JSON.stringify({ packerId: selectedPacker.id })
     });
     assert.equal(assignPackerRes.status, 200);
-    assert.equal(assignPackerRes.data.success, true);
     assert.equal(assignPackerRes.data.data, "Packer assigned");
 
-    // 9. Packer Flow: Login as Packer
+    // Completed picking work is server-authoritative, scoped to the authenticated picker.
+    const completedPickerOrdersRes = await request("/api/picker-app/orders/completed", { headers: authHeaders });
+    assert.equal(completedPickerOrdersRes.status, 200);
+    assert.ok(completedPickerOrdersRes.data.data.some(o => o.orderId === orderId && o.orderStatus === "PACKING"));
+    // 9. Packer Flow: Login as Packer.
     const packerLoginRes = await request("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ identifier: "9876543211", password: "password123" })
+      method: "POST", body: JSON.stringify({ identifier: "9876543211", password: "password123" })
     });
     assert.equal(packerLoginRes.status, 200);
     assert.equal(packerLoginRes.data.data.user.role, "PACKER");
-    const packerToken = packerLoginRes.data.data.token;
-    const packerHeaders = { Authorization: `Bearer ${packerToken}` };
+    const packerHeaders = { Authorization: `Bearer ${packerLoginRes.data.data.token}` };
+    const completedAsPackerRes = await request("/api/picker-app/orders/completed", { headers: packerHeaders });
+    assert.equal(completedAsPackerRes.status, 400);
 
-    // 10. Packer Stats & Assigned Orders
     const packerStatsRes = await request("/api/packer-app/stats", { headers: packerHeaders });
     assert.equal(packerStatsRes.status, 200);
-
+    assert.deepEqual(Object.keys(packerStatsRes.data.data).sort(), ["assignedOrders", "completedOrders", "todayItemsScanned", "todayOrdersPacked"].sort());
     const packerAssignedRes = await request("/api/packer-app/orders/assigned", { headers: packerHeaders });
     assert.equal(packerAssignedRes.status, 200);
+    assert.ok(packerAssignedRes.data.data.some(o => o.orderId === orderId));
+    const rawItemsRes = await request(`/api/packer-app/orders/${orderId}/items`, { headers: packerHeaders });
+    assert.equal(rawItemsRes.status, 200);
+    assert.ok(Array.isArray(rawItemsRes.data.data));
+    assert.equal(rawItemsRes.data.data[0].salesOrderId, orderId);
+    assert.ok("unitPrice" in rawItemsRes.data.data[0]);
 
-    // 11. Available Riders
+    // Rider assignment before packing must be rejected.
+    const prematureRiderRes = await request(`/api/packer-app/orders/${orderId}/assign-rider`, {
+      method: "POST", headers: packerHeaders, body: JSON.stringify({ riderId: 5 })
+    });
+    assert.equal(prematureRiderRes.status, 400);
+    assert.match(prematureRiderRes.data.message, /fully packed/i);
+
+    // Pack each picked unit. The final scan alone transitions the order to PACKED.
+    let finalPackScanRes;
+    for (const [barcode, count] of [[targetItem.barcode, 2], [otherItem.barcode, 1]]) {
+      for (let i = 0; i < count; i += 1) {
+        finalPackScanRes = await request(`/api/packer-app/orders/${orderId}/scan`, {
+          method: "POST", headers: packerHeaders, body: JSON.stringify({ barcode })
+        });
+        assert.equal(finalPackScanRes.status, 200, finalPackScanRes.data.message);
+      }
+    }
+    assert.equal(finalPackScanRes.data.data.totalItemsScanned, 2);
+    assert.equal(finalPackScanRes.data.data.orderFullyPacked, true);
+    assert.ok(finalPackScanRes.data.data.items.every(i => i.fullyScanned === (i.packedQty >= i.orderedQty)));
+    const packedOrderRes = await request(`/api/packer-app/orders/${orderId}`, { headers: packerHeaders });
+    assert.equal(packedOrderRes.data.data.orderStatus, "PACKED");
+    const assignedWithPackedRes = await request("/api/packer-app/orders/assigned", { headers: packerHeaders });
+    assert.ok(assignedWithPackedRes.data.data.some(o => o.orderId === orderId && o.orderStatus === "PACKED"));
+
+    const duplicatePackRes = await request(`/api/packer-app/orders/${orderId}/scan`, {
+      method: "POST", headers: packerHeaders, body: JSON.stringify({ barcode: targetItem.barcode })
+    });
+    assert.equal(duplicatePackRes.status, 400);
+    assert.match(duplicatePackRes.data.message, /not in packing status|already fully packed/i);
+
     const ridersRes = await request("/api/packer-app/riders/available", { headers: packerHeaders });
     assert.equal(ridersRes.status, 200);
     assert.ok(Array.isArray(ridersRes.data.data));
     const selectedRider = ridersRes.data.data[0];
+    assert.equal(typeof selectedRider.vehicleType, "string");
+    assert.equal(typeof selectedRider.loginEnabled, "boolean");
+    assert.equal(typeof selectedRider.warehouseId, "number");
 
-    // 12. Assign Rider (Dispatch)
+    const missingRiderRes = await request(`/api/packer-app/orders/${orderId}/assign-rider`, {
+      method: "POST", headers: packerHeaders, body: JSON.stringify({})
+    });
+    assert.equal(missingRiderRes.status, 400);
+    assert.match(missingRiderRes.data.message, /Rider ID is required/);
+
     const assignRiderRes = await request(`/api/packer-app/orders/${orderId}/assign-rider`, {
-      method: "POST",
-      headers: packerHeaders,
-      body: JSON.stringify({ riderId: selectedRider.id })
+      method: "POST", headers: packerHeaders, body: JSON.stringify({ riderId: selectedRider.id })
     });
     assert.equal(assignRiderRes.status, 200);
-    assert.equal(assignRiderRes.data.success, true);
     assert.equal(assignRiderRes.data.data, "Rider assigned");
+
+    // Dispatched orders remain visible from the server after refreshing the list.
+    const refreshedAssignedRes = await request("/api/packer-app/orders/assigned", { headers: packerHeaders });
+    assert.equal(refreshedAssignedRes.status, 200);
+    const persistedDispatchedOrder = refreshedAssignedRes.data.data.find(o => o.orderId === orderId);
+    assert.ok(persistedDispatchedOrder);
+    assert.equal(persistedDispatchedOrder.orderStatus, "RIDER_ASSIGNED");
 
     // 13. Profile fetch and update
     const profileRes = await request("/api/picker-app/profile", { headers: authHeaders });
@@ -284,7 +443,20 @@ test("reference REST backend integration and contract validation", async () => {
     assert.equal(updateProfileRes.status, 200);
     assert.equal(updateProfileRes.data.data.name, "Ravi Kumar Updated");
 
-    // 14. Change Password
+    // 14. Invalid password changes must be rejected without changing the stored password.
+    const wrongPasswordRes = await request("/api/picker-app/change-password", {
+      method: "POST", headers: authHeaders,
+      body: JSON.stringify({ currentPassword: "incorrect", newPassword: "newpassword456" })
+    });
+    assert.equal(wrongPasswordRes.status, 400);
+    assert.equal(wrongPasswordRes.data.message, "Current password is incorrect");
+    const invalidNewPasswordRes = await request("/api/picker-app/change-password", {
+      method: "POST", headers: authHeaders,
+      body: JSON.stringify({ currentPassword: "password123", newPassword: "123" })
+    });
+    assert.equal(invalidNewPasswordRes.status, 400);
+    assert.equal(invalidNewPasswordRes.data.error, "VALIDATION_ERROR");
+
     const changePassRes = await request("/api/picker-app/change-password", {
       method: "POST",
       headers: authHeaders,

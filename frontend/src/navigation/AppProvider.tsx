@@ -42,11 +42,11 @@ interface AuthState {
   error: string | null;
   loginWithPassword: (identifier: string, password: string, rememberMe?: boolean) => Promise<boolean>;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<boolean>;
-  requestOtp: (identifier: string) => Promise<{ expiresIn: number; masked: string } | null>;
+  requestOtp: (identifier: string) => Promise<{ expiresIn: number; masked: string; developmentOtp?: string } | null>;
   verifyOtp: (identifier: string, otp: string) => Promise<boolean>;
   refreshProfile: () => Promise<void>;
-  updateProfile: (patch: Partial<FulfillmentStaffProfileDto>) => Promise<boolean>;
-  changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
+  updateProfile: (patch: Partial<FulfillmentStaffProfileDto>) => Promise<{ ok: boolean; error?: string }>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -150,8 +150,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      await authApi.requestOtp({ identifier });
-      return { expiresIn: 300, masked: identifier };
+      const response = await authApi.requestOtp({ identifier });
+      return { expiresIn: 300, masked: identifier, developmentOtp: response.developmentOtp };
     } catch (e: any) {
       setError(e?.message || "Failed to send OTP.");
       return null;
@@ -188,8 +188,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [picker, fetchProfileForRole]);
 
   const updateProfile = useCallback(
-    async (patch: Partial<FulfillmentStaffProfileDto>): Promise<boolean> => {
-      if (!picker) return false;
+    async (patch: Partial<FulfillmentStaffProfileDto>): Promise<{ ok: boolean; error?: string }> => {
+      if (!picker) return { ok: false, error: "No active session." };
+      setError(null);
       setLoading(true);
       try {
         const updated = picker.role === "PACKER"
@@ -197,10 +198,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : await pickerAppApi.updateProfile(patch);
 
         setPicker((prev) => (prev ? { ...prev, name: updated.name, phone: updated.phone, email: updated.email, profile: updated } : null));
-        return true;
+        return { ok: true };
       } catch (e: any) {
-        setError(e?.message || "Failed to update profile.");
-        return false;
+        const message = e?.message || "Failed to update profile.";
+        setError(message);
+        return { ok: false, error: message };
       } finally {
         setLoading(false);
       }
@@ -209,8 +211,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const changePassword = useCallback(
-    async (currentPassword: string, newPassword: string): Promise<boolean> => {
-      if (!picker) return false;
+    async (currentPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> => {
+      if (!picker) return { ok: false, error: "No active session." };
+      setError(null);
       setLoading(true);
       try {
         if (picker.role === "PACKER") {
@@ -218,10 +221,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           await pickerAppApi.changePassword({ currentPassword, newPassword });
         }
-        return true;
+        return { ok: true };
       } catch (e: any) {
-        setError(e?.message || "Failed to change password.");
-        return false;
+        const message = e?.message || "Failed to change password.";
+        setError(message);
+        return { ok: false, error: message };
       } finally {
         setLoading(false);
       }

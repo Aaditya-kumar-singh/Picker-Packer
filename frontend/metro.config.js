@@ -1,11 +1,14 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const http = require('http');
 const https = require('https');
-const url = require('url');
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
-
-const TARGET_HOST = 'test.yourbuildmart.com';
+const API_TARGET = new URL(process.env.EXPO_PUBLIC_API_BASE_URL || 'https://test.yourbuildmart.com/api');
+const TARGET_HOST = API_TARGET.hostname;
+const TARGET_PORT = Number(API_TARGET.port || (API_TARGET.protocol === 'http:' ? 80 : 443));
+const TARGET_ORIGIN = `${API_TARGET.protocol}//${API_TARGET.host}`;
+const proxyTransport = API_TARGET.protocol === 'http:' ? http : https;
 
 config.server = {
   ...config.server,
@@ -23,7 +26,7 @@ config.server = {
           return res.end();
         }
 
-        const parsed = url.parse(req.url);
+        const parsed = new URL(req.url, 'http://localhost');
         const headers = { ...req.headers };
         delete headers['host'];
         delete headers['origin'];
@@ -31,18 +34,18 @@ config.server = {
 
         const options = {
           hostname: TARGET_HOST,
-          port: 443,
-          path: parsed.path,
+          port: TARGET_PORT,
+          path: `${parsed.pathname}${parsed.search}`,
           method: req.method,
           headers: {
             ...headers,
             host: TARGET_HOST,
-            origin: `https://${TARGET_HOST}`,
-            referer: `https://${TARGET_HOST}/`
+            origin: TARGET_ORIGIN,
+            referer: `${TARGET_ORIGIN}/`
           }
         };
 
-        const proxyReq = https.request(options, (proxyRes) => {
+        const proxyReq = proxyTransport.request(options, (proxyRes) => {
           const resHeaders = {
             ...proxyRes.headers,
             'access-control-allow-origin': '*',

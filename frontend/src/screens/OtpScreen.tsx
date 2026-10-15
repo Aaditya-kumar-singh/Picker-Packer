@@ -7,10 +7,10 @@ import { ErrorBanner, PrimaryButton, Screen, SecondaryButton, theme } from "@/co
 import { useAuth } from "@/navigation/AppProvider";
 
 export function OtpScreen() {
-  const { pickerId, expiresIn, masked } = useLocalSearchParams<{ pickerId: string; expiresIn?: string; masked?: string }>();
+  const { pickerId, expiresIn, masked, developmentOtp } = useLocalSearchParams<{ pickerId: string; expiresIn?: string; masked?: string; developmentOtp?: string }>();
   const { verifyOtp, requestOtp, loading, error } = useAuth();
   const [otp, setOtp] = useState("");
-  const [info, setInfo] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(developmentOtp ? `Development OTP: ${developmentOtp}` : null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [otpMeta, setOtpMeta] = useState<{ expiresIn: string; masked: string } | null>(null);
   const showExpires = otpMeta?.expiresIn ?? expiresIn ?? null;
@@ -24,14 +24,14 @@ export function OtpScreen() {
     setLocalError(null);
     setInfo(null);
     const ok = await verifyOtp(String(pickerId ?? ""), otp.trim());
-    if (ok) router.replace("/dashboard" as never);
+    if (ok) router.replace("/" as never);
   }
 
   async function onResend() {
     const r = await requestOtp(String(pickerId ?? ""));
     if (r) {
       setOtpMeta({ expiresIn: String(r.expiresIn), masked: r.masked });
-      setInfo(`New code sent to ${r.masked}`);
+      setInfo(r.developmentOtp ? `Development OTP: ${r.developmentOtp}` : `New code sent to ${r.masked}`);
     } else {
       setInfo(null);
     }

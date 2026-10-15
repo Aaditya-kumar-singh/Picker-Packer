@@ -1,0 +1,5 @@
+env: load .env
+env: export EXPO_PUBLIC_API_BASE_URL
+Starting project at C:\Users\WHITE-SNAKE\Desktop\picker And Packer\frontend
+› Port 8091 is being used by another process
+› Skipping dev server
