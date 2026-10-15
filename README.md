@@ -28,25 +28,24 @@ npx expo config --type public --json
 
 ## Automated APK build and GitHub Release
 
-GitHub Actions validates changes on pushes and pull requests to `master`. A push to `master` starts the Android release workflow after validation, builds a signed APK, calculates its SHA-256 checksum, and attaches the APK to a GitHub prerelease.
+GitHub Actions validates pushes and pull requests targeting `master`. A push to `master` runs the Android release workflow after validation. It triggers a signed Android APK build through the existing EAS **preview** profile, downloads the completed APK, calculates its SHA-256 checksum, and attaches the file to a GitHub prerelease.
 
-Before the first release, configure these repository **Actions secrets**:
+The EAS preview profile is configured to build an APK and set the backend URL to `https://test.yourbuildmart.com/api/`. EAS manages the Android signing credential already configured for this project, so do not create a second keystore or put signing keys in Git.
 
-- `ANDROID_KEYSTORE_BASE64`: persistent Android release keystore encoded as one base64 string.
-- `ANDROID_KEYSTORE_PASSWORD`: keystore password.
-- `ANDROID_KEY_ALIAS`: key alias.
-- `ANDROID_KEY_PASSWORD`: private key password.
+### One required GitHub Actions secret
 
-In PowerShell, encode your existing keystore without line breaks:
+Add an Expo access token as a repository Actions secret named `EXPO_TOKEN`:
 
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\release.keystore"))
-```
+1. Create an access token from the Expo account settings for the account owning this EAS project.
+2. Open **GitHub → Aaditya-kumar-singh/Picker-Packer → Settings → Secrets and variables → Actions**.
+3. Choose **New repository secret**, name it `EXPO_TOKEN`, and paste the token value.
 
-Store the output only in the GitHub secret `ANDROID_KEYSTORE_BASE64`, never in source control. Use the same keystore for future releases so devices can install an update over an earlier APK. GitHub Actions uses its `GITHUB_TOKEN` with `contents: write` permission to publish the release.
+Never commit the token to source control or put it in `.env.example`. The workflow fails early with a clear message if it is missing.
 
-Run a manual build from **GitHub → Actions → Picker-Packer Android APK Release → Run workflow**.
+The GitHub workflow is `.github/workflows/android-release.yml`. It runs on pushes to `master`, and can also be started manually from **GitHub → Actions → Picker-Packer Android APK Release → Run workflow**.
 
-## Release note
+Each successful run publishes a GitHub prerelease with a downloadable APK and SHA-256 checksum. See the [Actions runs](https://github.com/Aaditya-kumar-singh/Picker-Packer/actions) and [Releases](https://github.com/Aaditya-kumar-singh/Picker-Packer/releases) pages.
 
-The automated APK is configured for the test backend above. Confirm that the server is reachable and supports every endpoint documented in `picker-app-api.md` and `packer-app-api.md`, including authentication, before distributing to staff. This backend is a test environment, not a production host.
+## Important
+
+The automated APK is configured for the **test backend** above. Confirm that the server is reachable and supports every endpoint documented in `picker-app-api.md` and `packer-app-api.md`, including authentication, before distributing to staff. Do not use this test hostname for real production operations.
