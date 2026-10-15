@@ -5,6 +5,7 @@ import type { ApiErrorEnvelope, ApiResponseEnvelope } from "@/types";
 
 const TOKEN_KEY = "ybm.auth.jwt";
 const ROLE_KEY = "ybm.auth.role";
+const DEFAULT_API_BASE_URL = "https://test.yourbuildmart.com/api";
 
 function getBaseUrl(): string {
   // Local web development uses Metro's proxy to avoid browser CORS preflight blocks.
@@ -16,7 +17,7 @@ function getBaseUrl(): string {
     return `${window.location.origin}/api`;
   }
 
-  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || "https://test.yourbuildmart.com/api";
+  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL;
   try {
     const parsed = new URL(configuredUrl);
     if (parsed.protocol !== "https:") return "";
