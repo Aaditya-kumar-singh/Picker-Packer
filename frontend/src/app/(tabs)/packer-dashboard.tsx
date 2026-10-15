@@ -1,2 +1,2 @@
-import { PackerDashboardScreen } from "@/screens/PackerDashboardScreen";
-export default function Route(){ return <PackerDashboardScreen />; }
+import { WarehouseOrdersScreen } from "@/screens/WarehouseOrdersScreen";
+export default function Route() { return <WarehouseOrdersScreen mode="home" />; }

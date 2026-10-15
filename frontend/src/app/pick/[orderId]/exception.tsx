@@ -1,4 +1,1 @@
-import { ExceptionScreen } from "@/screens/ExceptionScreen";
-export default function Route() {
-  return <ExceptionScreen />;
-}
+export { LegacyPickRedirect as default } from "@/screens/LegacyPickRedirect";

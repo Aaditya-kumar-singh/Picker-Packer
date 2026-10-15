@@ -1,4 +1,1 @@
-import { CompletionScreen } from "@/screens/CompletionScreen";
-export default function Route() {
-  return <CompletionScreen />;
-}
+export { LegacyPickRedirect as default } from "@/screens/LegacyPickRedirect";

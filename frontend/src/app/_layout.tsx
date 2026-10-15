@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { Stack, router, useSegments } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/navigation/AppProvider";
-import { SyncProvider } from "@/sync/SyncContext";
 import { theme } from "@/theme";
 
 function RouteGuard() {
@@ -52,7 +51,6 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <SyncProvider>
           <RouteGuard />
           <Stack
             screenOptions={{
@@ -77,7 +75,6 @@ export default function RootLayout() {
 
             <Stack.Screen name="pack/order/[id]" options={{ title: "Packing Order", headerShown: false }} />
           </Stack>
-        </SyncProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

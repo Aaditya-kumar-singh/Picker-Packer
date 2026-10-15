@@ -34,7 +34,8 @@
       "package": "com.aaditya001.ybmpickerpacker"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "output": "server"
     },
     "extra": {
       "router": {},

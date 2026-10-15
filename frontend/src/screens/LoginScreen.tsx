@@ -6,20 +6,25 @@ import { ErrorBanner, FieldInput, PrimaryButton, Screen, theme } from "@/compone
 import { useAuth } from "@/navigation/AppProvider";
 
 export function LoginScreen() {
-  const { loginWithEmail, loading, error } = useAuth();
+  const { loginWithEmail, requestOtp, loading, error } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
 
   async function onContinue() {
     if (!email.trim() || !password.trim()) {
-      setLocalError("Enter both Email and Password");
+      setLocalError("Enter your login mobile/email and password");
       return;
     }
     setLocalError(null);
-    const success = await loginWithEmail(email.trim(), password.trim(), rememberMe);
+    const success = await loginWithEmail(email.trim(), password.trim());
     if (success) router.replace("/");
+  }
+  async function onOtp() {
+    if (!email.trim()) { setLocalError("Enter your registered mobile number first"); return; }
+    setLocalError(null);
+    const result = await requestOtp(email.trim());
+    if (result) router.push({ pathname: "/otp", params: { pickerId: email.trim(), masked: result.masked, expiresIn: String(result.expiresIn) } });
   }
 
   const busy = loading;
@@ -42,13 +47,13 @@ export function LoginScreen() {
       </View>
 
       <FieldInput
-        label="Work Email"
+        label="Login mobile or email"
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
         autoCorrect={false}
-        keyboardType="email-address"
-        placeholder="username@ybm.internal"
+        keyboardType="default"
+        placeholder="Registered mobile or email"
         returnKeyType="next"
         editable={!busy}
       />
@@ -66,21 +71,6 @@ export function LoginScreen() {
         editable={!busy}
       />
 
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: rememberMe, disabled: busy }}
-        accessibilityLabel="Remember me on this device"
-        onPress={() => setRememberMe((value) => !value)}
-        disabled={busy}
-        style={ls.rememberRow}
-        hitSlop={6}
-      >
-        <View style={[ls.checkbox, rememberMe && ls.checkboxChecked]}>
-          {rememberMe ? <Ionicons name="checkmark" size={14} color="#ffffff" /> : null}
-        </View>
-        <Text style={ls.rememberText}>Remember me</Text>
-      </Pressable>
-
       <ErrorBanner message={localError ? null : error} />
       <PrimaryButton
         label={busy ? "Authenticating…" : "LOG IN"}
@@ -88,6 +78,9 @@ export function LoginScreen() {
         onPress={onContinue}
         disabled={busy}
       />
+      <Pressable accessibilityRole="button" onPress={() => void onOtp()} disabled={busy} style={ls.otpButton}>
+        <Text style={ls.otpText}>Log in with OTP</Text>
+      </Pressable>
 
       <View style={ls.footer}>
         <Ionicons name="shield-checkmark-outline" size={13} color={theme.color.muted} style={{ marginRight: 4 }} />
@@ -182,6 +175,8 @@ const ls = StyleSheet.create({
     justifyContent: "center",
     marginTop: 16,
   },
+  otpButton: { alignItems: "center", paddingVertical: 12 },
+  otpText: { color: "#0D6EFD", fontWeight: "700" },
   footerText: {
     fontSize: 11,
     color: theme.color.muted,

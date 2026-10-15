@@ -1,188 +1,110 @@
-// Profile Screen — Operator shift identity, warehouse tenant & authentication details.
-import { StyleSheet, Text, View } from "react-native";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { AppHeader, PrimaryButton, Screen, theme } from "@/components/ui";
+import { useFocusEffect } from "expo-router";
+import { Screen } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
+import * as api from "@/api/warehouseApi";
 
 export function ProfileScreen() {
-  const { picker, logout } = useAuth();
+  const { picker, logout, refreshProfile } = useAuth();
+  const role = picker?.role === "PACKER" ? "PACKER" : "PICKER";
+  const [staff, setStaff] = useState<api.StaffProfile | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<"view" | "edit" | "password">("view");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api.profile(role);
+      setStaff(data); setName(data.name || ""); setPhone(data.phone || "");
+      setEmail(data.email || ""); setAddress(data.address || ""); setError("");
+    } catch (e) { setError(e instanceof Error ? e.message : "Profile unavailable"); }
+  }, [role]);
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  async function save() {
+    setBusy(true); setError("");
+    try {
+      const updated = await api.updateProfile(role, { name: name.trim(), phone: phone.trim(), email: email.trim(), address: address.trim() });
+      setStaff(updated); await refreshProfile(); setMode("view");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not save profile"); }
+    finally { setBusy(false); }
+  }
+  async function password() {
+    if (!currentPassword || newPassword.length < 6) { setError("Enter current password and a new password of at least 6 characters."); return; }
+    setBusy(true); setError("");
+    try {
+      await api.changePassword(role, currentPassword, newPassword);
+      setCurrentPassword(""); setNewPassword(""); setMode("view");
+      Alert.alert("Password updated", "Your new password is ready to use.");
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not change password"); }
+    finally { setBusy(false); }
+  }
+
   if (!picker) return null;
-
-  const isPacker = picker.role === "PACKER";
-  const roleColor = isPacker ? theme.packer.primary : theme.picker.primary;
-  const roleBg = isPacker ? theme.packer.light : theme.picker.light;
-
-  return (
-    <Screen contentContainerStyle={s.screenContent}>
-      <AppHeader title="Operator Profile" sub="Account & Station Assignment" showBack />
-
-      {/* Operator Card */}
-      <View style={s.card}>
-        <View style={[s.avatar, { backgroundColor: roleColor }]}>
-          <Text style={s.avatarText}>{(picker.name || "U").charAt(0).toUpperCase()}</Text>
-        </View>
-
-        <Text style={s.name}>{picker.name}</Text>
-        <Text style={s.email}>{picker.pickerCode}</Text>
-
-        <View style={[s.roleBadge, { backgroundColor: roleBg, borderColor: roleColor }]}>
-          <Ionicons name={isPacker ? "cube" : "cart"} size={13} color={roleColor} />
-          <Text style={[s.roleText, { color: roleColor }]}>{picker.role}</Text>
-        </View>
-      </View>
-
-      {/* Assignment Details */}
-      <View style={s.details}>
-        <View style={s.detailRow}>
-          <View style={s.detailIcon}>
-            <Ionicons name="business-outline" size={16} color={theme.color.muted} />
-          </View>
-          <View style={s.detailContent}>
-            <Text style={s.label}>ASSIGNED WAREHOUSE</Text>
-            <Text style={s.value}>{picker.warehouseName || picker.warehouseId}</Text>
-          </View>
-        </View>
-
-        <View style={s.divider} />
-
-        <View style={s.detailRow}>
-          <View style={s.detailIcon}>
-            <Ionicons name="finger-print-outline" size={16} color={theme.color.muted} />
-          </View>
-          <View style={s.detailContent}>
-            <Text style={s.label}>WAREHOUSE ID</Text>
-            <Text style={s.value}>{picker.warehouseId}</Text>
-          </View>
-        </View>
-
-        <View style={s.divider} />
-
-        <View style={s.detailRow}>
-          <View style={s.detailIcon}>
-            <Ionicons name="shield-checkmark-outline" size={16} color={theme.color.muted} />
-          </View>
-          <View style={s.detailContent}>
-            <Text style={s.label}>SECURITY CLEARANCE</Text>
-            <Text style={s.value}>Operational Execution • Multi-Tenant Isolated</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Logout Action */}
-      <View style={s.logoutWrap}>
-        <PrimaryButton
-          label="LOG OUT OF SHIFT"
-          icon="log-out-outline"
-          variant="danger"
-          onPress={() => void logout().then(() => router.replace("/login" as never))}
-        />
-      </View>
-    </Screen>
+  const row = (icon: keyof typeof Ionicons.glyphMap, label: string, value?: string | number | null) => (
+    <View style={s.row} key={label}>
+      <View style={s.rowIcon}><Ionicons name={icon} size={17} color="#64748B" /></View>
+      <View style={s.rowBody}><Text style={s.label}>{label}</Text><Text style={s.value}>{value || "—"}</Text></View>
+    </View>
   );
+  const field = (label: string, value: string, onChangeText: (value: string) => void, secureTextEntry = false) => (
+    <View style={s.field} key={label}><Text style={s.label}>{label}</Text><TextInput style={s.input} value={value} onChangeText={onChangeText} secureTextEntry={secureTextEntry} autoCapitalize="none" /></View>
+  );
+
+  return <Screen contentContainerStyle={s.page}>
+    <Text style={s.title}>Operator Profile</Text><Text style={s.subtitle}>Account & Station Assignment</Text>
+    <View style={s.hero}>
+      <View style={s.avatar}><Text style={s.avatarText}>{(staff?.name || picker.name).charAt(0).toUpperCase()}</Text></View>
+      <Text style={s.name}>{staff?.name || picker.name}</Text>
+      <Text style={s.phone}>{staff?.phone || picker.pickerCode}</Text>
+      <View style={s.badges}><Text style={s.role}>🛒 {role}</Text><Text style={s.active}>● {staff?.status?.toUpperCase() || "ACTIVE"}</Text></View>
+    </View>
+    {error ? <Text style={s.error}>{error}</Text> : null}
+    {!staff && !error ? <ActivityIndicator style={{ margin: 24 }} /> : null}
+    {mode === "view" ? <>
+      <View style={s.details}>
+        {row("finger-print-outline", "STAFF ID", staff?.staffId)}
+        {row("call-outline", "PHONE / LOGIN MOBILE", staff?.phone)}
+        {row("mail-outline", "EMAIL ADDRESS", staff?.email)}
+        {row("business-outline", "ASSIGNED WAREHOUSE / ADDRESS", staff?.address)}
+        {row("card-outline", `ID CARD (${staff?.idCardType || "TYPE"})`, staff?.idCardNumber)}
+      </View>
+      <Pressable style={s.action} onPress={() => setMode("edit")}><Text style={s.actionText}>✎  EDIT PROFILE</Text></Pressable>
+      <Pressable style={s.action} onPress={() => setMode("password")}><Text style={s.actionText}>⚿  CHANGE PASSWORD</Text></Pressable>
+      <Pressable style={[s.action, s.logout]} onPress={() => void logout()}><Text style={s.logoutText}>⇥  LOG OUT OF SHIFT</Text></Pressable>
+    </> : <View style={s.details}>
+      <Text style={s.formTitle}>{mode === "edit" ? "Edit profile" : "Change password"}</Text>
+      {mode === "edit" ? <>{field("NAME", name, setName)}{field("PHONE", phone, setPhone)}{field("EMAIL", email, setEmail)}{field("ADDRESS", address, setAddress)}</> : <>{field("CURRENT PASSWORD", currentPassword, setCurrentPassword, true)}{field("NEW PASSWORD", newPassword, setNewPassword, true)}</>}
+      <Pressable disabled={busy} style={[s.action, s.save]} onPress={() => void (mode === "edit" ? save() : password())}><Text style={s.logoutText}>{busy ? "SAVING…" : "SAVE"}</Text></Pressable>
+      <Pressable style={s.action} onPress={() => { setMode("view"); setError(""); }}><Text style={s.actionText}>CANCEL</Text></Pressable>
+    </View>}
+  </Screen>;
 }
 
 const s = StyleSheet.create({
-  screenContent: {
-    paddingTop: 4,
-    paddingBottom: 16,
-  },
-  card: {
-    alignItems: "center",
-    backgroundColor: theme.color.surface,
-    borderWidth: 1,
-    borderColor: theme.color.line,
-    borderRadius: theme.radius.lg,
-    padding: theme.space.sm,
-    marginTop: 0,
-    shadowColor: theme.color.ink,
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  avatarText: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#ffffff",
-  },
-  name: {
-    ...(theme.type.titleMd as object),
-    color: theme.color.ink,
-    fontSize: 17,
-  },
-  email: {
-    ...(theme.type.secondary as object),
-    color: theme.color.muted,
-    marginTop: 2,
-  },
-  roleBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: theme.radius.pill,
-    borderWidth: 1,
-    marginTop: 8,
-  },
-  roleText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  details: {
-    backgroundColor: theme.color.surface,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.color.line,
-    paddingHorizontal: theme.space.sm,
-    paddingVertical: 4,
-    marginTop: 8,
-  },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.space.xs,
-    paddingVertical: 2,
-  },
-  detailIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.color.surfaceContainerLow,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  detailContent: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: theme.color.muted,
-    letterSpacing: 0.5,
-  },
-  value: {
-    fontSize: 13,
-    color: theme.color.ink,
-    fontWeight: "600",
-    marginTop: 1,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: theme.color.line,
-    marginVertical: 3,
-  },
-  logoutWrap: {
-    marginTop: 8,
-  },
+  page: { paddingTop: 10, paddingBottom: 28, backgroundColor: "#F8FAFC" },
+  title: { fontSize: 23, fontWeight: "800", color: "#0F172A" }, subtitle: { fontSize: 12, color: "#64748B", marginBottom: 12 },
+  hero: { alignItems: "center", backgroundColor: "white", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 18, padding: 16, marginBottom: 12 },
+  avatar: { width: 62, height: 62, borderRadius: 31, backgroundColor: "#028BC5", alignItems: "center", justifyContent: "center" },
+  avatarText: { color: "white", fontSize: 28, fontWeight: "800" }, name: { fontSize: 17, fontWeight: "800", color: "#172033", marginTop: 8 },
+  phone: { fontSize: 12, color: "#64748B", marginTop: 2 }, badges: { flexDirection: "row", gap: 8, marginTop: 8 },
+  role: { backgroundColor: "#E0F2FE", color: "#0369A1", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3, fontSize: 11, fontWeight: "800" },
+  active: { backgroundColor: "#DCFCE7", color: "#15803D", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 3, fontSize: 11, fontWeight: "800" },
+  details: { backgroundColor: "white", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 18, paddingHorizontal: 14, marginBottom: 12 },
+  row: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: "#CBD5E1" },
+  rowIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#F8FAFC", alignItems: "center", justifyContent: "center" }, rowBody: { marginLeft: 8, flex: 1 },
+  label: { fontSize: 10, fontWeight: "700", color: "#64748B" }, value: { fontSize: 13, fontWeight: "600", color: "#172033", marginTop: 2 },
+  action: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 13, alignItems: "center", padding: 14, backgroundColor: "white", marginBottom: 12 },
+  actionText: { color: "#334155", fontSize: 14, fontWeight: "800", letterSpacing: 0.5 }, logout: { backgroundColor: "#DC2626", borderColor: "#DC2626" },
+  logoutText: { color: "white", fontSize: 14, fontWeight: "800" }, error: { color: "#B91C1C", marginBottom: 10 },
+  formTitle: { fontSize: 17, fontWeight: "800", marginVertical: 12 }, field: { marginBottom: 12 }, input: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 9, padding: 10, marginTop: 4 },
+  save: { backgroundColor: "#0D6EFD", borderColor: "#0D6EFD" },
 });
