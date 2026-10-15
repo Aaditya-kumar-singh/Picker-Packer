@@ -5,13 +5,13 @@ import { theme } from "@/components/ui";
 
 type Props = {
   visible: boolean;
-  title: string;
+  title?: string;
   onScanned: (value: string) => void;
   onClose: () => void;
   continuous?: boolean;
 };
 
-export default function BarcodeScannerModal({ visible, title, onScanned, onClose, continuous = false }: Props) {
+export default function BarcodeScannerModal({ visible, title = "Scan Barcode", onScanned, onClose, continuous = false }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [blocked, setBlocked] = useState(false);
   const scanLock = useRef(false);

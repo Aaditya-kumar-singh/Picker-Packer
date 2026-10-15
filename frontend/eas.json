@@ -14,11 +14,7 @@
       "autoIncrement": true,
       "environment": "preview",
       "env": {
-        "EXPO_PUBLIC_DEV_QUICK_LOGIN": "true",
-        "EXPO_PUBLIC_DEV_PICKER_EMAIL": "picker.test@yourbuildmart.com",
-        "EXPO_PUBLIC_DEV_PICKER_PASSWORD": "YBM@Picker2026!",
-        "EXPO_PUBLIC_DEV_PACKER_EMAIL": "packer.test@yourbuildmart.com",
-        "EXPO_PUBLIC_DEV_PACKER_PASSWORD": "YBM@Packer2026!"
+        "EXPO_PUBLIC_API_BASE_URL": "https://test.yourbuildmart.com/api/"
       }
     },
     "production": {

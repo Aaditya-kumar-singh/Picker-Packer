@@ -18,66 +18,61 @@ import {
   theme,
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
-import { pickerRepository } from "@/repositories/pickerRepository";
-import { useSyncStatus } from "@/sync/SyncContext";
-import type { DashboardData } from "@/services/pickerApi";
+import { pickerAppApi } from "@/api/pickerAppApi";
+import type { FulfillmentOrderDto, PickerStatsDto } from "@/types";
 import {
-  formatPickByTime,
-  getBatchCount,
+  formatOrderDate,
   getCubePalette,
   getOrderProgress,
-  getPriorityMeta,
   getWarehouseDisplay,
 } from "@/utils/warehouse";
 
 export function DashboardScreen() {
   const { picker } = useAuth();
-  const { status: sync } = useSyncStatus();
   const { width } = useWindowDimensions();
   const compact = width < 380;
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
+  const [stats, setStats] = useState<PickerStatsDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await pickerRepository.getDashboard();
-    if (r.ok) {
-      setData(r.data);
+    try {
+      const [fetchedStats, fetchedOrders] = await Promise.all([
+        pickerAppApi.getStats(),
+        pickerAppApi.getAssignedOrders(),
+      ]);
+      setStats(fetchedStats);
+      setOrders(fetchedOrders || []);
       setError(null);
-    } else {
-      setError(r.apiError.message);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load assigned work.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+    }, [load])
   );
 
-  const wh = getWarehouseDisplay(data?.warehouseName ?? picker?.warehouseId);
-  const assignedList = data?.assignedOrders ?? (data?.activeOrder ? [data.activeOrder] : []);
-  const assignedTotal =
-    assignedList.length || (data?.pendingCount ?? 0) + (data?.inProgressCount ?? 0);
-  const inProgressCount =
-    data?.inProgressCount ??
-    assignedList.filter((o) => o.status === "IN_PROGRESS").length;
-  const completedCount = data?.metrics?.ordersPicked ?? data?.completedToday ?? 0;
-  const itemsToPickCount =
-    data?.itemsToPickCount ??
-    assignedList.reduce(
-      (sum, o) =>
-        sum +
-        o.lines.reduce((lineSum, l) => lineSum + Math.max(0, l.requiredQty - l.pickedQty), 0),
-      0,
-    );
+  const wh = getWarehouseDisplay(picker?.warehouseId, picker?.warehouseName);
+  const assignedList = orders;
+  const assignedTotal = stats?.assignedOrdersCount ?? assignedList.length;
+  const inProgressCount = assignedList.filter((o) => o.totalItemsScanned > 0).length;
+  const completedCount = stats?.completedOrdersCount ?? pickerAppApi.getSessionCompletedOrders().length;
+  const itemsToPickCount = assignedList.reduce(
+    (sum, o) =>
+      sum +
+      (o.items || []).reduce((lineSum, l) => lineSum + Math.max(0, l.orderedQty - l.pickedQty), 0),
+    0
+  );
 
-  const heroOrder = data?.activeOrder ?? assignedList[0] ?? null;
+  const heroOrder = assignedList[0] ?? null;
   const heroProgress = heroOrder ? getOrderProgress(heroOrder) : null;
-  const heroBatches = heroOrder ? getBatchCount(heroOrder.lines, heroOrder.totalLines) : 0;
-  const heroPriority = heroOrder ? getPriorityMeta(heroOrder.priority) : null;
 
   return (
     <View style={ds.screen}>
@@ -88,24 +83,17 @@ export function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={loading && Boolean(data)}
+            refreshing={loading && orders.length > 0}
             onRefresh={() => void load()}
             tintColor="#0D6EFD"
             colors={["#0D6EFD"]}
           />
         }
       >
-        {loading && !data ? (
+        {loading && orders.length === 0 && !stats ? (
           <LoadingState label="Loading dashboard…" />
-        ) : error && !data ? (
+        ) : error && orders.length === 0 ? (
           <ErrorState message={error} onRetry={() => void load()} />
-        ) : !data ? (
-          <EmptyState
-            title="No dashboard data"
-            body="Reconnect to load your assigned work."
-            actionLabel="Retry"
-            onAction={() => void load()}
-          />
         ) : (
           <>
             {/* Warehouse Location Banner Card */}
@@ -195,7 +183,7 @@ export function DashboardScreen() {
                 accessibilityLabel={`In Progress orders, ${inProgressCount}`}
                 onPress={() =>
                   router.push(
-                    (heroOrder ? `/order/${heroOrder.id}` : "/orders") as never,
+                    (heroOrder ? `/order/${heroOrder.orderId}` : "/orders") as never
                   )
                 }
               >
@@ -305,7 +293,7 @@ export function DashboardScreen() {
                       numberOfLines={1}
                       maxFontSizeMultiplier={1.1}
                     >
-                      Across orders
+                      Units
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={12} color="#64748B" />
@@ -314,7 +302,7 @@ export function DashboardScreen() {
             </View>
 
             {/* Active Order Hero Card */}
-            {heroOrder && heroProgress && heroPriority ? (
+            {heroOrder && heroProgress ? (
               <View style={ds.activeCard}>
                 <View style={ds.activeTopRow}>
                   <View style={ds.activeOrderBadge}>
@@ -325,7 +313,7 @@ export function DashboardScreen() {
                   <View style={ds.inProgressPill}>
                     <Ionicons name="time" size={13} color="#C2410C" />
                     <Text style={ds.inProgressPillText} maxFontSizeMultiplier={1.1}>
-                      {heroOrder.status === "IN_PROGRESS" ? "IN PROGRESS" : "ASSIGNED"}
+                      {heroOrder.totalItemsScanned > 0 ? "IN PROGRESS" : "ASSIGNED"}
                     </Text>
                   </View>
                 </View>
@@ -337,15 +325,14 @@ export function DashboardScreen() {
                       numberOfLines={1}
                       maxFontSizeMultiplier={1.15}
                     >
-                      {heroOrder.externalId}
+                      {heroOrder.orderNumber}
                     </Text>
                     <Text
                       style={ds.activeMeta}
                       numberOfLines={1}
                       maxFontSizeMultiplier={1.15}
                     >
-                      {heroProgress.totalLines} items  •  {heroBatches} batches  •{" "}
-                      {heroPriority.shortLabel} priority
+                      {heroProgress.totalLines} item line(s) • ₹{heroOrder.grandTotal.toFixed(2)} ({heroOrder.paymentMethod})
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#334155" />
@@ -359,7 +346,7 @@ export function DashboardScreen() {
                         {
                           width: `${Math.max(
                             heroProgress.pct,
-                            heroOrder.status === "IN_PROGRESS" ? 8 : 0,
+                            heroOrder.totalItemsScanned > 0 ? 8 : 0
                           )}%`,
                         },
                       ]}
@@ -367,7 +354,7 @@ export function DashboardScreen() {
                   </View>
                   <View style={ds.activeProgressNumbers}>
                     <Text style={ds.activeFractionText} maxFontSizeMultiplier={1.1}>
-                      {heroProgress.pickedLines}/{heroProgress.totalLines} items
+                      {heroProgress.pickedLines}/{heroProgress.totalLines} lines picked
                     </Text>
                     <Text style={ds.activePctText} maxFontSizeMultiplier={1.1}>
                       {heroProgress.pct}%
@@ -404,7 +391,7 @@ export function DashboardScreen() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Continue Picking"
-                    onPress={() => router.push(`/order/${heroOrder.id}` as never)}
+                    onPress={() => router.push(`/order/${heroOrder.orderId}` as never)}
                     style={({ pressed }) => [
                       ds.continueBtn,
                       compact && { paddingHorizontal: 12 },
@@ -449,17 +436,15 @@ export function DashboardScreen() {
             ) : (
               assignedList.slice(0, 6).map((order, idx) => {
                 const palette = getCubePalette(order, idx);
-                const pMeta = getPriorityMeta(order.priority);
                 const prog = getOrderProgress(order);
-                const batches = getBatchCount(order.lines, order.totalLines);
-                const isHighlighted = idx === 0 || order.priority >= 2;
+                const isHighlighted = idx === 0;
 
                 return (
                   <Pressable
-                    key={order.id}
+                    key={order.orderId}
                     accessibilityRole="button"
-                    accessibilityLabel={`Order ${order.externalId}`}
-                    onPress={() => router.push(`/order/${order.id}` as never)}
+                    accessibilityLabel={`Order ${order.orderNumber}`}
+                    onPress={() => router.push(`/order/${order.orderId}` as never)}
                     style={({ pressed }) => [
                       ds.orderCard,
                       isHighlighted && ds.orderCardHighlighted,
@@ -482,22 +467,14 @@ export function DashboardScreen() {
                           numberOfLines={1}
                           maxFontSizeMultiplier={1.15}
                         >
-                          {order.externalId}
+                          {order.orderNumber}
                         </Text>
-                        <View
-                          style={[
-                            ds.priorityPill,
-                            { backgroundColor: pMeta.bg },
-                          ]}
-                        >
+                        <View style={[ds.priorityPill, { backgroundColor: "#E0F2FE" }]}>
                           <Text
-                            style={[
-                              ds.priorityPillText,
-                              { color: pMeta.text },
-                            ]}
+                            style={[ds.priorityPillText, { color: "#0284C7" }]}
                             maxFontSizeMultiplier={1.1}
                           >
-                            {pMeta.label}
+                            {order.paymentMethod || "PREPAID"}
                           </Text>
                         </View>
                       </View>
@@ -507,12 +484,12 @@ export function DashboardScreen() {
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.15}
                       >
-                        {prog.totalLines} items  •  {batches} batches
+                        {prog.totalLines} lines • ₹{order.grandTotal.toFixed(2)}
                       </Text>
-                      {order.lines.length > 0 ? (
+                      {order.items && order.items.length > 0 ? (
                         <Text style={ds.orderProductPreview} numberOfLines={2} maxFontSizeMultiplier={1.1}>
-                          {order.lines.slice(0, 2).map((line) => line.skuName).join(" • ")}
-                          {order.lines.length > 2 ? " +" + (order.lines.length - 2) + " more" : ""}
+                          {order.items.slice(0, 2).map((item) => item.productName).join(" • ")}
+                          {order.items.length > 2 ? ` +${order.items.length - 2} more` : ""}
                         </Text>
                       ) : null}
 
@@ -535,7 +512,7 @@ export function DashboardScreen() {
 
                     <View style={ds.orderRightCol}>
                       <Text style={ds.orderItemsRatio} maxFontSizeMultiplier={1.1}>
-                        {prog.pickedLines}/{prog.totalLines} items
+                        {prog.pickedLines}/{prog.totalLines} lines
                       </Text>
                       <View style={ds.orderMiniProgressRow}>
                         <View style={ds.orderMiniTrack}>
@@ -552,16 +529,13 @@ export function DashboardScreen() {
                       </View>
                       <View style={ds.pickByRow}>
                         <Ionicons
-                          name="time-outline"
+                          name="calendar-outline"
                           size={12}
                           color="#64748B"
                           style={{ marginRight: 3 }}
                         />
                         <Text style={ds.pickByLabel} maxFontSizeMultiplier={1.1}>
-                          Pick by{" "}
-                          <Text style={ds.pickByTime}>
-                            {formatPickByTime(order.slaDueAt)}
-                          </Text>
+                          {formatOrderDate(order.orderDate)}
                         </Text>
                       </View>
                     </View>
@@ -573,16 +547,7 @@ export function DashboardScreen() {
             )}
 
             {error ? (
-              <Text style={ds.stale}>Showing last loaded data — {error}</Text>
-            ) : null}
-
-            {sync.connectivity !== "ONLINE" && sync.connectivity !== "CHECKING" ? (
-              <View style={ds.offlineBanner}>
-                <View style={ds.offlineDot} />
-                <Text style={ds.offlineText}>
-                  Offline — changes sync automatically when connected
-                </Text>
-              </View>
+              <Text style={ds.stale}>Notice: {error}</Text>
             ) : null}
           </>
         )}
@@ -648,16 +613,18 @@ const ds = StyleSheet.create({
   warehousePinBtn: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: 17,
     backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
+    borderWidth: 1,
+    borderColor: "#D4E4FF",
+  },
+  cardPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
   },
   kpiGrid: {
-    width: "100%",
     flexDirection: "row",
     gap: 8,
     marginBottom: 14,
@@ -665,234 +632,208 @@ const ds = StyleSheet.create({
   kpiCard: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 14,
+    padding: 10,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    paddingHorizontal: 9,
-    paddingVertical: 10,
-    shadowColor: "#0F172A",
+    shadowColor: theme.color.ink,
     shadowOpacity: 0.03,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
   kpiCardCompact: {
-    paddingHorizontal: 7,
-    paddingVertical: 9,
+    padding: 8,
+  },
+  metricPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
   kpiIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 7,
+    marginBottom: 6,
   },
   kpiValue: {
-    fontSize: 21,
+    fontSize: 22,
     fontWeight: "900",
     color: "#0F172A",
-    lineHeight: 25,
   },
   kpiLabelRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     justifyContent: "space-between",
     marginTop: 2,
   },
   kpiTextCol: {
     flex: 1,
-    paddingRight: 2,
   },
   kpiLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: "#1E293B",
+    color: "#334155",
   },
   kpiSubLabel: {
     fontSize: 10,
     color: "#64748B",
-    marginTop: 1,
-  },
-  metricPressed: {
-    opacity: 0.85,
-  },
-  cardPressed: {
-    opacity: 0.92,
   },
   activeCard: {
-    width: "100%",
-    backgroundColor: "#F2F7FF",
+    backgroundColor: "#FFFFFF",
     borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: "#BFDBFE",
     padding: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
     marginBottom: 16,
-    shadowColor: "#1E3A8A",
-    shadowOpacity: 0.06,
+    shadowColor: theme.color.ink,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
   activeTopRow: {
-    width: "100%",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   activeOrderBadge: {
-    backgroundColor: "#0D6EFD",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   activeOrderBadgeText: {
-    color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "800",
+    color: "#1D4ED8",
     letterSpacing: 0.5,
   },
   inProgressPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    backgroundColor: "#FFEDD5",
-    borderWidth: 1,
-    borderColor: "#FED7AA",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
+    gap: 4,
+    backgroundColor: "#FFF7ED",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
   },
   inProgressPillText: {
     fontSize: 10,
     fontWeight: "800",
     color: "#C2410C",
-    letterSpacing: 0.4,
   },
   activeTitleRow: {
-    width: "100%",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
   },
   activeTitleCol: {
     flex: 1,
-    paddingRight: 8,
   },
   activeOrderId: {
     fontSize: 22,
     fontWeight: "900",
     color: "#0F172A",
-    letterSpacing: 0.3,
   },
   activeMeta: {
     fontSize: 12,
     color: "#475569",
-    fontWeight: "500",
     marginTop: 2,
   },
   activeProgressRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 11,
-    marginBottom: 13,
+    marginBottom: 12,
   },
   activeProgressTrack: {
-    flex: 1,
     height: 8,
+    backgroundColor: "#E2E8F0",
     borderRadius: 4,
-    backgroundColor: "#DBEAFE",
     overflow: "hidden",
+    marginBottom: 4,
   },
   activeProgressFill: {
-    height: 8,
+    height: "100%",
+    backgroundColor: "#0D6EFD",
     borderRadius: 4,
-    backgroundColor: "#1D76DB",
   },
   activeProgressNumbers: {
-    alignItems: "flex-end",
-    flexShrink: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   activeFractionText: {
-    fontSize: 12,
+    fontSize: 11,
+    color: "#64748B",
     fontWeight: "600",
-    color: "#334155",
   },
   activePctText: {
-    fontSize: 13,
+    fontSize: 11,
+    color: "#0D6EFD",
     fontWeight: "800",
-    color: "#1565C0",
   },
   activeFooterRow: {
-    width: "100%",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#DBEAFE",
+    borderTopColor: "#F1F5F9",
   },
   activeWarehouseInfo: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingRight: 8,
+    gap: 8,
+    flex: 1,
   },
   activeWhPinCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#DBEAFE",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
-    marginRight: 8,
   },
   activeWhTextCol: {
     flex: 1,
   },
   activeWhLabel: {
-    fontSize: 10,
-    color: "#64748B",
-    fontWeight: "600",
+    fontSize: 9,
+    color: "#94A3B8",
+    fontWeight: "700",
   },
   activeWhName: {
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#0F172A",
   },
   activeWhAddr: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#64748B",
   },
   continueBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 6,
     backgroundColor: "#0D6EFD",
     paddingHorizontal: 14,
-    minHeight: 40,
-    borderRadius: 12,
-    flexShrink: 0,
+    paddingVertical: 9,
+    borderRadius: 10,
   },
   continueBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
     color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "800",
   },
   sectionHeaderRow: {
-    width: "100%",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 10,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
   },
@@ -900,7 +841,6 @@ const ds = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 2,
-    paddingVertical: 4,
   },
   viewAllText: {
     fontSize: 13,
@@ -908,69 +848,64 @@ const ds = StyleSheet.create({
     color: "#1565C0",
   },
   orderCard: {
-    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    padding: 12,
-    marginBottom: 10,
-    shadowColor: "#0F172A",
+    marginBottom: 8,
+    shadowColor: theme.color.ink,
     shadowOpacity: 0.03,
     shadowRadius: 5,
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
   orderCardHighlighted: {
-    backgroundColor: "#FFFDF6",
-    borderColor: "#FCD34D",
-    borderWidth: 1.5,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#F8FAFF",
   },
   orderCubeCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
+    marginRight: 10,
   },
   orderMain: {
     flex: 1,
-    marginHorizontal: 10,
+    marginRight: 8,
   },
   orderTopLine: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
     gap: 6,
   },
   orderNumber: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0F172A",
   },
   priorityPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
   },
   priorityPillText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "700",
   },
   orderSubMeta: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#64748B",
-    marginTop: 2,
+    marginTop: 1,
   },
   orderProductPreview: {
     fontSize: 11,
-    lineHeight: 14,
-    color: "#0F766E",
-    fontWeight: "700",
-    marginTop: 3,
+    color: "#334155",
+    marginTop: 2,
   },
   orderLocationRow: {
     flexDirection: "row",
@@ -978,46 +913,40 @@ const ds = StyleSheet.create({
     marginTop: 4,
   },
   orderLocationText: {
-    flex: 1,
-    fontSize: 12,
-    color: "#475569",
-    fontWeight: "500",
+    fontSize: 10,
+    color: "#64748B",
   },
   orderRightCol: {
     alignItems: "flex-end",
-    justifyContent: "center",
-    flexShrink: 0,
-    marginRight: 4,
+    marginRight: 6,
   },
   orderItemsRatio: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#334155",
+    color: "#0F172A",
   },
   orderMiniProgressRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    marginTop: 4,
+    gap: 4,
+    marginTop: 3,
   },
   orderMiniTrack: {
-    width: 50,
-    height: 6,
-    borderRadius: 3,
+    width: 40,
+    height: 5,
     backgroundColor: "#E2E8F0",
+    borderRadius: 3,
     overflow: "hidden",
   },
   orderMiniFill: {
-    height: 6,
+    height: "100%",
+    backgroundColor: "#0D6EFD",
     borderRadius: 3,
-    backgroundColor: "#1D76DB",
   },
   orderMiniPct: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#1565C0",
-    minWidth: 26,
-    textAlign: "right",
+    fontSize: 9,
+    color: "#64748B",
+    fontWeight: "700",
   },
   pickByRow: {
     flexDirection: "row",
@@ -1025,38 +954,13 @@ const ds = StyleSheet.create({
     marginTop: 4,
   },
   pickByLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#64748B",
   },
-  pickByTime: {
-    fontWeight: "800",
-    color: "#0F172A",
-  },
   stale: {
+    fontSize: 11,
+    color: "#94A3B8",
+    textAlign: "center",
     marginTop: 8,
-    color: theme.color.secondary,
-    ...(theme.type.secondary as object),
-  },
-  offlineBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: theme.color.surfaceContainerLow,
-    borderRadius: theme.radius.md,
-    padding: 12,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: theme.color.line,
-  },
-  offlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.color.critical,
-  },
-  offlineText: {
-    ...(theme.type.secondary as object),
-    color: theme.color.muted,
-    flex: 1,
   },
 });

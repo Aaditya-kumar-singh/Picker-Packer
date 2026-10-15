@@ -1,120 +1,199 @@
-// YBM Picker App — Phase 1 shared types.
-// Mirrors OpenAPI contract + state machines. No backend types here.
+// YBM Picker & Packer — Unified REST API Types
+// Derived strictly from picker-app-api.md and packer-app-api.md
+
+export type UserRole = "PICKER" | "PACKER";
 
 export type OrderStatus =
-  | "PENDING"
-  | "ASSIGNED"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "CANCELLED";
+  | "CONFIRMED"
+  | "PICKING"
+  | "PACKING"
+  | "PACKED"
+  | "RIDER_ASSIGNED";
 
-export type LineStatus =
-  | "PENDING"
-  | "LOCATION_VALIDATED"
-  | "SKU_VALIDATED"
-  | "PICKED"
-  | "EXCEPTION"
-  | "SKIPPED";
-
-export type ExceptionType =
-  | "SHORT_PICK"
-  | "DAMAGED"
-  | "WRONG_ITEM"
-  | "LOCATION_EMPTY"
-  | "EXPIRED"
-  | "OTHER";
-
-export type WmsMode = "WMS_SUCCESS" | "WMS_PENDING" | "WMS_FAILURE";
-export type WmsStatus = "NONE" | "PENDING" | "SYNCED" | "FAILED";
-
-export interface PickerProfile {
-  id: string;
-  pickerCode: string;
-  name: string;
-  role: "PICKER" | "LEAD_PICKER" | "SUPERVISOR" | "PACKER";
-  warehouseId: string;
-  warehouseName: string;
-}
-
-export interface OrderLine {
-  id: string;
-  lineNo: number;
-  skuCode: string;
-  skuName: string;
-  productSpecs: string;
-  productImageUrl?: string | null;
-  skuBarcode: string;
-  locationCode: string;
-  locationBarcode: string;
-  requiredQty: number;
+/** Order item representation across picker and packer REST endpoints */
+export interface FulfillmentOrderItemDto {
+  itemId: number;
+  productId: number;
+  variantId: number;
+  sku: string;
+  productName: string;
+  variantLabel: string | null;
+  orderedQty: number;
   pickedQty: number;
-  uom: string;
-  status: LineStatus;
+  packedQty: number;
+  fullyScanned: boolean;
+  barcode?: string | null;
+  // Pick location fields (included in picker responses; null if not mapped)
+  zone?: string | null;
+  aisle?: string | null;
+  rack?: string | null;
+  bin?: string | null;
+  shelf?: string | null;
+  locationCode?: string | null;
 }
 
-export interface Order {
-  id: string;
-  externalId: string; // e.g. YBM-000234
-  status: OrderStatus;
-  priority: number;
-  slaDueAt: string;
-  totalLines: number;
-  version: number;
-  assignedPickerCode: string | null;
-  // Documented lifecycle side effects (State_Machine.md guards table).
-  // startOrder (claim) sets assignedDeviceId/assignedAt;
-  // beginPicking (device confirmed) sets startedAt.
-  assignedDeviceId: string | null;
-  assignedAt: string | null;
-  startedAt: string | null;
-  cancelledAt: string | null;
-  lines: OrderLine[];
-  wmsStatus: WmsStatus;
-  completedAt: string | null;
+/** Full order DTO returned by /orders/assigned and /orders/{id} */
+export interface FulfillmentOrderDto {
+  orderId: number;
+  orderNumber: string;
+  orderStatus: OrderStatus;
+  orderDate: string;
+  grandTotal: number;
+  paymentMethod: string;
+  warehouseId: number;
+  warehouseName?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  shippingAddress?: string | null;
+  fulfillmentStaffId?: number | null;
+  fulfillmentStaffName?: string | null;
+  fulfillmentStartedAt?: string | null;
+  fulfillmentCompletedAt?: string | null;
+  pickerId: number | null;
+  packerId: number | null;
+  packerAssignedAt: string | null;
+  totalItems: number;
+  totalItemsScanned: number;
+  items: FulfillmentOrderItemDto[];
 }
 
-export interface LineException {
-  id: string;
-  lineId: string;
-  type: ExceptionType;
-  reasonCode: string;
-  qty: number | null;
-  note: string | null;
-  createdAt: string;
+/** Response from POST /api/picker-app/orders/{id}/scan */
+export interface PickerScanResponseDto {
+  success: boolean;
+  message: string;
+  barcode: string | null;
+  scannedItemName?: string | null;
+  scannedQty?: number | null;
+  orderedQty?: number | null;
+  totalItemsPicked?: number | null;
+  totalItems?: number | null;
+  orderStatus?: string | null;
+  orderFullyPicked?: boolean | null;
+  scannedAt?: string | null;
+  items?: FulfillmentOrderItemDto[] | null;
 }
 
-// Evidence metadata (list/detail shapes). Object keys are server-generated
-// references, never credentials; bytes upload via short-lived signed URLs.
-export interface EvidenceItem {
-  id: string;
-  objectKey: string;
-  mimeType: string;
-  fileSizeBytes: number | null;
+/** Response from POST /api/packer-app/orders/{id}/scan */
+export interface PackerScanResponseDto {
+  success: boolean;
+  message: string;
+  barcode: string | null;
+  scannedItemName?: string | null;
+  scannedQty?: number | null;
+  orderedQty?: number | null;
+  totalItemsScanned?: number | null;
+  totalItems?: number | null;
+  orderStatus?: "PACKING" | "PACKED" | string | null;
+  orderFullyPacked?: boolean | null;
+  scannedAt?: string | null;
+  items?: FulfillmentOrderItemDto[] | null;
+}
+
+/** GET /api/picker-app/stats */
+export interface PickerStatsDto {
+  assignedOrdersCount: number;
+  completedOrdersCount: number;
+  totalItemsPickedToday: number;
+}
+
+/** GET /api/packer-app/stats */
+export interface PackerStatsDto {
+  assignedOrders: number;
+  completedOrders: number;
+  todayOrdersPacked: number;
+  todayItemsScanned: number;
+}
+
+/** GET /api/picker-app/available-packers candidate */
+export interface PackerCandidateDto {
+  id: number;
+  name: string;
+  phone: string;
+  email?: string | null;
   status: string;
-  uploadAttempts: number;
-  lastError: string | null;
-  createdAt: string;
-  uploadedAt: string | null;
+  loginEnabled: boolean;
+  rating: number | null;
+  idCardType?: string | null;
+  idCardNumber?: string | null;
+  photoFilePath?: string | null;
+  address?: string | null;
+  warehouseId: number;
 }
 
-export interface EvidenceUploadGrant {
-  uploadUrl: string;
-  objectKey: string;
-  expiresAt: string;
+/** GET /api/packer-app/riders/available candidate */
+export interface RiderCandidateDto {
+  id: number;
+  name: string;
+  phone: string;
+  vehicleType: string;
+  status: string;
+  loginEnabled: boolean;
+  rating: number | null;
+  warehouseId: number;
 }
 
-export interface ApiError {
+/** GET/PUT /api/{picker|packer}-app/profile */
+export interface FulfillmentStaffProfileDto {
+  staffId: number;
+  name: string;
+  phone: string;
+  email: string | null;
+  status: string;
+  rating: number | null;
+  idCardType: string | null;
+  idCardNumber: string | null;
+  address: string | null;
+  photoFilePath: string | null;
+}
+
+/** Raw order item from GET /api/packer-app/orders/{id}/items */
+export interface RawSalesOrderItemDto {
+  id: number;
+  salesOrderId: number;
+  productId: number;
+  variantId: number;
+  batchId?: number | null;
+  sku: string;
+  productName: string;
+  variantLabel: string | null;
+  hsn?: string | null;
+  orderedQty: number;
+  reservedQty?: number;
+  pickedQty: number;
+  packedQty: number;
+  shippedQty?: number;
+  unitPrice: number;
+  discountAmount: number;
+  taxPercentage: number;
+  netUnitPrice: number;
+  taxAmount: number;
+  lineTotal: number;
+  bundleId?: number | null;
+  activeFlag?: boolean;
+  crtBy?: number;
+  updtBy?: number;
+  crtDt?: string;
+  updtDt?: string;
+}
+
+/** Standard API envelope */
+export interface ApiResponseEnvelope<T> {
+  success: boolean;
+  message: string;
+  data: T;
+}
+
+/** Structured server error envelope */
+export interface ApiErrorEnvelope {
+  traceId?: string;
   error: string;
   message: string;
-  details: Array<{ field: string; message: string; code: string }>;
-  requestId: string;
-  timestamp: string;
+  status: number;
+  fieldErrors?: Array<{ field: string; message: string }> | null;
+  timestamp?: string;
 }
 
-export type Result<T> = { ok: true; data: T } | { ok: false; apiError: ApiError };
-
-export interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
-  picker: PickerProfile;
-}
+/** Result type for unified handler returns */
+export type ApiResult<T> =
+  | { ok: true; data: T; message?: string }
+  | { ok: false; error: string; softFailure?: boolean; fieldErrors?: Array<{ field: string; message: string }> };

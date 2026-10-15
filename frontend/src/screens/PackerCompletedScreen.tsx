@@ -1,4 +1,4 @@
-// Packer Completed Orders — History of packed orders & courier dispatches.
+// Packer Completed Orders per packer-app-api.md
 import { useCallback, useState } from "react";
 import {
   Pressable,
@@ -17,27 +17,33 @@ import {
   LoadingState,
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
-import * as client from "@/api/client";
-import { CUBE_PALETTES, getWarehouseDisplay } from "@/utils/warehouse";
+import { packerAppApi } from "@/api/packerAppApi";
+import type { FulfillmentOrderDto } from "@/types";
+import { CUBE_PALETTES, formatOrderDate, getWarehouseDisplay } from "@/utils/warehouse";
 
 export function PackerCompletedScreen() {
   const { picker } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 360;
-  const [orders, setOrders] = useState<client.OrderSummary[]>([]);
+  const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const wh = getWarehouseDisplay(picker?.warehouseId);
+  const wh = getWarehouseDisplay(picker?.warehouseId, picker?.warehouseName);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await client.packerCompletedOrders();
-      setOrders(result.orders);
+      const assigned = await packerAppApi.getAssignedOrders();
+      const packedOrders = assigned.filter((o) => o.orderStatus === "PACKED");
+      const dispatched = packerAppApi.getSessionDispatchedOrders();
+
+      // Combine packed orders (ready for rider) + session dispatched orders
+      const combined = [...packedOrders, ...dispatched];
+      setOrders(combined);
       setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load completed orders");
+    } catch (e: any) {
+      setError(e?.message || "Could not load completed orders");
     } finally {
       setLoading(false);
     }
@@ -46,7 +52,7 @@ export function PackerCompletedScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+    }, [load])
   );
 
   return (
@@ -69,7 +75,7 @@ export function PackerCompletedScreen() {
             style={[s.pageTitle, compact && { fontSize: 19 }]}
             maxFontSizeMultiplier={1.15}
           >
-            Completed Packing Orders
+            Completed & Dispatched Orders
           </Text>
           <View style={s.countPill}>
             <Text style={s.countPillText} maxFontSizeMultiplier={1.1}>
@@ -80,130 +86,48 @@ export function PackerCompletedScreen() {
 
         <ErrorBanner message={error} />
 
-        {loading ? (
+        {loading && orders.length === 0 ? (
           <LoadingState label="Loading completed orders…" />
         ) : orders.length === 0 ? (
           <EmptyState
             title="No Completed Orders"
-            body="Orders packed and dispatched by you will appear here."
+            body="Orders packed and dispatched by you during this shift will appear here."
             actionLabel="Refresh"
             onAction={() => void load()}
           />
         ) : (
           orders.map((order, idx) => {
             const palette = CUBE_PALETTES[idx % CUBE_PALETTES.length];
-            const itemCount = order.items?.length || order.itemCount || 0;
-            const totalUnits =
-              order.items && order.items.length > 0
-                ? order.items.reduce(
-                    (sum, i) => sum + (i.pickedQty || i.requiredQty || 0),
-                    0,
-                  )
-                : itemCount;
-            const packedUnits =
-              order.items && order.items.length > 0
-                ? order.items.reduce((sum, i) => sum + (i.packedQty || 0), 0)
-                : order.packedCount ?? totalUnits;
-            const pct =
-              totalUnits > 0
-                ? Math.min(100, Math.round((packedUnits / totalUnits) * 100))
-                : 100;
-            const riderAssigned = order.status === "RIDER_ASSIGNED";
+            const isDispatched = order.orderStatus === "RIDER_ASSIGNED";
 
             return (
               <Pressable
-                key={order.id}
-                accessibilityRole="button"
-                onPress={() => router.push(`/pack/order/${order.id}` as never)}
-                style={({ pressed }) => [s.card, pressed && s.pressed]}
+                key={order.orderId}
+                onPress={() => router.push(`/pack/order/${order.orderId}` as never)}
+                style={({ pressed }) => [s.card, pressed && { opacity: 0.88 }]}
               >
-                <View style={s.topRow}>
-                  <View
-                    style={[s.cubeAvatar, { backgroundColor: palette.bg }]}
-                  >
-                    <Ionicons name="cube" size={22} color={palette.icon} />
-                  </View>
-
-                  <View style={s.titleCol}>
-                    <Text
-                      style={s.id}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {order.orderNumber}
-                    </Text>
-                    <Text
-                      style={s.customer}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {order.customer || "Warehouse Customer"}
-                    </Text>
-                  </View>
-
-                  <View style={s.statusPill}>
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={13}
-                      color="#15803D"
-                    />
-                    <Text style={s.statusPillText} maxFontSizeMultiplier={1.1}>
-                      {riderAssigned ? "DISPATCHED" : "PACKED"}
-                    </Text>
-                  </View>
+                <View style={[s.cubeCircle, { backgroundColor: palette.bg }]}>
+                  <Ionicons name="cube" size={22} color={palette.icon} />
                 </View>
 
-                <View style={[s.bottomRow, !compact && { paddingLeft: 55 }]}>
-                  <View style={s.metaLeft}>
-                    <View style={s.iconLine}>
-                      <Ionicons
-                        name="location-sharp"
-                        size={13}
-                        color="#334155"
-                        style={s.lineIcon}
-                      />
-                      <Text
-                        style={s.whName}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={1.15}
-                      >
-                        {wh.name}
-                      </Text>
-                    </View>
-                    <View style={[s.iconLine, { marginTop: 4 }]}>
-                      <Ionicons
-                        name="cube-outline"
-                        size={13}
-                        color="#475569"
-                        style={s.lineIcon}
-                      />
-                      <Text
-                        style={s.metaText}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={1.15}
-                      >
-                        {itemCount} items  •  {packedUnits}/{totalUnits} units (
-                        {pct}%)
-                      </Text>
-                    </View>
-                  </View>
+                <View style={s.mainInfo}>
+                  <Text style={s.orderNumber}>{order.orderNumber}</Text>
+                  <Text style={s.orderMeta}>
+                    {order.totalItems} lines • ₹{order.grandTotal.toFixed(2)} ({order.paymentMethod})
+                  </Text>
+                  <Text style={s.dateText}>{formatOrderDate(order.orderDate)}</Text>
+                </View>
 
-                  <View style={s.riderBadge}>
+                <View style={s.rightCol}>
+                  <View style={[s.badge, isDispatched ? s.badgeDispatched : s.badgePacked]}>
                     <Ionicons
-                      name={riderAssigned ? "bicycle" : "checkmark-done"}
-                      size={14}
-                      color="#15803D"
+                      name={isDispatched ? "bicycle" : "checkmark-circle"}
+                      size={13}
+                      color={isDispatched ? "#0284C7" : "#16A34A"}
                     />
-                    <Text style={s.riderText} maxFontSizeMultiplier={1.1}>
-                      {riderAssigned
-                        ? order.riderName || "Rider Assigned"
-                        : "Assign Rider"}
+                    <Text style={[s.badgeText, isDispatched ? { color: "#0284C7" } : { color: "#16A34A" }]}>
+                      {isDispatched ? "DISPATCHED" : "PACKED"}
                     </Text>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={14}
-                      color="#15803D"
-                    />
                   </View>
                 </View>
               </Pressable>
@@ -216,28 +140,95 @@ export function PackerCompletedScreen() {
 }
 
 const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F5F7FB" },
-  scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 28 },
-  headerRow: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
-  pageTitle: { fontSize: 21, fontWeight: "900", color: "#0F172A", letterSpacing: -0.3 },
-  countPill: { backgroundColor: "#E2E8F0", paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 },
-  countPillText: { fontSize: 13, fontWeight: "800", color: "#334155" },
-  card: { width: "100%", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 18, padding: 13, marginBottom: 11, shadowColor: "#0F172A", shadowOpacity: 0.03, shadowRadius: 5, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  pressed: { opacity: 0.9 },
-  topRow: { width: "100%", flexDirection: "row", alignItems: "center" },
-  cubeAvatar: { width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  titleCol: { flex: 1, marginHorizontal: 11 },
-  id: { fontSize: 16, fontWeight: "900", color: "#0F172A" },
-  customer: { fontSize: 13, color: "#64748B", marginTop: 2 },
-  statusPill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#DCFCE7", borderWidth: 1, borderColor: "#BBF7D0", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, flexShrink: 0 },
-  statusPillText: { fontSize: 10.5, fontWeight: "800", color: "#15803D" },
-  bottomRow: { width: "100%", flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginTop: 8, gap: 8 },
-  metaLeft: { flex: 1, paddingRight: 4 },
-  iconLine: { flexDirection: "row", alignItems: "center" },
-  lineIcon: { marginRight: 5 },
-  whName: { flex: 1, fontSize: 12, fontWeight: "700", color: "#1E293B" },
-  metaText: { flex: 1, fontSize: 12, color: "#475569", fontWeight: "500" },
-  riderBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, flexShrink: 0 },
-  riderText: { fontSize: 11.5, fontWeight: "800", color: "#15803D" },
+  screen: {
+    flex: 1,
+    backgroundColor: "#F5F7FB",
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 28,
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  pageTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+  countPill: {
+    backgroundColor: "#FFF2E6",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  countPillText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#D95D00",
+  },
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 8,
+  },
+  cubeCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  mainInfo: {
+    flex: 1,
+  },
+  orderNumber: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  orderMeta: {
+    fontSize: 12,
+    color: "#475569",
+    marginTop: 1,
+  },
+  dateText: {
+    fontSize: 10,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  rightCol: {
+    alignItems: "flex-end",
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  badgePacked: {
+    backgroundColor: "#DCFCE7",
+  },
+  badgeDispatched: {
+    backgroundColor: "#E0F2FE",
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
 });

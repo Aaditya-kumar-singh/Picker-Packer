@@ -16,6 +16,10 @@ function tabIcon(activeName: IconName, inactiveName: IconName) {
   );
 }
 
+function renderBrandHeader() {
+  return <BrandHeader />;
+}
+
 export default function TabLayout() {
   const { picker } = useAuth();
   const insets = useSafeAreaInsets();
@@ -31,24 +35,31 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: true,
-        header: () => <BrandHeader />,
+        header: renderBrandHeader,
         tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: rolePrimary,
         tabBarInactiveTintColor: "#64748B",
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#E2E8F0",
-          borderTopWidth: 1,
+          backgroundColor: "transparent",
+          borderTopColor: "transparent",
+          borderTopWidth: 0,
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          borderBottomLeftRadius: 28,
+          borderBottomRightRadius: 28,
+          overflow: "hidden",
+          marginHorizontal: 8,
           height: baseTabHeight + bottomInset,
           paddingTop: 4,
           paddingBottom: Math.max(bottomInset, 6),
           paddingHorizontal: 8,
           shadowColor: theme.color.ink,
-          shadowOpacity: 0.05,
-          shadowRadius: 6,
+          shadowOpacity: 0.10,
+          shadowRadius: 8,
           shadowOffset: { width: 0, height: -2 },
-          elevation: 4,
+          elevation: 8,
         },
+        tabBarBackground: () => <View style={s.tabBarBackground} />,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: "700",
@@ -114,6 +125,13 @@ export default function TabLayout() {
 }
 
 const s = StyleSheet.create({
+  tabBarBackground: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
   iconWrap: {
     alignItems: "center",
     justifyContent: "center",

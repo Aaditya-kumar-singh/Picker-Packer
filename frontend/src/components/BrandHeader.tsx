@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -10,150 +10,46 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import NetInfo from "@react-native-community/netinfo";
 import {
   NotificationCenterModal,
   type AppNotification,
 } from "@/components/modals/NotificationCenterModal";
 import { useAuth } from "@/navigation/AppProvider";
-import { pickerRepository } from "@/repositories/pickerRepository";
-import * as client from "@/api/client";
-import { useSyncStatus } from "@/sync/SyncContext";
+import { useNotifications } from "@/context/NotificationContext";
 import { theme } from "@/components/ui";
-import { formatPickByTime } from "@/utils/warehouse";
 
 export function BrandHeader() {
   const { picker } = useAuth();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const compact = width < 360;
-  const { status, syncNow } = useSyncStatus();
   const isPacker = picker?.role === "PACKER";
 
+  const {
+    notifications,
+    readIds,
+    unreadCount,
+    loading: loadingNotifs,
+    loadNotifications,
+    markAsRead,
+    markAllRead,
+  } = useNotifications();
+
   const [notifVisible, setNotifVisible] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [readIds, setReadIds] = useState<Record<string, boolean>>({});
-  const [loadingNotifs, setLoadingNotifs] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
 
-  const isOnline =
-    status.connectivity === "ONLINE" || status.connectivity === "CHECKING";
-  const syncLabel =
-    status.connectivity === "ONLINE"
-      ? "Live"
-      : status.connectivity === "CHECKING"
-        ? "Live"
-        : status.connectivity === "SERVER_UNREACHABLE"
-          ? "Server Err"
-          : "Offline";
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener((state) => {
+      setIsOnline(Boolean(state.isConnected && state.isInternetReachable !== false));
+    });
+    return () => unsub();
+  }, []);
 
+  const syncLabel = isOnline ? "Live" : "Offline";
   const syncDotColor = isOnline ? "#16A34A" : "#DC2626";
   const syncPillBg = isOnline ? "#E6F8EE" : "#FEE2E2";
   const syncTextColor = isOnline ? "#15803D" : "#B91C1C";
-
-  const loadNotifications = useCallback(async () => {
-    if (!picker) return;
-    setLoadingNotifs(true);
-    try {
-      const items: AppNotification[] = [];
-
-      if (status.conflicts.length > 0) {
-        items.push({
-          id: `conflict-${status.conflicts.length}`,
-          title: `Sync Conflict (${status.conflicts.length})`,
-          body:
-            status.conflicts[0]?.message ??
-            "One or more offline scans require supervisor review.",
-          timeLabel: "Just now",
-          tone: "urgent",
-          targetRoute: isPacker ? "/packer-dashboard" : "/dashboard",
-        });
-      }
-
-      if (status.pending > 0) {
-        items.push({
-          id: `pending-sync-${status.pending}`,
-          title: `${status.pending} Offline Event(s) Queued`,
-          body: "Tap to sync queued warehouse scans with the server.",
-          timeLabel: "Pending sync",
-          tone: "progress",
-          targetRoute: isPacker ? "/packer-dashboard" : "/dashboard",
-        });
-      }
-
-      if (isPacker) {
-        const res = await client.packerOrders();
-        const active = res.orders.filter((o) => o.status !== "RIDER_ASSIGNED");
-        for (const o of active.slice(0, 8)) {
-          const itemCount = o.items?.length || o.itemCount || 0;
-          const isPacked = o.status === "PACKED";
-          items.push({
-            id: `packer-order-${o.id}-${o.status}`,
-            title: isPacked
-              ? `${o.orderNumber} • Ready for Dispatch`
-              : `${o.orderNumber} • Ready to Pack`,
-            body: isPacked
-              ? `${o.customer || "Warehouse Customer"} • Assign a delivery rider to dispatch.`
-              : `${o.customer || "Warehouse Customer"} • ${itemCount} item line(s) waiting at packing station.`,
-            timeLabel: isPacked ? "Packed" : "In Queue",
-            tone: isPacked ? "ok" : "progress",
-            targetRoute: `/pack/order/${o.id}`,
-          });
-        }
-      } else {
-        const res = await pickerRepository.getOrders();
-        if (res.ok) {
-          const active = res.data.filter((o) => o.status !== "COMPLETED");
-          const sorted = [...active].sort((a, b) => {
-            if (a.status === "IN_PROGRESS" && b.status !== "IN_PROGRESS") return -1;
-            if (b.status === "IN_PROGRESS" && a.status !== "IN_PROGRESS") return 1;
-            return b.priority - a.priority;
-          });
-
-          for (const o of sorted.slice(0, 8)) {
-            const pickedLines = o.lines.filter(
-              (l) => l.status === "PICKED" || l.pickedQty >= l.requiredQty,
-            ).length;
-            const totalLines = o.lines.length || o.totalLines || 0;
-            const isUrgent = o.priority >= 2;
-            const isInProgress = o.status === "IN_PROGRESS";
-
-            items.push({
-              id: `picker-order-${o.id}-${o.status}-${pickedLines}`,
-              title: isInProgress
-                ? `Active Pick Run: ${o.externalId}`
-                : isUrgent
-                  ? `High Priority Order: ${o.externalId}`
-                  : `Assigned Order: ${o.externalId}`,
-              body: `${pickedLines}/${totalLines} items picked • Pick by ${formatPickByTime(
-                o.slaDueAt,
-              )}`,
-              timeLabel: isInProgress
-                ? "In Progress"
-                : isUrgent
-                  ? "Urgent"
-                  : `Pick by ${formatPickByTime(o.slaDueAt)}`,
-              tone: isUrgent ? "urgent" : isInProgress ? "progress" : "info",
-              targetRoute: `/order/${o.id}`,
-            });
-          }
-        }
-      }
-
-      setNotifications(items);
-    } catch {
-      // Keep existing notifications if offline/transient error
-    } finally {
-      setLoadingNotifs(false);
-    }
-  }, [picker, isPacker, status.conflicts, status.pending]);
-
-  useEffect(() => {
-    void loadNotifications();
-  }, [loadNotifications]);
-
-  const unreadCount = useMemo(
-    () => notifications.filter((n) => !readIds[n.id]).length,
-    [notifications, readIds],
-  );
 
   function openNotifications() {
     setNotifVisible(true);
@@ -161,15 +57,9 @@ export function BrandHeader() {
   }
 
   function handleSelectNotification(item: AppNotification) {
-    setReadIds((prev) => ({ ...prev, [item.id]: true }));
+    markAsRead(item.id);
     setNotifVisible(false);
     router.push(item.targetRoute as never);
-  }
-
-  function markAllRead() {
-    const next: Record<string, boolean> = { ...readIds };
-    for (const n of notifications) next[n.id] = true;
-    setReadIds(next);
   }
 
   const notificationModal = (
@@ -248,7 +138,7 @@ export function BrandHeader() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Connection status: ${syncLabel}`}
-                onPress={() => void syncNow()}
+                onPress={() => void loadNotifications()}
                 style={({ pressed }) => [
                   s.livePill,
                   { backgroundColor: syncPillBg },
@@ -367,7 +257,7 @@ export function BrandHeader() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Connection status: ${syncLabel}`}
-              onPress={() => void syncNow()}
+              onPress={() => void loadNotifications()}
               style={({ pressed }) => [
                 s.livePill,
                 { backgroundColor: syncPillBg },
@@ -436,6 +326,9 @@ const s = StyleSheet.create({
     backgroundColor: "#0B2D6B",
     paddingHorizontal: 14,
     paddingBottom: 14,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: "hidden",
     shadowColor: "#000000",
     shadowOpacity: 0.16,
     shadowRadius: 8,
@@ -558,6 +451,9 @@ const s = StyleSheet.create({
     backgroundColor: "#091E3A",
     paddingHorizontal: 12,
     paddingBottom: 10,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    overflow: "hidden",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.12)",
   },

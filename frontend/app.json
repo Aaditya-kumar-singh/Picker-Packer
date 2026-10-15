@@ -16,7 +16,6 @@
         }
       ],
       "expo-router",
-      "expo-sqlite",
       "expo-font"
     ],
     "ios": {

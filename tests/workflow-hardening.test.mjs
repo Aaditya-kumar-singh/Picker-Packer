@@ -2,259 +2,298 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import http from "node:http";
 
 const root = path.resolve(import.meta.dirname, "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 
-test("production migration has balanced SQL dollar quoting and one commit", () => {
-  const sql = read("supabase/migrations/0001_harden_workflow.sql");
-  assert.equal((sql.match(/CREATE OR REPLACE FUNCTION/g) ?? []).length, (sql.match(/\$\$/g) ?? []).length / 2);
-  assert.equal((sql.match(/\bCOMMIT;/g) ?? []).length, 1);
-  assert.doesNotMatch(sql, /AS \$(?:\r?\n)/);
-  assert.doesNotMatch(sql, /^\s*\d+\t/m);
+test("Supabase is completely removed from frontend dependencies and config", () => {
+  const pkg = JSON.parse(read("frontend/package.json"));
+  assert.equal(pkg.dependencies["@supabase/supabase-js"], undefined);
+  assert.equal(pkg.dependencies["expo-sqlite"], undefined);
+  assert.equal(pkg.dependencies["react-native-url-polyfill"], undefined);
+  assert.equal(pkg.dependencies["expo-image-picker"], undefined);
+
+  const appJson = JSON.parse(read("frontend/app.json"));
+  assert.ok(!appJson.expo.plugins.includes("expo-sqlite"));
+
+  const metro = read("frontend/metro.config.js");
+  assert.doesNotMatch(metro, /wasm/);
+
+  const env = read("frontend/.env");
+  assert.doesNotMatch(env, /SUPABASE/);
+  assert.match(env, /EXPO_PUBLIC_API_BASE_URL/);
+
+  const envExample = read("frontend/.env.example");
+  assert.doesNotMatch(envExample, /SUPABASE/);
+  assert.match(envExample, /EXPO_PUBLIC_API_BASE_URL/);
+
+  const eas = JSON.parse(read("frontend/eas.json"));
+  assert.equal(eas.build.preview.env.EXPO_PUBLIC_API_BASE_URL, "https://test.yourbuildmart.com/api/");
 });
 
-test("RLS and warehouse isolation are defined for operational data", () => {
-  const sql = read("supabase/migrations/0001_harden_workflow.sql");
-  for (const table of ["users","orders","order_items","scan_events","exceptions","packages","audit_events","idempotency_keys","riders","exception_evidence"]) {
-    assert.match(sql, new RegExp("ALTER TABLE public\\." + table + " ENABLE ROW LEVEL SECURITY"));
-  }
-  assert.match(sql, /warehouse_id = public\.current_warehouse\(\)/);
-  assert.match(sql, /REVOKE INSERT, UPDATE, DELETE ON public\.users, public\.orders/);
-});
-
-test("workflow mutations are server RPCs", () => {
-  const client = read("frontend/src/api/client.ts");
-  for (const rpc of ["picker_start_order","picker_pick_item","picker_complete_order","packer_start_order","packer_confirm_item","packer_create_package","packer_complete_order","assign_rider","create_exception","sync_scan_event"]) {
-    assert.match(client, new RegExp("rpc\\(\\\"" + rpc + "\\\""));
-  }
-  assert.doesNotMatch(client, /from\(["'](?:orders|order_items|scan_events|exceptions|packages)["']\)\.\s*(?:insert|update|upsert|delete)/);
-});
-
-test("offline replay handles every defined event type", () => {
-  const client = read("frontend/src/api/client.ts");
-  for (const eventType of ["ORDER_STARTED","LOCATION_SCANNED","SKU_SCANNED","QTY_CONFIRMED","EXCEPTION_RAISED","ORDER_COMPLETED"]) {
-    assert.match(client, new RegExp("event\\.eventType === \\\"" + eventType + "\\\""));
-  }
-  const offline = read("frontend/src/sync/offlineApi.ts");
-  assert.match(offline, /payload: \{ qty, uom, sku: line\.skuBarcode \}/);
-});
-
-test("product scan starts from a pending line and camera scans count immediately", () => {
-  const domain = read("frontend/src/domain/order.ts");
-  const offline = read("frontend/src/sync/offlineApi.ts");
-  const screen = read("frontend/src/screens/SkuScanScreen.tsx");
-  assert.match(domain, /status === "PENDING"\s*\|\| status === "LOCATION_VALIDATED"\) return "sku"/);
-  assert.match(offline, /line\.status !== "PENDING" && line\.status !== "LOCATION_VALIDATED" && line\.status !== "SKU_VALIDATED"/);
-  assert.match(offline, /payload: \{ scanValue: normalize\(scanValue\) \}/);
-  assert.match(screen, /onScanned=\{\(value\) => \{\s*setManual\(value\);\s*void processItemBarcode\(value\);/);
-  assert.match(screen, /pickerRepository\.pickQuantity\(line\.id,\s*1,\s*line\.uom,\s*newIdemKey\(\)\)/);
-  assert.match(screen, /setSkuVerified\(!completed\)/);
-});
-
-test("picker and packer count quantity from individual barcode scans only", () => {
-  const picker = read("frontend/src/screens/SkuScanScreen.tsx");
-  const packer = read("frontend/src/screens/PackerOrderScreen.tsx");
-  const scanner = read("frontend/src/scanner/BarcodeScannerModal.tsx");
-  assert.ok(picker.includes("pickerRepository.pickQuantity(line.id, 1,"));
-  assert.ok(picker.includes("const verified = await pickerRepository.validateSku(line.id, barcode);"));
-  assert.ok(packer.includes("async function scan(value?: string): Promise<boolean>"));
-  assert.ok(packer.includes("onScanned={enqueueCameraScan}"));
-  assert.ok(packer.includes("continuous"));
-  assert.ok(packer.includes("        1,\n      );"));
-  assert.doesNotMatch(packer, /setPackQty|Decrease pack quantity|Increase pack quantity|Confirm Pack|stepperBox|stepperBtn/);
-  assert.match(packer, /Scan each physical product separately/);
-  assert.ok(scanner.includes("continuous?: boolean"));
-  assert.ok(scanner.includes("if (!continuous)"));
-  assert.ok(scanner.includes("}, 750);"));
-});
-
-test("packer and evidence routes exist", () => {
-  for (const file of [
-    "frontend/src/app/(tabs)/packer-dashboard.tsx",
-    "frontend/src/app/pack/order/[id].tsx",
-    "frontend/src/screens/PackerDashboardScreen.tsx",
-    "frontend/src/screens/PackerOrderScreen.tsx",
-    "frontend/src/screens/DispatchScreen.tsx",
-  ]) assert.equal(fs.existsSync(path.join(root, file)), true, file);
-  assert.equal(fs.existsSync(path.join(root, "frontend/src/app/(tabs)/dispatch.tsx")), false);
-  const api = read("frontend/src/services/supabasePickerApi.ts");
-  assert.match(api, /grantEvidenceUpload/);
-});
-
-test("legacy worker and hardcoded login credentials are gone", () => {
-  const files = [
-    "frontend/src/api/client.ts",
-    "frontend/src/navigation/AppProvider.tsx",
-    "frontend/src/screens/LoginScreen.tsx",
-  ].map(read).join("\n");
-  assert.doesNotMatch(files, /8788|wrangler|EXPO_PUBLIC_API_URL/);
-  assert.doesNotMatch(files, /admin@example\.com|test@example\.com|password123|test1234/);
-});
-
-test("role separation is enforced by every picker/packer RPC", () => {
-  const sql = read("supabase/migrations/0001_harden_workflow.sql");
-  for (const rpc of ["picker_start_order","picker_pick_item","picker_complete_order"]) {
-    const body = sql.slice(sql.indexOf("FUNCTION public." + rpc), sql.indexOf("END;", sql.indexOf("FUNCTION public." + rpc)) + 4);
-    assert.match(body, /v_user\.role <> 'PICKER'/);
-  }
-  for (const rpc of ["packer_start_order","packer_pack_item","packer_create_package","packer_complete_order"]) {
-    const body = sql.slice(sql.indexOf("FUNCTION public." + rpc), sql.indexOf("END;", sql.indexOf("FUNCTION public." + rpc)) + 4);
-    assert.match(body, /v_user\.role <> 'PACKER'/);
-  }
-});
-
-test("packing confirmation enforces packer role and item verification", () => {
-  const packing = read("supabase/migrations/0007_role_separated_packing_verification.sql");
-  assert.match(packing, /packer_confirm_item/);
-  assert.match(packing, /v_user\.role <> 'PACKER'/);
-  assert.match(packing, /Product type does not match/);
-  assert.match(packing, /Product barcode does not match/);
-});
-
-test("app routes are role separated", () => {
-  const layout = read("frontend/src/app/_layout.tsx");
-  assert.match(layout, /picker\.role === "PICKER" && packerRoots\.has/);
-  assert.match(layout, /picker\.role === "PACKER" && pickerRoots\.has/);
-  assert.match(layout, /router\.replace\("\/dashboard"/);
-  assert.match(layout, /router\.replace\("\/packer-dashboard"/);
-});
-
-test("picker and packer operations are warehouse scoped", () => {
-  const sql = read("supabase/migrations/0001_harden_workflow.sql");
-  assert.match(sql, /v_order\.warehouse_id <> v_user\.warehouse_id/);
-  assert.match(sql, /warehouse_id=v_user\.warehouse_id/);
-});
-
-test("wrong SKU, over-picking and over-packing are rejected server-side", () => {
-  const sql = read("supabase/migrations/0001_harden_workflow.sql");
-  assert.match(sql, /SKU does not match/);
-  assert.match(sql, /Picked quantity cannot exceed required quantity/);
-  assert.match(sql, /Packed quantity cannot exceed picked quantity/);
-});
-
-test("wrong location is rejected by scan RPC", () => {
-  const sql = read("supabase/migrations/0003_harden_scan_idempotency.sql");
-  assert.match(sql, /WHEN upper\(p_scan_type\)='LOCATION' THEN v_item\.location/);
-  assert.match(sql, /Scan does not match expected value/);
-});
-
-test("rider assignment rejects inactive and cross-warehouse riders", () => {
-  const sql = read("supabase/migrations/0001_harden_workflow.sql");
-  assert.match(sql, /warehouse_id=v_user\.warehouse_id AND active=true/);
-  assert.match(sql, /Rider not found or inactive/);
-});
-
-test("offline scan event is idempotent", () => {
-  const sql = read("supabase/migrations/0003_harden_scan_idempotency.sql");
-  assert.match(sql, /operation='sync_scan_event'/);
-  assert.match(sql, /RETURN jsonb_build_object\('ok',true,'duplicate',true\)/);
-  assert.match(sql, /idempotency_keys/);
-});
-
-test("unauthenticated workflow access is rejected", () => {
-  const sql = read("supabase/migrations/0001_harden_workflow.sql") + read("supabase/migrations/0003_harden_scan_idempotency.sql");
-  assert.match(sql, /auth\.uid\(\)/);
-  assert.match(sql, /Authentication required/);
-  assert.match(sql, /REVOKE ALL ON FUNCTION public\.sync_scan_event/);
-  assert.match(sql, /GRANT EXECUTE ON FUNCTION public/);
-});
-
-test("test order generator uses the warehouse product catalog and barcodes", () => {
-  const sql = read("supabase/migrations/0009_product_catalog_and_realistic_order_generator.sql");
-  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.product_catalog/);
-  assert.match(sql, /product_type text NOT NULL/);
-  assert.match(sql, /barcode text NOT NULL UNIQUE/);
-  assert.match(sql, /100000000106/);
-  assert.match(sql, /100000000131/);
-  assert.match(sql, /100000000123/);
-  assert.match(sql, /v_item_count := 3 \+ floor\(random\(\) \* 5\)/);
-  assert.match(sql, /FROM public\.product_catalog/);
-  assert.match(sql, /sku_barcode/);
-  assert.match(sql, /location_barcode/);
-  assert.match(sql, /product_specs/);
-});
-
-test("expanded product catalog has unique warehouse barcodes and six-line generator cap", () => {
-  const sql = read("supabase/migrations/0010_expand_product_catalog_and_cap_generator.sql");
-  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.generate_test_order/);
-  assert.match(sql, /v_item_count := 1 \+ floor\(random\(\) \* 6\)/);
-  assert.match(sql, /FROM public\.product_catalog/);
-  assert.match(sql, /status IN \('ASSIGNED','PICKING'\)/);
-  assert.match(sql, /v_max_active_orders constant integer := 30/);
-  assert.match(sql, /100000000191/);
-  assert.match(sql, /100000000152/);
-  assert.match(sql, /ON CONFLICT \(sku\) DO UPDATE/);
-});
-
-test("product-only picking keeps product validation and removes the location prerequisite", () => {
-  const legacy = read("supabase/migrations/0005_barcode_scan_workflow.sql");
-  const current = read("supabase/migrations/0014_product_only_picker_scan.sql");
-  const idempotency = read("supabase/migrations/0015_picker_idempotency_result.sql");
-  const timestampFix = read("supabase/migrations/0017_fix_picker_scan_timestamp_validation.sql");
-  assert.match(legacy, /Location barcode must be scanned first/); // applied migration is preserved
-  assert.match(current, /Product barcode does not match/);
-  assert.match(current, /Product barcode must be scanned first/);
-  assert.doesNotMatch(current, /Location barcode must be scanned first/);
-  assert.match(current, /v_order\.warehouse_id <> v_user\.warehouse_id/);
-  assert.match(current, /Picked quantity cannot exceed required quantity/);
-  assert.match(current, /Re-check after acquiring the order lock/);
-  assert.match(current, /pg_advisory_xact_lock/);
-  assert.equal(current.split("$function$").length - 1, 2);
-  assert.equal((current.match(/COMMIT;/g) ?? []).length, 1);
-  assert.match(idempotency, /pg_advisory_xact_lock\(hashtextextended\(p_idempotency_key, 0\)\)/);
-  assert.match(idempotency, /Idempotency key is already used by another operation/);
-  assert.match(idempotency, /v_existing\.response_body::jsonb ->> 'pickedQty'/);
-  assert.doesNotMatch(idempotency, /Location barcode must be scanned first/);
-  assert.match(timestampFix, /upper\(trim\(se\.barcode\)\) = upper\(trim\(v_expected_barcode\)\)/);
-  assert.match(timestampFix, /upper\(trim\(se\.expected_value\)\) = upper\(trim\(v_expected_barcode\)\)/);
-  assert.doesNotMatch(timestampFix, /se\.created_at\s*>=\s*COALESCE/);
-  assert.match(timestampFix, /GRANT EXECUTE ON FUNCTION public\.picker_pick_item/);
-});
-
-test("test order generator caps the picker backlog at 30", () => {
-  const sql = read("supabase/migrations/0006_test_order_backlog_cap.sql");
-  assert.match(sql, /v_max_active_orders constant integer := 30/);
-  assert.match(sql, /status IN \('ASSIGNED','PICKING'\)/);
-  assert.match(sql, /v_active_orders >= v_max_active_orders/);
-  assert.match(sql, /PICKER_BACKLOG_LIMIT/);
-  assert.match(sql, /'maxActiveOrders',v_max_active_orders/);
-});
-
-test("picker step transitions use replacement navigation and cannot strand the final line", () => {
-  const sku = read("frontend/src/screens/SkuScanScreen.tsx");
-  const location = read("frontend/src/screens/LocationScanScreen.tsx");
-  const quantity = read("frontend/src/screens/QuantityScreen.tsx");
-  const exception = read("frontend/src/screens/ExceptionScreen.tsx");
-
-  for (const source of [sku, location, quantity, exception]) {
-    assert.doesNotMatch(source, /router\.push\([^\n]*\/pick\//);
-  }
-  assert.doesNotMatch(sku, /awaitingNext|goNext/);
-  assert.match(sku, /nextStep === "complete"/);
-  assert.match(sku, /pathname: "\/pick\/\[orderId\]\/complete"/);
-  assert.match(quantity, /SkuScanScreen as QuantityScreen/);
-  assert.doesNotMatch(quantity, /Increment quantity|Decrement quantity|Select All/);
-});
-
-test("picker order reads reject stale in-flight responses after workflow mutations", () => {
-  const api = read("frontend/src/services/supabasePickerApi.ts");
-  assert.match(api, /private orderGeneration = new Map/);
-  assert.match(api, /private invalidateOrder\(id: string\)/);
-  assert.match(api, /const generation = this\.orderGeneration\.get\(id\) \?\? 0/);
-  assert.match(api, /this\.orderGeneration\.get\(id\) \?\? 0\) !== generation/);
-  assert.match(api, /this\.invalidateOrder\(orderId\);/);
-});
-
-test("all picker workflow screens derive the next step from authoritative line state", () => {
-  for (const file of [
+test("no legacy Supabase files remain in the project tree", () => {
+  const deletedFiles = [
+    "frontend/src/api/supabase.ts",
+    "frontend/src/services/supabasePickerApi.ts",
+    "frontend/src/services/pickerApi.ts",
+    "frontend/src/repositories/pickerRepository.ts",
     "frontend/src/screens/LocationScanScreen.tsx",
-    "frontend/src/screens/SkuScanScreen.tsx",
-    "frontend/src/screens/CompletionScreen.tsx",
-    "frontend/src/screens/OrderDetailScreen.tsx",
+    "frontend/src/app/pick/[orderId]/location.tsx",
+    "frontend/src/app/pick/[orderId]/quantity.tsx",
+    "frontend/src/screens/QuantityScreen.tsx",
     "frontend/src/screens/ExceptionScreen.tsx",
-  ]) {
-    const source = read(file);
-    assert.match(source, /resolvePickStep|pickStepPath/, file);
+    "frontend/src/app/pick/[orderId]/exception.tsx",
+    "frontend/src/components/ExceptionForm.tsx",
+    "frontend/src/scanner/ScannerInput.tsx",
+    "frontend/src/scanner/parser.ts",
+    "frontend/src/storage",
+    "frontend/src/sync",
+    "frontend/src/components/SyncBadge.tsx",
+    "Supabase_Schema.sql",
+    "supabase",
+    "scripts/fetch_product_images.py",
+    "scripts/upload_product_images.mjs",
+    "product-images",
+    "docs/PICKER_FLOW_UPDATE_REPORT.md"
+  ];
+
+  for (const file of deletedFiles) {
+    assert.equal(fs.existsSync(path.join(root, file)), false, `File ${file} should have been deleted`);
+  }
+});
+
+test("frontend source code contains zero references to Supabase", () => {
+  function checkDir(dir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        checkDir(fullPath);
+      } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+        const content = fs.readFileSync(fullPath, "utf8");
+        assert.doesNotMatch(content, /@supabase\/supabase-js/, `Found @supabase import in ${fullPath}`);
+        assert.doesNotMatch(content, /supabase\.rpc\(/, `Found supabase.rpc call in ${fullPath}`);
+        assert.doesNotMatch(content, /from\(["']orders["']\)/, `Found supabase table query in ${fullPath}`);
+      }
+    }
+  }
+  checkDir(path.join(root, "frontend/src"));
+});
+
+test("REST API client layers implement required endpoints and envelope unwrapping", () => {
+  const httpSource = read("frontend/src/api/http.ts");
+  assert.match(httpSource, /EXPO_PUBLIC_API_BASE_URL/);
+  assert.match(httpSource, /Bearer \$\{token\}/);
+  assert.match(httpSource, /auth_token|TOKEN_KEY/);
+  assert.match(httpSource, /onUnauthorized/);
+
+  const authSource = read("frontend/src/api/authApi.ts");
+  assert.match(authSource, /\/api\/auth\/login/);
+  assert.match(authSource, /\/api\/auth\/otp\/request/);
+
+  const pickerSource = read("frontend/src/api/pickerAppApi.ts");
+  assert.match(pickerSource, /\/api\/picker-app\/stats/);
+  assert.match(pickerSource, /\/api\/picker-app\/orders\/assigned/);
+  assert.match(pickerSource, /\/api\/picker-app\/orders\/\$\{orderId\}\/items/);
+  assert.match(pickerSource, /\/api\/picker-app\/orders\/\$\{orderId\}\/scan/);
+  assert.match(pickerSource, /\/api\/picker-app\/available-packers/);
+  assert.match(pickerSource, /\/api\/picker-app\/orders\/\$\{orderId\}\/assign-packer/);
+  assert.match(pickerSource, /\/api\/picker-app\/profile/);
+  assert.match(pickerSource, /\/api\/picker-app\/change-password/);
+
+  const packerSource = read("frontend/src/api/packerAppApi.ts");
+  assert.match(packerSource, /\/api\/packer-app\/stats/);
+  assert.match(packerSource, /\/api\/packer-app\/orders\/assigned/);
+  assert.match(packerSource, /\/api\/packer-app\/orders\/\$\{orderId\}/);
+  assert.match(packerSource, /\/api\/packer-app\/orders\/\$\{orderId\}\/scan/);
+  assert.match(packerSource, /\/api\/packer-app\/riders\/available/);
+  assert.match(packerSource, /\/api\/packer-app\/orders\/\$\{orderId\}\/assign-rider/);
+  assert.match(packerSource, /\/api\/packer-app\/profile/);
+  assert.match(packerSource, /\/api\/packer-app\/change-password/);
+
+  const facade = read("frontend/src/api/client.ts");
+  assert.match(facade, /pickerAppApi/);
+  assert.match(packerSource, /packerAppApi/);
+  assert.match(facade, /authApi/);
+});
+
+test("domain rules operate on REST DTO contracts", () => {
+  const domain = read("frontend/src/domain/order.ts");
+  assert.match(domain, /nextPendingLine/);
+  assert.match(domain, /isOrderFullyPicked/);
+  assert.match(domain, /isOrderFullyPacked/);
+  assert.match(domain, /resolvePickStep/);
+  assert.match(domain, /formatItemLocation/);
+});
+
+test("picker order completion is handled via assign-packer step", () => {
+  const completionScreen = read("frontend/src/screens/CompletionScreen.tsx");
+  assert.match(completionScreen, /getAvailablePackers/);
+  assert.match(completionScreen, /assignPacker/);
+});
+
+test("packer order dispatch is handled via assign-rider step", () => {
+  const dispatchScreen = read("frontend/src/screens/DispatchScreen.tsx");
+  assert.match(dispatchScreen, /getAvailableRiders/);
+  assert.match(dispatchScreen, /assignRider/);
+
+  const packerOrderScreen = read("frontend/src/screens/PackerOrderScreen.tsx");
+  assert.match(packerOrderScreen, /assignRider/);
+});
+
+// Integration tests with standalone reference backend
+test("reference REST backend integration and contract validation", async () => {
+  const server = (await import("../backend/server.js")).default || (await import("../backend/server.js"));
+  
+  await new Promise((resolve) => {
+    server.listen(0, resolve);
+  });
+  
+  const port = server.address().port;
+  const baseUrl = `http://localhost:${port}`;
+
+  async function request(path, options = {}) {
+    const res = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      }
+    });
+    const data = await res.json();
+    return { status: res.status, ok: res.ok, data };
+  }
+
+  try {
+    // 1. Auth login
+    const loginRes = await request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ identifier: "9876543210", password: "password123" })
+    });
+    assert.equal(loginRes.status, 200);
+    assert.equal(loginRes.data.success, true);
+    assert.equal(loginRes.data.data.user.role, "PICKER");
+    const token = loginRes.data.data.token;
+    assert.ok(token);
+
+    const authHeaders = { Authorization: `Bearer ${token}` };
+
+    // 2. Picker Stats
+    const statsRes = await request("/api/picker-app/stats", { headers: authHeaders });
+    assert.equal(statsRes.status, 200);
+    assert.equal(statsRes.data.success, true);
+    assert.ok(typeof statsRes.data.data.assignedOrdersCount === "number");
+
+    // 3. Assigned Orders
+    const assignedRes = await request("/api/picker-app/orders/assigned", { headers: authHeaders });
+    assert.equal(assignedRes.status, 200);
+    assert.ok(Array.isArray(assignedRes.data.data));
+    assert.ok(assignedRes.data.data.length > 0);
+    const order = assignedRes.data.data[0];
+    const orderId = order.orderId;
+
+    // 4. Order Items
+    const itemsRes = await request(`/api/picker-app/orders/${orderId}/items`, { headers: authHeaders });
+    assert.equal(itemsRes.status, 200);
+    assert.ok(Array.isArray(itemsRes.data.data));
+    const targetItem = itemsRes.data.data[0];
+
+    // 5. Soft Failure on wrong barcode (HTTP 400 with success: false)
+    const wrongScanRes = await request(`/api/picker-app/orders/${orderId}/scan`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ barcode: "WRONG-BARCODE-999" })
+    });
+    assert.equal(wrongScanRes.status, 400);
+    assert.equal(wrongScanRes.data.success, false);
+    assert.match(wrongScanRes.data.message, /does not belong to this order/);
+    assert.equal(wrongScanRes.data.data.barcode, "WRONG-BARCODE-999");
+
+    // 6. Successful Item Scan
+    const validScanRes = await request(`/api/picker-app/orders/${orderId}/scan`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ barcode: targetItem.barcode })
+    });
+    assert.equal(validScanRes.status, 200);
+    assert.equal(validScanRes.data.success, true);
+    assert.equal(validScanRes.data.data.barcode, targetItem.barcode);
+    assert.equal(validScanRes.data.data.scannedQty, targetItem.pickedQty + 1);
+
+    // 7. Available Packers
+    const packersRes = await request("/api/picker-app/available-packers", { headers: authHeaders });
+    assert.equal(packersRes.status, 200);
+    assert.ok(Array.isArray(packersRes.data.data));
+    assert.ok(packersRes.data.data.length > 0);
+    const selectedPacker = packersRes.data.data[0];
+
+    // 8. Assign Packer
+    const assignPackerRes = await request(`/api/picker-app/orders/${orderId}/assign-packer`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ packerId: selectedPacker.id })
+    });
+    assert.equal(assignPackerRes.status, 200);
+    assert.equal(assignPackerRes.data.success, true);
+    assert.equal(assignPackerRes.data.data, "Packer assigned");
+
+    // 9. Packer Flow: Login as Packer
+    const packerLoginRes = await request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ identifier: "9876543211", password: "password123" })
+    });
+    assert.equal(packerLoginRes.status, 200);
+    assert.equal(packerLoginRes.data.data.user.role, "PACKER");
+    const packerToken = packerLoginRes.data.data.token;
+    const packerHeaders = { Authorization: `Bearer ${packerToken}` };
+
+    // 10. Packer Stats & Assigned Orders
+    const packerStatsRes = await request("/api/packer-app/stats", { headers: packerHeaders });
+    assert.equal(packerStatsRes.status, 200);
+
+    const packerAssignedRes = await request("/api/packer-app/orders/assigned", { headers: packerHeaders });
+    assert.equal(packerAssignedRes.status, 200);
+
+    // 11. Available Riders
+    const ridersRes = await request("/api/packer-app/riders/available", { headers: packerHeaders });
+    assert.equal(ridersRes.status, 200);
+    assert.ok(Array.isArray(ridersRes.data.data));
+    const selectedRider = ridersRes.data.data[0];
+
+    // 12. Assign Rider (Dispatch)
+    const assignRiderRes = await request(`/api/packer-app/orders/${orderId}/assign-rider`, {
+      method: "POST",
+      headers: packerHeaders,
+      body: JSON.stringify({ riderId: selectedRider.id })
+    });
+    assert.equal(assignRiderRes.status, 200);
+    assert.equal(assignRiderRes.data.success, true);
+    assert.equal(assignRiderRes.data.data, "Rider assigned");
+
+    // 13. Profile fetch and update
+    const profileRes = await request("/api/picker-app/profile", { headers: authHeaders });
+    assert.equal(profileRes.status, 200);
+    assert.equal(profileRes.data.data.staffId, 1);
+
+    const updateProfileRes = await request("/api/picker-app/profile", {
+      method: "PUT",
+      headers: authHeaders,
+      body: JSON.stringify({ name: "Ravi Kumar Updated" })
+    });
+    assert.equal(updateProfileRes.status, 200);
+    assert.equal(updateProfileRes.data.data.name, "Ravi Kumar Updated");
+
+    // 14. Change Password
+    const changePassRes = await request("/api/picker-app/change-password", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ currentPassword: "password123", newPassword: "newpassword456" })
+    });
+    assert.equal(changePassRes.status, 200);
+    assert.equal(changePassRes.data.success, true);
+
+  } finally {
+    server.close();
   }
 });

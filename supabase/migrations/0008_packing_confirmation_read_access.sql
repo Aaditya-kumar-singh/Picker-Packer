@@ -1,1 +1,0 @@
-grant select on public.packing_confirmations to authenticated;

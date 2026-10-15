@@ -1,7 +1,6 @@
 // Picking Order Screen — cross-device responsive Picker order & item scanning screen (Android, iOS & Web).
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  Image,
   Modal,
   Pressable,
   RefreshControl,
@@ -13,7 +12,6 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -23,71 +21,102 @@ import {
   SuccessFeedback,
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
-import { getDeviceId, newIdemKey, pickerRepository } from "@/repositories/pickerRepository";
-import { nextPendingLine, pickStepPath, resolvePickStep } from "@/domain/order";
+import { pickerAppApi } from "@/api/pickerAppApi";
+import {
+  formatItemLocation,
+  isOrderFullyPicked,
+  nextPendingLine,
+} from "@/domain/order";
 import { alertWrongBarcode, beepSuccess } from "@/services/scanner";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
-import type { Order, OrderLine } from "@/types";
+import type { FulfillmentOrderDto, FulfillmentOrderItemDto } from "@/types";
 import { getOrderProgress, getWarehouseDisplay } from "@/utils/warehouse";
 
 export function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const numOrderId = parseInt(String(id), 10);
   const { picker } = useAuth();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const compact = width < 360;
-  const [order, setOrder] = useState<Order | null>(null);
+
+  const [order, setOrder] = useState<FulfillmentOrderDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [locationSorted, setLocationSorted] = useState(true);
-  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
-  // Unified Scan & Pick sheet state (reduces multi-screen navigation)
-  const [activeScanLine, setActiveScanLine] = useState<OrderLine | null>(null);
+  // Scan sheet & camera state
+  const [activeScanLine, setActiveScanLine] = useState<FulfillmentOrderItemDto | null>(null);
   const [scanSheetVisible, setScanSheetVisible] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
   const [manualBarcode, setManualBarcode] = useState("");
-  const [copiedBarcode, setCopiedBarcode] = useState(false);
   const [batchesVisible, setBatchesVisible] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
   const scanInputRef = useRef<TextInput>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await pickerRepository.getOrder(String(id));
-    if (r.ok) {
-      setOrder(r.data);
+    try {
+      const cached = pickerAppApi.getCachedOrder(numOrderId);
+      const items = await pickerAppApi.getOrderItems(numOrderId);
+
+      if (cached) {
+        setOrder({ ...cached, items });
+      } else {
+        const assigned = await pickerAppApi.getAssignedOrders();
+        const found = assigned.find((o) => o.orderId === numOrderId);
+        if (found) {
+          setOrder({ ...found, items });
+        } else {
+          setOrder({
+            orderId: numOrderId,
+            orderNumber: `SO-${numOrderId}`,
+            orderStatus: "PICKING",
+            orderDate: new Date().toISOString(),
+            grandTotal: 0,
+            paymentMethod: "COD",
+            warehouseId: 3,
+            pickerId: null,
+            packerId: null,
+            packerAssignedAt: null,
+            totalItems: items.length,
+            totalItemsScanned: items.filter((i) => i.fullyScanned).length,
+            items,
+          });
+        }
+      }
       setError(null);
-    } else {
-      setError(r.apiError.message);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load order items.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [id]);
+  }, [numOrderId]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+    }, [load])
   );
 
-  const wh = getWarehouseDisplay(picker?.warehouseId);
+  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId);
 
   const displayLines = useMemo(() => {
-    if (!order) return [];
-    const copy = [...order.lines];
+    if (!order?.items) return [];
+    const copy = [...order.items];
     if (locationSorted) {
-      return copy.sort((a, b) => (a.locationCode || "").localeCompare(b.locationCode || ""));
+      return copy.sort((a, b) => (formatItemLocation(a) || "").localeCompare(formatItemLocation(b) || ""));
     }
-    return copy.sort((a, b) => a.lineNo - b.lineNo);
-  }, [order, locationSorted]);
+    return copy;
+  }, [order?.items, locationSorted]);
 
   const batchesMap = useMemo(() => {
-    const groups = new Map<string, OrderLine[]>();
+    const groups = new Map<string, FulfillmentOrderItemDto[]>();
     for (const line of displayLines) {
-      const parts = (line.locationCode || "ZONE-A").split("-");
-      const zoneKey = parts.length >= 3 ? parts.slice(0, 3).join("-") : line.locationCode || "ZONE-A";
+      const loc = formatItemLocation(line);
+      const parts = loc.split("-");
+      const zoneKey = parts.length >= 2 ? parts.slice(0, 2).join("-") : loc;
       const list = groups.get(zoneKey) ?? [];
       list.push(line);
       groups.set(zoneKey, list);
@@ -95,25 +124,9 @@ export function OrderDetailScreen() {
     return Array.from(groups.entries());
   }, [displayLines]);
 
-  async function ensureOrderStarted(currentOrder: Order): Promise<Order | null> {
-    if (currentOrder.status !== "ASSIGNED") return currentOrder;
-    const r = await pickerRepository.beginPicking(
-      String(currentOrder.id),
-      getDeviceId(),
-      newIdemKey(),
-      currentOrder.version,
-    );
-    if (!r.ok) {
-      setError(r.apiError.message);
-      return null;
-    }
-    setOrder(r.data);
-    return r.data;
-  }
-
-  function openScanForLine(targetLine?: OrderLine | null) {
+  function openScanForLine(targetLine?: FulfillmentOrderItemDto | null) {
     if (!order) return;
-    const lineToScan = targetLine ?? nextPendingLine(order) ?? order.lines[0] ?? null;
+    const lineToScan = targetLine ?? nextPendingLine(order) ?? order.items[0] ?? null;
     if (!lineToScan) return;
     setActiveScanLine(lineToScan);
     setManualBarcode("");
@@ -122,13 +135,6 @@ export function OrderDetailScreen() {
     setFeedback(null);
     setScanSheetVisible(true);
     setTimeout(() => scanInputRef.current?.focus(), 120);
-  }
-
-  async function handleCopyExpected(code: string) {
-    if (!code) return;
-    await Clipboard.setStringAsync(code);
-    setCopiedBarcode(true);
-    setTimeout(() => setCopiedBarcode(false), 1400);
   }
 
   async function handleScanSubmit(barcodeInput?: string) {
@@ -142,7 +148,7 @@ export function OrderDetailScreen() {
       scanInputRef.current?.clear();
       const msg = "Scan or enter the product barcode.";
       setError(msg);
-      alertWrongBarcode("", target.skuBarcode, msg);
+      alertWrongBarcode("", target.sku, msg);
       setTimeout(() => scanInputRef.current?.focus(), 80);
       return;
     }
@@ -151,99 +157,55 @@ export function OrderDetailScreen() {
     setError(null);
     setFeedback(null);
     try {
-      const activeOrder = await ensureOrderStarted(order);
-      if (!activeOrder) return;
+      const res = await pickerAppApi.scanOrderItem(order.orderId, code);
 
-      const currentLine =
-        activeOrder.lines.find((l) => l.id === target.id) ?? target;
-
-      const verified = await pickerRepository.validateSku(currentLine.id, code);
-      if (!verified.ok || code.toUpperCase() !== currentLine.skuBarcode.trim().toUpperCase()) {
+      if (res.success) {
+        beepSuccess();
         setManualBarcode("");
         scanInputRef.current?.clear();
-        const reason = !verified.ok
-          ? `${verified.apiError.error}: ${verified.apiError.message}`
-          : "Wrong item barcode. Scan the expected product.";
-        setError(`Wrong barcode "${code}" — ${reason}`);
-        alertWrongBarcode(
-          code,
-          currentLine.skuBarcode,
-          !verified.ok ? verified.apiError.message : reason,
-        );
-        setTimeout(() => scanInputRef.current?.focus(), 80);
-        return;
-      }
 
-      const picked = await pickerRepository.pickQuantity(
-        currentLine.id,
-        1,
-        currentLine.uom,
-        newIdemKey(),
-      );
-      if (!picked.ok) {
-        setManualBarcode("");
-        scanInputRef.current?.clear();
-        setError(`${picked.apiError.error}: ${picked.apiError.message}`);
-        alertWrongBarcode(code, currentLine.skuBarcode, picked.apiError.message);
-        setTimeout(() => scanInputRef.current?.focus(), 80);
-        return;
-      }
+        if (res.items) {
+          setOrder((prev) => (prev ? { ...prev, items: res.items!, totalItemsScanned: res.totalItemsPicked ?? prev.totalItemsScanned } : null));
+        }
 
-      beepSuccess();
-      setManualBarcode("");
-      scanInputRef.current?.clear();
+        setFeedback(res.message || "Item scanned successfully.");
 
-      // Update the completed line from the mutation response instead of making
-      // another GET request. This avoids extra network latency and stale-line reads.
-      const updatedOrder: Order = {
-        ...activeOrder,
-        lines: activeOrder.lines.map((l) =>
-          l.id === picked.data.id ? picked.data : l,
-        ),
-      };
-      setOrder(updatedOrder);
-
-      const updatedLine =
-        updatedOrder.lines.find((l) => l.id === currentLine.id) ?? picked.data;
-      setFeedback(
-        `Picked ${updatedLine.skuName} (${updatedLine.pickedQty}/${updatedLine.requiredQty})`,
-      );
-
-      if (updatedLine.pickedQty >= updatedLine.requiredQty) {
-        const nextLine = nextPendingLine(updatedOrder);
-        setActiveScanLine(nextLine);
-        setManualBarcode("");
-        if (!nextLine) {
+        if (res.orderFullyPicked) {
           setScanSheetVisible(false);
+          setCameraVisible(false);
+          router.push(`/pick/${order.orderId}/complete` as never);
+          return;
+        }
+
+        // Advance to next pending line if the current item is now fully picked
+        const updatedTarget = res.items?.find((i) => i.itemId === target.itemId);
+        if (updatedTarget && (updatedTarget.fullyScanned || (updatedTarget.pickedQty >= updatedTarget.orderedQty))) {
+          const nextLine = (res.items || []).find((i) => !i.fullyScanned && i.pickedQty < i.orderedQty) ?? null;
+          setActiveScanLine(nextLine);
+          if (!nextLine) {
+            setScanSheetVisible(false);
+          } else {
+            setTimeout(() => scanInputRef.current?.focus(), 80);
+          }
         } else {
+          setActiveScanLine(updatedTarget ?? target);
           setTimeout(() => scanInputRef.current?.focus(), 80);
         }
       } else {
-        setActiveScanLine(updatedLine);
+        // Soft failure returned from server
         setManualBarcode("");
+        scanInputRef.current?.clear();
+        setError(res.message);
+        alertWrongBarcode(code, target.sku, res.message);
         setTimeout(() => scanInputRef.current?.focus(), 80);
       }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleCompleteOrder() {
-    if (!order || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await pickerRepository.completeOrder(
-        String(order.id),
-        newIdemKey(),
-        order.version,
-      );
-      if (!r.ok) {
-        setError(`${r.apiError.error}: ${r.apiError.message}`);
-        return;
-      }
-      setOrder(r.data);
-      setFeedback("Order picking completed and moved to Ready for Packing!");
+    } catch (err: any) {
+      setManualBarcode("");
+      scanInputRef.current?.clear();
+      const msg = err?.message || "Scan error";
+      setError(msg);
+      alertWrongBarcode(code, target.sku, msg);
+      setTimeout(() => scanInputRef.current?.focus(), 80);
     } finally {
       setBusy(false);
     }
@@ -276,23 +238,13 @@ export function OrderDetailScreen() {
   }
 
   const prog = getOrderProgress(order);
-  const doneLines = order.lines.filter((l) =>
-    ["PICKED", "EXCEPTION", "SKIPPED"].includes(l.status),
-  ).length;
-  const pickedPartialOrFullLines = order.lines.filter(
-    (l) => l.pickedQty > 0 || l.status === "PICKED",
-  ).length;
-  const currentStep = resolvePickStep(order);
-  const allLinesResolved = order.lines.length > 0 && doneLines === order.lines.length;
+  const fullyPicked = isOrderFullyPicked(order);
   const nextLine = nextPendingLine(order);
-  const progressBarPct =
-    prog.totalUnits > 0
-      ? Math.min(100, Math.round((prog.pickedUnits / prog.totalUnits) * 100))
-      : prog.pct;
+  const progressBarPct = prog.pct;
 
   return (
     <SafeAreaView style={od.safe} edges={["top"]}>
-      {/* Custom Top Header: ← Picking Order   [||] Scan   ⋮ */}
+      {/* Top Header */}
       <View style={od.topBar}>
         <Pressable
           accessibilityRole="button"
@@ -304,7 +256,7 @@ export function OrderDetailScreen() {
         </Pressable>
 
         <Text style={od.topBarTitle} numberOfLines={1} maxFontSizeMultiplier={1.15}>
-          Picking Order
+          {order.orderNumber}
         </Text>
 
         <View style={od.topBarRight}>
@@ -321,15 +273,6 @@ export function OrderDetailScreen() {
             <Text style={od.topScanLabel} maxFontSizeMultiplier={1.1}>
               Scan
             </Text>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Order options"
-            onPress={() => setMenuVisible(true)}
-            style={({ pressed }) => [od.iconBtn, pressed && { opacity: 0.75 }]}
-          >
-            <Ionicons name="ellipsis-vertical" size={20} color="#0F172A" />
           </Pressable>
         </View>
       </View>
@@ -363,31 +306,21 @@ export function OrderDetailScreen() {
                 numberOfLines={1}
                 maxFontSizeMultiplier={1.15}
               >
-                {order.externalId}
+                {order.orderNumber}
               </Text>
-              <Text
-                style={od.summaryWhName}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.15}
-              >
-                {wh.name}
+              <Text style={od.summaryWhName} numberOfLines={1}>
+                {wh.name} • {order.paymentMethod}
               </Text>
-              <Text
-                style={od.summaryWhAddr}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.15}
-              >
-                {wh.shortAddress}
+              <Text style={od.summaryWhAddr} numberOfLines={1}>
+                Total: ₹{order.grandTotal.toFixed(2)}
               </Text>
             </View>
 
             <View style={od.itemsPickedBadge}>
-              <Text style={od.itemsPickedRatio} maxFontSizeMultiplier={1.1}>
-                {pickedPartialOrFullLines} / {prog.totalLines}
+              <Text style={od.itemsPickedRatio}>
+                {prog.pickedLines} / {prog.totalLines}
               </Text>
-              <Text style={od.itemsPickedLabel} maxFontSizeMultiplier={1.1}>
-                Items Picked
-              </Text>
+              <Text style={od.itemsPickedLabel}>Lines Picked</Text>
             </View>
           </View>
 
@@ -396,255 +329,135 @@ export function OrderDetailScreen() {
             <View style={od.progressTrack}>
               <View style={[od.progressFill, { width: `${progressBarPct}%` }]} />
             </View>
-            <Text style={od.progressPctText} maxFontSizeMultiplier={1.1}>
-              {progressBarPct}%
-            </Text>
+            <Text style={od.progressPctText}>{progressBarPct}%</Text>
           </View>
 
           {/* 4-Column Stat Strip */}
           <View style={od.statsStrip}>
             <View style={od.statCol}>
-              <Text style={od.statValue} maxFontSizeMultiplier={1.1}>
-                {prog.totalLines}
-              </Text>
-              <Text
-                style={od.statLabel}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                maxFontSizeMultiplier={1.1}
-              >
-                Total Items
-              </Text>
+              <Text style={od.statValue}>{prog.totalLines}</Text>
+              <Text style={od.statLabel}>Lines</Text>
             </View>
             <View style={od.statDivider} />
             <View style={od.statCol}>
-              <Text style={od.statValue} maxFontSizeMultiplier={1.1}>
-                {prog.totalUnits}
-              </Text>
-              <Text
-                style={od.statLabel}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                maxFontSizeMultiplier={1.1}
-              >
-                Total Qty
-              </Text>
+              <Text style={od.statValue}>{prog.totalUnits}</Text>
+              <Text style={od.statLabel}>Total Qty</Text>
             </View>
             <View style={od.statDivider} />
             <View style={od.statCol}>
-              <Text
-                style={[od.statValue, { color: "#16A34A" }]}
-                maxFontSizeMultiplier={1.1}
-              >
-                {pickedPartialOrFullLines}
-              </Text>
-              <Text
-                style={od.statLabel}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                maxFontSizeMultiplier={1.1}
-              >
-                Picked Items
-              </Text>
+              <Text style={[od.statValue, { color: "#16A34A" }]}>{prog.pickedUnits}</Text>
+              <Text style={od.statLabel}>Picked Qty</Text>
             </View>
             <View style={od.statDivider} />
             <View style={od.statCol}>
-              <Text style={od.statValue} maxFontSizeMultiplier={1.1}>
-                {prog.remainingUnits}
-              </Text>
-              <Text
-                style={od.statLabel}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                maxFontSizeMultiplier={1.1}
-              >
-                Remaining Qty
-              </Text>
+              <Text style={[od.statValue, { color: "#EA580C" }]}>{prog.remainingUnits}</Text>
+              <Text style={od.statLabel}>Remaining</Text>
             </View>
           </View>
         </View>
 
+        {/* Feedback / Error notifications */}
+        {feedback ? (
+          <View style={od.feedbackBanner}>
+            <SuccessFeedback message={feedback} />
+          </View>
+        ) : null}
         <ErrorBanner message={error} />
-        <SuccessFeedback message={feedback} />
 
-        {/* Pick Items Header Row */}
+        {/* Pick Items Header */}
         <View style={od.pickItemsHeaderRow}>
-          <Text style={od.pickItemsTitle} maxFontSizeMultiplier={1.15}>
-            Pick Items ({order.lines.length})
-          </Text>
-
+          <Text style={od.pickItemsTitle}>Pick Items ({order.items.length})</Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Toggle pick in location order"
             onPress={() => setLocationSorted((v) => !v)}
-            style={({ pressed }) => [
-              od.locationOrderPill,
-              locationSorted && od.locationOrderPillActive,
-              pressed && { opacity: 0.8 },
-            ]}
+            style={[od.locationOrderPill, locationSorted && od.locationOrderPillActive]}
           >
-            <Ionicons
-              name="list-outline"
-              size={15}
-              color={locationSorted ? "#0B65C6" : "#334155"}
-            />
-            <Text
-              style={[
-                od.locationOrderText,
-                locationSorted && { color: "#0B65C6" },
-              ]}
-              maxFontSizeMultiplier={1.1}
-            >
-              Pick in Location Order
+            <Ionicons name="list-outline" size={15} color={locationSorted ? "#0B65C6" : "#334155"} />
+            <Text style={[od.locationOrderText, locationSorted && { color: "#0B65C6" }]}>
+              Location Order
             </Text>
           </Pressable>
         </View>
 
         {/* Pick Items List */}
-        {displayLines.map((l, idx) => {
-          const isPickedOrPartial = l.pickedQty > 0 || l.status === "PICKED";
-          const isException = l.status === "EXCEPTION";
-          const imgFailed = failedImages[l.id] === true;
+        {displayLines.map((item, idx) => {
+          const isDone = item.fullyScanned || item.pickedQty >= item.orderedQty;
+          const loc = formatItemLocation(item);
 
           return (
             <Pressable
-              key={l.id}
+              key={item.itemId}
               accessibilityRole="button"
-              accessibilityLabel={`Line ${idx + 1}, ${l.skuName}, ${l.pickedQty} of ${l.requiredQty}`}
-              onPress={() => openScanForLine(l)}
+              onPress={() => openScanForLine(item)}
               style={({ pressed }) => [
                 od.itemCard,
-                isPickedOrPartial && od.itemCardPicked,
-                isException && od.itemCardException,
+                isDone && od.itemCardPicked,
                 pressed && { opacity: 0.92 },
               ]}
             >
-              {/* Step Number Pill */}
               <View style={od.stepNumPill}>
-                <Text style={od.stepNumText} maxFontSizeMultiplier={1.1}>
-                  {idx + 1}
-                </Text>
+                <Text style={od.stepNumText}>{idx + 1}</Text>
               </View>
 
-              {/* Product Image Thumbnail */}
               <View style={od.thumbBox}>
-                {l.productImageUrl && !imgFailed ? (
-                  <Image
-                    source={{ uri: l.productImageUrl }}
-                    style={od.thumbImage}
-                    resizeMode="contain"
-                    onError={() =>
-                      setFailedImages((prev) => ({ ...prev, [l.id]: true }))
-                    }
-                  />
-                ) : (
-                  <Ionicons name="cube-outline" size={26} color="#0284C7" />
-                )}
+                <Ionicons name="cube-outline" size={24} color={isDone ? "#16A34A" : "#0D6EFD"} />
               </View>
 
-              {/* Product Name, SKU & Location Pill */}
               <View style={od.itemCenter}>
-                <Text
-                  style={od.itemName}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  {l.skuName}
+                <Text style={od.itemName} numberOfLines={1}>
+                  {item.productName}
                 </Text>
-                <Text
-                  style={od.itemSku}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={1.15}
-                >
-                  SKU: {l.skuCode}
+                {item.variantLabel ? (
+                  <Text style={od.itemVariant} numberOfLines={1}>
+                    {item.variantLabel}
+                  </Text>
+                ) : null}
+                <Text style={od.itemSku} numberOfLines={1}>
+                  SKU: {item.sku}
                 </Text>
 
                 <View style={od.locPill}>
                   <Ionicons name="location-sharp" size={12} color="#D97706" />
-                  <Text
-                    style={od.locPillText}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={1.1}
-                  >
-                    {l.locationCode}
+                  <Text style={od.locPillText} numberOfLines={1}>
+                    {loc}
                   </Text>
                 </View>
               </View>
 
-              {/* Right Quantity + Picked/To Pick + Check Icon + Chevron */}
               <View style={od.itemRight}>
                 <View style={od.qtyTextCol}>
-                  <Text style={od.qtyRatioText} maxFontSizeMultiplier={1.1}>
-                    <Text style={od.qtyNumerator}>{l.pickedQty}</Text> / {l.requiredQty}
+                  <Text style={od.qtyRatioText}>
+                    <Text style={od.qtyNumerator}>{item.pickedQty}</Text> / {item.orderedQty}
                   </Text>
-                  <Text
-                    style={[
-                      od.qtyStatusLabel,
-                      isPickedOrPartial && { color: "#15803D", fontWeight: "600" },
-                    ]}
-                    maxFontSizeMultiplier={1.1}
-                  >
-                    {isException ? "Exception" : isPickedOrPartial ? "Picked" : "To Pick"}
+                  <Text style={[od.qtyStatusLabel, isDone && { color: "#16A34A" }]}>
+                    {isDone ? "Picked" : "To Pick"}
                   </Text>
                 </View>
 
-                {isPickedOrPartial ? (
+                {isDone ? (
                   <View style={od.checkCircleDone}>
                     <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                  </View>
-                ) : isException ? (
-                  <View style={[od.checkCircleDone, { backgroundColor: "#D97706" }]}>
-                    <Ionicons name="alert" size={13} color="#FFFFFF" />
                   </View>
                 ) : (
                   <View style={od.checkCircleEmpty} />
                 )}
-
-                <Ionicons name="chevron-forward" size={16} color="#475569" />
               </View>
             </Pressable>
           );
         })}
       </ScrollView>
 
-      {/* Sticky Bottom Action Bar: [ Scan Next Item ]  [ View Batches ] */}
-      <View
-        style={[
-          od.bottomBar,
-          { paddingBottom: Math.max(insets.bottom, 12) },
-        ]}
-      >
-        {order.status === "COMPLETED" ? (
+      {/* Floating Bottom Bar: SCAN NEXT ITEM or ASSIGN PACKER */}
+      <View style={[od.floatingBottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        {fullyPicked ? (
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.replace("/orders" as never)}
-            style={({ pressed }) => [
-              od.scanNextBtn,
-              { backgroundColor: "#16A34A" },
-              pressed && { opacity: 0.9 },
-            ]}
+            accessibilityLabel="Assign Packer"
+            onPress={() => router.push(`/pick/${order.orderId}/complete` as never)}
+            style={({ pressed }) => [od.assignPackerBtn, pressed && { opacity: 0.9 }]}
           >
-            <Ionicons name="checkmark-done-circle" size={22} color="#FFFFFF" />
-            <Text style={od.scanNextBtnText} maxFontSizeMultiplier={1.1}>
-              Back to Orders
-            </Text>
-          </Pressable>
-        ) : allLinesResolved || currentStep === "complete" ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={busy}
-            onPress={() => void handleCompleteOrder()}
-            style={({ pressed }) => [
-              od.scanNextBtn,
-              { backgroundColor: "#16A34A" },
-              busy && { opacity: 0.6 },
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
-            <Text style={od.scanNextBtnText} maxFontSizeMultiplier={1.1}>
-              {busy ? "Completing…" : "Complete Picking"}
-            </Text>
+            <Ionicons name="paper-plane" size={20} color="#FFFFFF" />
+            <Text style={od.assignPackerBtnText}>Assign Packer & Hand Off</Text>
           </Pressable>
         ) : (
           <Pressable
@@ -659,9 +472,7 @@ export function OrderDetailScreen() {
             ]}
           >
             <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
-            <Text style={od.scanNextBtnText} maxFontSizeMultiplier={1.1}>
-              Scan Next Item
-            </Text>
+            <Text style={od.scanNextBtnText}>Scan Next Item</Text>
           </Pressable>
         )}
 
@@ -672,273 +483,117 @@ export function OrderDetailScreen() {
           style={({ pressed }) => [od.viewBatchesBtn, pressed && { opacity: 0.8 }]}
         >
           <Ionicons name="list-outline" size={20} color="#0F172A" />
-          <Text style={od.viewBatchesText} maxFontSizeMultiplier={1.1}>
-            View Batches
-          </Text>
+          <Text style={od.viewBatchesText}>Zones</Text>
         </Pressable>
       </View>
 
-      {/* Mount the scan sheet only while there is a pending product to pick. */}
-      {scanSheetVisible && nextLine ? (
-      <Modal
-        visible={scanSheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setScanSheetVisible(false)}
-      >
-        <View style={od.modalBackdrop}>
-          <View style={od.scanModalCard}>
-            <View style={od.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={od.modalTitle}>
-                  {activeScanLine ? activeScanLine.skuName : "Scan Product"}
-                </Text>
-                <Text style={od.modalSub}>
-                  {activeScanLine
-                    ? `Location: ${activeScanLine.locationCode}  •  Picked: ${activeScanLine.pickedQty}/${activeScanLine.requiredQty}`
-                    : "Scan item barcode to pick 1 unit"}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setScanSheetVisible(false)}
-                hitSlop={10}
-                style={od.closeCircle}
-              >
-                <Ionicons name="close" size={20} color="#334155" />
-              </Pressable>
-            </View>
-
-            {activeScanLine ? (
-              <>
-                <View style={od.expectedBarcodeBox}>
-                  <View style={od.expectedHeaderRow}>
-                    <Text style={od.expectedLabel}>EXPECTED PRODUCT BARCODE</Text>
-                    <Pressable
-                      onPress={() => void handleCopyExpected(activeScanLine.skuBarcode)}
-                      style={od.copyChip}
-                    >
-                      <Ionicons
-                        name={copiedBarcode ? "checkmark" : "copy-outline"}
-                        size={13}
-                        color={copiedBarcode ? "#15803D" : "#0B65C6"}
-                      />
-                      <Text
-                        style={[
-                          od.copyChipText,
-                          copiedBarcode && { color: "#15803D" },
-                        ]}
-                      >
-                        {copiedBarcode ? "Copied" : "Copy"}
-                      </Text>
-                    </Pressable>
-                  </View>
-                  <Text selectable style={od.expectedBarcodeValue}>
-                    {activeScanLine.skuBarcode}
+      {/* Scan Modal Sheet */}
+      {scanSheetVisible && activeScanLine ? (
+        <Modal
+          visible={scanSheetVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setScanSheetVisible(false)}
+        >
+          <View style={od.modalBackdrop}>
+            <View style={od.scanModalCard}>
+              <View style={od.modalHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={od.modalTitle}>{activeScanLine.productName}</Text>
+                  <Text style={od.modalSub}>
+                    Location: {formatItemLocation(activeScanLine)} • Picked: {activeScanLine.pickedQty}/{activeScanLine.orderedQty}
                   </Text>
                 </View>
+                <Pressable onPress={() => setScanSheetVisible(false)} hitSlop={10} style={od.closeCircle}>
+                  <Ionicons name="close" size={20} color="#334155" />
+                </Pressable>
+              </View>
 
-                <View style={od.scanInputRow}>
-                  <View style={od.scanInputWrap}>
-                    <TextInput
-                      ref={scanInputRef}
-                      value={manualBarcode}
-                      onChangeText={(txt) => {
-                        setManualBarcode(txt);
-                        if (error) setError(null);
-                      }}
-                      placeholder="Scan or type product barcode…"
-                      placeholderTextColor="#94A3B8"
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      blurOnSubmit={false}
-                      style={od.scanInput}
-                      returnKeyType="done"
-                      onSubmitEditing={() => void handleScanSubmit()}
-                    />
-                    {manualBarcode.length > 0 ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Clear barcode"
-                        onPress={() => {
-                          scanInputRef.current?.clear();
-                          setManualBarcode("");
-                          scanInputRef.current?.focus();
-                        }}
-                        hitSlop={8}
-                        style={od.clearInputBtn}
-                      >
-                        <Ionicons name="close-circle" size={18} color="#94A3B8" />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Open camera scanner"
-                    onPress={() => setCameraVisible(true)}
-                    style={od.cameraSquareBtn}
-                  >
-                    <Ionicons name="camera-outline" size={20} color="#FFFFFF" />
-                  </Pressable>
+              <View style={od.scanInputRow}>
+                <View style={od.scanInputWrap}>
+                  <TextInput
+                    ref={scanInputRef}
+                    value={manualBarcode}
+                    onChangeText={(txt) => {
+                      setManualBarcode(txt);
+                      if (error) setError(null);
+                    }}
+                    placeholder="Scan product barcode (or type EAN/SKU)..."
+                    placeholderTextColor="#94A3B8"
+                    style={od.scanTextInput}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="go"
+                    onSubmitEditing={() => void handleScanSubmit()}
+                  />
+                  {manualBarcode.length > 0 ? (
+                    <Pressable onPress={() => setManualBarcode("")} hitSlop={8} style={od.clearInputBtn}>
+                      <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                    </Pressable>
+                  ) : null}
                 </View>
 
-                <ErrorBanner message={error} />
-                <SuccessFeedback message={feedback} />
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setCameraVisible(true)}
+                  style={({ pressed }) => [od.cameraLaunchBtn, pressed && { opacity: 0.85 }]}
+                >
+                  <Ionicons name="camera-outline" size={20} color="#FFFFFF" />
+                </Pressable>
 
-                <View style={od.modalActionRow}>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={busy}
-                    onPress={() => void handleScanSubmit()}
-                    style={({ pressed }) => [
-                      od.confirmPickBtn,
-                      busy && { opacity: 0.6 },
-                      pressed && { opacity: 0.88 },
-                    ]}
-                  >
-                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                    <Text style={od.confirmPickBtnText}>
-                      {busy
-                        ? "Verifying & Picking…"
-                        : `Verify & Pick 1 Unit (${activeScanLine.pickedQty}/${activeScanLine.requiredQty})`}
-                    </Text>
-                  </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={busy}
+                  onPress={() => void handleScanSubmit()}
+                  style={({ pressed }) => [od.pickUnitBtn, busy && { opacity: 0.6 }, pressed && { opacity: 0.85 }]}
+                >
+                  <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+                </Pressable>
+              </View>
 
-                  <View style={od.secondaryActionsRow}>
-                    <Pressable
-                      onPress={() => {
-                        setScanSheetVisible(false);
-                        router.push({
-                          pathname: "/pick/[orderId]/exception",
-                          params: { orderId: order.id, lineId: activeScanLine.id },
-                        } as never);
-                      }}
-                      style={od.exceptionLinkBtn}
-                    >
-                      <Ionicons name="warning-outline" size={15} color="#DC2626" />
-                      <Text style={od.exceptionLinkText}>Report Exception</Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => {
-                        setScanSheetVisible(false);
-                        router.replace(pickStepPath(order.id, order) as never);
-                      }}
-                      style={od.fullScreenLinkBtn}
-                    >
-                      <Ionicons name="expand-outline" size={15} color="#0B65C6" />
-                      <Text style={od.fullScreenLinkText}>Full Item View</Text>
-                    </Pressable>
-                  </View>
+              {error ? (
+                <View style={od.modalErrorBanner}>
+                  <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                  <Text style={od.modalErrorText}>{error}</Text>
                 </View>
-              </>
-            ) : null}
+              ) : null}
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
       ) : null}
 
-      {/* View Batches Modal */}
-      <Modal
-        visible={batchesVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setBatchesVisible(false)}
-      >
+      {/* Batches / Zones Modal */}
+      <Modal visible={batchesVisible} transparent animationType="fade" onRequestClose={() => setBatchesVisible(false)}>
         <View style={od.modalBackdrop}>
-          <View style={od.scanModalCard}>
+          <View style={od.batchesModalCard}>
             <View style={od.modalHeader}>
-              <View>
-                <Text style={od.modalTitle}>Order Batches & Zones</Text>
-                <Text style={od.modalSub}>
-                  {batchesMap.length} zone batch(es) across {order.lines.length} items
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setBatchesVisible(false)}
-                style={od.closeCircle}
-              >
+              <Text style={od.modalTitle}>Warehouse Zones</Text>
+              <Pressable onPress={() => setBatchesVisible(false)} hitSlop={10} style={od.closeCircle}>
                 <Ionicons name="close" size={20} color="#334155" />
               </Pressable>
             </View>
 
-            {batchesMap.map(([zone, lines], bIdx) => {
-              const pickedInBatch = lines.filter(
-                (l) => l.pickedQty >= l.requiredQty || l.status === "PICKED",
-              ).length;
-              return (
-                <View key={zone} style={od.batchRow}>
-                  <View style={od.batchBadge}>
-                    <Text style={od.batchBadgeText}>B{bIdx + 1}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={od.batchZoneTitle}>Zone {zone}</Text>
-                    <Text style={od.batchZoneSub}>
-                      {lines.map((l) => l.skuName).join(", ")}
-                    </Text>
-                  </View>
-                  <Text style={od.batchProgressText}>
-                    {pickedInBatch}/{lines.length} picked
-                  </Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {batchesMap.map(([zone, items]) => (
+                <View key={zone} style={od.zoneRow}>
+                  <Text style={od.zoneName}>{zone}</Text>
+                  <Text style={od.zoneCount}>{items.length} items</Text>
                 </View>
-              );
-            })}
+              ))}
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* Options Menu Modal */}
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <Pressable
-          style={od.modalBackdrop}
-          onPress={() => setMenuVisible(false)}
-        >
-          <View style={od.scanModalCard}>
-            <Text style={od.modalTitle}>Order Actions</Text>
-            <Pressable
-              style={od.menuActionRow}
-              onPress={() => {
-                setMenuVisible(false);
-                void load();
-              }}
-            >
-              <Ionicons name="refresh-outline" size={20} color="#0F172A" />
-              <Text style={od.menuActionText}>Refresh Order State</Text>
-            </Pressable>
-            {nextLine ? (
-              <Pressable
-                style={od.menuActionRow}
-                onPress={() => {
-                  setMenuVisible(false);
-                  router.push({
-                    pathname: "/pick/[orderId]/exception",
-                    params: { orderId: order.id, lineId: nextLine.id },
-                  } as never);
-                }}
-              >
-                <Ionicons name="warning-outline" size={20} color="#DC2626" />
-                <Text style={[od.menuActionText, { color: "#DC2626" }]}>
-                  Report Exception on Current Line
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </Pressable>
-      </Modal>
-
+      {/* Continuous Camera Scanner Modal */}
       <BarcodeScannerModal
         visible={cameraVisible}
-        title="Scan product barcode"
-        onScanned={(value) => {
-          setCameraVisible(false);
-          setManualBarcode(value);
-          void handleScanSubmit(value);
-        }}
         onClose={() => setCameraVisible(false)}
+        continuous
+        onScanned={(code) => {
+          setManualBarcode(code);
+          void handleScanSubmit(code);
+        }}
       />
     </SafeAreaView>
   );
@@ -950,27 +605,29 @@ const od = StyleSheet.create({
     backgroundColor: "#F5F7FB",
   },
   topBar: {
-    width: "100%",
+    height: 52,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: "#F5F7FB",
+    paddingHorizontal: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
   iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
   topBarTitle: {
-    flex: 1,
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: "800",
     color: "#0F172A",
-    marginLeft: 6,
+    flex: 1,
+    textAlign: "center",
+    marginHorizontal: 8,
   },
   topBarRight: {
     flexDirection: "row",
@@ -978,301 +635,258 @@ const od = StyleSheet.create({
     gap: 4,
   },
   topScanBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 4,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "#F1F5F9",
   },
   topScanLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
     color: "#0F172A",
-    marginTop: 1,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 14,
-    paddingTop: 4,
+    paddingTop: 12,
   },
   summaryCard: {
-    width: "100%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 20,
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    padding: 12,
-    marginBottom: 14,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    marginBottom: 12,
   },
   summaryHeaderBox: {
-    width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F4F8FF",
-    borderRadius: 14,
-    padding: 12,
+    marginBottom: 12,
   },
   orangeCubeCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#FFEDD5",
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
+    marginRight: 10,
   },
   summaryOrderCopy: {
     flex: 1,
-    marginHorizontal: 10,
   },
   summaryOrderId: {
-    fontSize: 18,
-    fontWeight: "900",
+    fontSize: 16,
+    fontWeight: "800",
     color: "#0F172A",
   },
   summaryWhName: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#1E293B",
-    marginTop: 2,
+    fontSize: 12,
+    color: "#475569",
+    marginTop: 1,
   },
   summaryWhAddr: {
     fontSize: 11,
     color: "#64748B",
-    marginTop: 1,
   },
   itemsPickedBadge: {
-    backgroundColor: "#DFEEFF",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
     alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
   },
   itemsPickedRatio: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: "#0F172A",
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1D4ED8",
   },
   itemsPickedLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#475569",
-    marginTop: 2,
+    fontSize: 9,
+    color: "#3B82F6",
+    fontWeight: "700",
   },
   progressRow: {
-    width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginTop: 12,
+    gap: 8,
     marginBottom: 12,
-    paddingHorizontal: 4,
   },
   progressTrack: {
     flex: 1,
     height: 8,
-    borderRadius: 4,
     backgroundColor: "#E2E8F0",
+    borderRadius: 4,
     overflow: "hidden",
   },
   progressFill: {
-    height: 8,
+    height: "100%",
+    backgroundColor: "#0D6EFD",
     borderRadius: 4,
-    backgroundColor: "#1D76DB",
   },
   progressPctText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
-    color: "#1D76DB",
-    minWidth: 34,
-    textAlign: "right",
+    color: "#0D6EFD",
   },
   statsStrip: {
-    width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: "#F1F5F9",
   },
   statCol: {
     flex: 1,
     alignItems: "center",
-    paddingHorizontal: 2,
   },
   statValue: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "900",
     color: "#0F172A",
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#64748B",
-    fontWeight: "500",
-    marginTop: 2,
-    textAlign: "center",
+    marginTop: 1,
   },
   statDivider: {
     width: 1,
-    height: 28,
+    height: 24,
     backgroundColor: "#E2E8F0",
   },
-  pickItemsHeaderRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  feedbackBanner: {
     marginBottom: 10,
-    marginTop: 2,
+  },
+  pickItemsHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
   },
   pickItemsTitle: {
-    fontSize: 18,
-    fontWeight: "900",
+    fontSize: 16,
+    fontWeight: "800",
     color: "#0F172A",
   },
   locationOrderPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     backgroundColor: "#FFFFFF",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: 10,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    flexShrink: 0,
+    borderColor: "#E2E8F0",
   },
   locationOrderPillActive: {
-    borderColor: "#93C5FD",
-    backgroundColor: "#F8FAFC",
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
   },
   locationOrderText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#1E293B",
+    color: "#475569",
   },
   itemCard: {
-    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    padding: 10,
-    marginBottom: 10,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
   },
   itemCardPicked: {
-    backgroundColor: "#F3FBF6",
-    borderColor: "#86EFAC",
-    borderWidth: 1.5,
-  },
-  itemCardException: {
-    backgroundColor: "#FFFBEB",
-    borderColor: "#FCD34D",
-    borderWidth: 1.5,
+    backgroundColor: "#F0FDF4",
+    borderColor: "#BBF7D0",
   },
   stepNumPill: {
-    width: 26,
-    minHeight: 60,
-    borderRadius: 8,
-    backgroundColor: "#E0F2FE",
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
     marginRight: 8,
   },
   stepNumText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "800",
-    color: "#0369A1",
+    color: "#475569",
   },
   thumbBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
-    flexShrink: 0,
-  },
-  thumbImage: {
-    width: "90%",
-    height: "90%",
+    marginRight: 10,
   },
   itemCenter: {
     flex: 1,
-    marginHorizontal: 9,
+    marginRight: 8,
   },
   itemName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
     color: "#0F172A",
   },
+  itemVariant: {
+    fontSize: 11,
+    color: "#475569",
+    marginTop: 1,
+  },
   itemSku: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#64748B",
-    marginTop: 2,
+    marginTop: 1,
   },
   locPill: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    maxWidth: "100%",
-    gap: 4,
+    gap: 3,
     backgroundColor: "#FEF3C7",
-    borderWidth: 1,
-    borderColor: "#FDE68A",
-    borderRadius: 7,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    marginTop: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: "flex-start",
+    marginTop: 4,
   },
   locPillText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#92400E",
-    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#B45309",
   },
   itemRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    flexShrink: 0,
+    gap: 8,
   },
   qtyTextCol: {
     alignItems: "flex-end",
   },
   qtyRatioText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "700",
-    color: "#64748B",
+    color: "#475569",
   },
   qtyNumerator: {
-    fontWeight: "900",
     color: "#0F172A",
+    fontWeight: "800",
   },
   qtyStatusLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#64748B",
-    marginTop: 2,
+    marginTop: 1,
   },
   checkCircleDone: {
     width: 22,
@@ -1288,80 +902,93 @@ const od = StyleSheet.create({
     borderRadius: 11,
     borderWidth: 1.5,
     borderColor: "#CBD5E1",
-    backgroundColor: "#FFFFFF",
   },
-  bottomBar: {
+  floatingBottomBar: {
     position: "absolute",
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
     backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    flexDirection: "row",
+    gap: 8,
     paddingHorizontal: 14,
     paddingTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    shadowColor: "#0F172A",
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: -3 },
-    elevation: 6,
+    elevation: 8,
   },
   scanNextBtn: {
     flex: 1,
-    minHeight: 54,
-    borderRadius: 14,
-    backgroundColor: "#0B65C6",
+    height: 48,
+    backgroundColor: "#0D6EFD",
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
   },
   scanNextBtnText: {
-    flexShrink: 1,
-    minWidth: 0,
-    color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
-    textAlign: "center",
-    includeFontPadding: false,
+    color: "#FFFFFF",
   },
-  viewBatchesBtn: {
-    minHeight: 54,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
+  assignPackerBtn: {
+    flex: 1,
+    height: 48,
+    backgroundColor: "#16A34A",
+    borderRadius: 12,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
-    flexShrink: 0,
+    gap: 8,
+  },
+  assignPackerBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  viewBatchesBtn: {
+    width: 80,
+    height: 48,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
   viewBatchesText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "700",
     color: "#0F172A",
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.48)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
   scanModalCard: {
     backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    padding: 18,
-    gap: 12,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  batchesModalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    margin: 20,
+    padding: 20,
+    maxHeight: 400,
   },
   modalHeader: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    alignItems: "flex-start",
+    marginBottom: 14,
   },
   modalTitle: {
     fontSize: 17,
@@ -1374,182 +1001,82 @@ const od = StyleSheet.create({
     marginTop: 2,
   },
   closeCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
   },
-  expectedBarcodeBox: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 12,
-    padding: 12,
-  },
-  expectedHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  expectedLabel: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#64748B",
-    letterSpacing: 0.5,
-  },
-  copyChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#E0F2FE",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  copyChipText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#0B65C6",
-  },
-  expectedBarcodeValue: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#0F172A",
-    letterSpacing: 1,
-    marginTop: 4,
-  },
   scanInputRow: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 8,
+    alignItems: "center",
   },
   scanInputWrap: {
     flex: 1,
-    minHeight: 46,
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
     borderColor: "#CBD5E1",
     borderRadius: 12,
-    paddingLeft: 12,
-    paddingRight: 8,
-    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    height: 48,
   },
-  scanInput: {
+  scanTextInput: {
     flex: 1,
-    minHeight: 44,
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 14,
     color: "#0F172A",
   },
   clearInputBtn: {
-    padding: 4,
-    alignItems: "center",
-    justifyContent: "center",
+    marginLeft: 4,
   },
-  cameraSquareBtn: {
-    width: 46,
-    height: 46,
+  cameraLaunchBtn: {
+    width: 48,
+    height: 48,
     borderRadius: 12,
-    backgroundColor: "#0B65C6",
+    backgroundColor: "#334155",
     alignItems: "center",
     justifyContent: "center",
   },
-  modalActionRow: {
-    gap: 10,
-    marginTop: 4,
-  },
-  confirmPickBtn: {
-    minHeight: 50,
+  pickUnitBtn: {
+    width: 48,
+    height: 48,
     borderRadius: 12,
     backgroundColor: "#16A34A",
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
-  confirmPickBtnText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  secondaryActionsRow: {
+  modalErrorBanner: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 4,
+    gap: 6,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 10,
   },
-  exceptionLinkBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingVertical: 6,
-  },
-  exceptionLinkText: {
-    fontSize: 13,
-    fontWeight: "700",
+  modalErrorText: {
+    flex: 1,
+    fontSize: 12,
     color: "#DC2626",
+    fontWeight: "600",
   },
-  fullScreenLinkBtn: {
+  zoneRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingVertical: 6,
-  },
-  fullScreenLinkText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0B65C6",
-  },
-  batchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    justifyContent: "space-between",
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
   },
-  batchBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#E0F2FE",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  batchBadgeText: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#0369A1",
-  },
-  batchZoneTitle: {
+  zoneName: {
     fontSize: 14,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  batchZoneSub: {
-    fontSize: 12,
-    color: "#64748B",
-    marginTop: 1,
-  },
-  batchProgressText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#1565C0",
-  },
-  menuActionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
-  menuActionText: {
-    fontSize: 15,
     fontWeight: "700",
     color: "#0F172A",
+  },
+  zoneCount: {
+    fontSize: 13,
+    color: "#64748B",
   },
 });

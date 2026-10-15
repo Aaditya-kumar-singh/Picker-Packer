@@ -1,124 +1,272 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "@/api/supabase";
-import { hydrateDeviceId } from "@/repositories/deviceId";
-import { pickerRepository } from "@/repositories/pickerRepository";
-import type { PickerProfile } from "@/types";
+import {
+  getStoredToken,
+  getStoredRole,
+  onUnauthorized,
+  setStoredToken,
+  setStoredRole,
+  clearStoredAuth,
+} from "@/api/http";
+import * as authApi from "@/api/authApi";
+import { pickerAppApi } from "@/api/pickerAppApi";
+import { packerAppApi } from "@/api/packerAppApi";
+import type { FulfillmentStaffProfileDto, UserRole } from "@/types";
+
+export interface UserSessionProfile {
+  id: number;
+  staffId: number;
+  pickerCode: string;
+  name: string;
+  role: UserRole;
+  phone: string;
+  email: string | null;
+  warehouseId?: number | string;
+  warehouseName?: string;
+  profile: FulfillmentStaffProfileDto;
+}
 
 interface AuthState {
-  picker: PickerProfile | null;
+  picker: UserSessionProfile | null;
   loading: boolean;
   ready: boolean;
   error: string | null;
-  requestOtp: (pickerId: string) => Promise<{ expiresIn: number; masked: string } | null>;
-  verifyOtp: (pickerId: string, otp: string) => Promise<boolean>;
+  loginWithPassword: (identifier: string, password: string, rememberMe?: boolean) => Promise<boolean>;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<boolean>;
+  requestOtp: (identifier: string) => Promise<{ expiresIn: number; masked: string } | null>;
+  verifyOtp: (identifier: string, otp: string) => Promise<boolean>;
+  refreshProfile: () => Promise<void>;
+  updateProfile: (patch: Partial<FulfillmentStaffProfileDto>) => Promise<boolean>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
 const AuthCtx = createContext<AuthState | null>(null);
 const REMEMBER_ME_KEY = "ybm.auth.remember-me";
 
-async function loadProfile(userId: string): Promise<PickerProfile> {
-  const { data, error } = await supabase.from("users").select("*").eq("id", userId).single();
-  if (error || !data) throw new Error("User profile not found in database.");
-  return {
-    id: data.id,
-    pickerCode: data.email,
-    name: data.name,
-    role: data.role,
-    warehouseId: data.warehouse_id,
-    warehouseName: data.warehouse_id,
-  };
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [picker, setPicker] = useState<PickerProfile | null>(null);
+  const [picker, setPicker] = useState<UserSessionProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchProfileForRole = useCallback(async (role: UserRole): Promise<UserSessionProfile> => {
+    const profile = role === "PACKER"
+      ? await packerAppApi.getProfile()
+      : await pickerAppApi.getProfile();
+
+    return {
+      id: profile.staffId,
+      staffId: profile.staffId,
+      pickerCode: profile.phone || String(profile.staffId),
+      name: profile.name,
+      role,
+      phone: profile.phone,
+      email: profile.email,
+      warehouseId: (profile as any).warehouseId ?? 3,
+      warehouseName: profile.address || undefined,
+      profile,
+    };
+  }, []);
+
   useEffect(() => {
     let mounted = true;
-    const restore = async () => {
+
+    const restoreSession = async () => {
       try {
-        await hydrateDeviceId();
         const rememberMe = (await AsyncStorage.getItem(REMEMBER_ME_KEY)) !== "false";
-        const { data } = await supabase.auth.getSession();
-        if (!rememberMe && data.session) {
-          await supabase.auth.signOut();
-        } else if (data.session && mounted) {
-          setPicker(await loadProfile(data.session.user.id));
+        const token = await getStoredToken();
+        const role = await getStoredRole();
+
+        if (!rememberMe || !token || !role) {
+          if (mounted) setReady(true);
+          return;
         }
-      } catch (e) {
-        if (mounted) setError(e instanceof Error ? e.message : "Session restore failed");
+
+        const userProfile = await fetchProfileForRole(role);
+        if (mounted) {
+          setPicker(userProfile);
+        }
+      } catch (err: any) {
+        if (mounted) {
+          // If profile fetch failed or token is invalid, clear stored auth
+          await clearStoredAuth();
+          setPicker(null);
+        }
       } finally {
         if (mounted) setReady(true);
       }
     };
-    void restore();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // getSession() above already restores INITIAL_SESSION. Avoid loading the
-      // same profile a second time when Supabase emits that event.
-      if (event === "INITIAL_SESSION") return;
-      if (!mounted) return;
-      if (!session) {
+    void restoreSession();
+
+    // Auto-logout listener on 401 Unauthorized
+    const unregister = onUnauthorized(() => {
+      pickerAppApi.clearSession();
+      packerAppApi.clearSession();
+      if (mounted) {
         setPicker(null);
-        return;
-      }
-      try {
-        setPicker(await loadProfile(session.user.id));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Profile load failed");
+        router.replace("/login" as never);
       }
     });
+
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
+      unregister();
     };
-  }, []);
+  }, [fetchProfileForRole]);
 
-  const requestOtp = useCallback(async (_pickerId: string) => {
-    setError("OTP login has been replaced by Supabase email/password authentication.");
-    return null;
-  }, []);
+  const loginWithPassword = useCallback(
+    async (identifier: string, password: string, rememberMe = true): Promise<boolean> => {
+      setLoading(true);
+      setError(null);
+      try {
+        await AsyncStorage.setItem(REMEMBER_ME_KEY, rememberMe ? "true" : "false");
+        const session = await authApi.loginWithPassword({ identifier, password });
+        const userProfile = await fetchProfileForRole(session.role);
+        setPicker(userProfile);
+        return true;
+      } catch (e: any) {
+        const msg = e?.message || "Login failed. Please verify your credentials.";
+        setError(msg);
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchProfileForRole]
+  );
 
-  const verifyOtp = useCallback(async (_pickerId: string, _otp: string) => {
-    setError("OTP login has been replaced by Supabase email/password authentication.");
-    return false;
-  }, []);
-
-  const loginWithEmail = useCallback(async (email: string, password: string, rememberMe = true) => {
+  const requestOtp = useCallback(async (identifier: string) => {
     setLoading(true);
     setError(null);
     try {
-      await AsyncStorage.setItem(REMEMBER_ME_KEY, rememberMe ? "true" : "false");
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError || !data.user) throw new Error(authError?.message || "Login failed");
-      setPicker(await loadProfile(data.user.id));
-      return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Login failed");
-      return false;
+      await authApi.requestOtp({ identifier });
+      return { expiresIn: 300, masked: identifier };
+    } catch (e: any) {
+      setError(e?.message || "Failed to send OTP.");
+      return null;
     } finally {
       setLoading(false);
     }
   }, []);
 
+  const verifyOtp = useCallback(
+    async (identifier: string, otp: string): Promise<boolean> => {
+      setLoading(true);
+      setError(null);
+      try {
+        const session = await authApi.loginWithOtp({ identifier, otp });
+        const userProfile = await fetchProfileForRole(session.role);
+        setPicker(userProfile);
+        return true;
+      } catch (e: any) {
+        setError(e?.message || "Invalid OTP entered.");
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchProfileForRole]
+  );
+
+  const refreshProfile = useCallback(async () => {
+    if (!picker) return;
+    try {
+      const updated = await fetchProfileForRole(picker.role);
+      setPicker(updated);
+    } catch {}
+  }, [picker, fetchProfileForRole]);
+
+  const updateProfile = useCallback(
+    async (patch: Partial<FulfillmentStaffProfileDto>): Promise<boolean> => {
+      if (!picker) return false;
+      setLoading(true);
+      try {
+        const updated = picker.role === "PACKER"
+          ? await packerAppApi.updateProfile(patch)
+          : await pickerAppApi.updateProfile(patch);
+
+        setPicker((prev) => (prev ? { ...prev, name: updated.name, phone: updated.phone, email: updated.email, profile: updated } : null));
+        return true;
+      } catch (e: any) {
+        setError(e?.message || "Failed to update profile.");
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [picker]
+  );
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string): Promise<boolean> => {
+      if (!picker) return false;
+      setLoading(true);
+      try {
+        if (picker.role === "PACKER") {
+          await packerAppApi.changePassword({ currentPassword, newPassword });
+        } else {
+          await pickerAppApi.changePassword({ currentPassword, newPassword });
+        }
+        return true;
+      } catch (e: any) {
+        setError(e?.message || "Failed to change password.");
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [picker]
+  );
+
   const logout = useCallback(async () => {
-    await supabase.auth.signOut();
-    await pickerRepository.logout();
+    await authApi.logout();
+    pickerAppApi.clearSession();
+    packerAppApi.clearSession();
     setPicker(null);
     router.replace("/login" as never);
   }, []);
 
   const value = useMemo(
-    () => ({ picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout }),
-    [picker, loading, ready, error, requestOtp, verifyOtp, loginWithEmail, logout],
+    () => ({
+      picker,
+      loading,
+      ready,
+      error,
+      loginWithPassword,
+      loginWithEmail: loginWithPassword,
+      requestOtp,
+      verifyOtp,
+      refreshProfile,
+      updateProfile,
+      changePassword,
+      logout,
+    }),
+    [
+      picker,
+      loading,
+      ready,
+      error,
+      loginWithPassword,
+      requestOtp,
+      verifyOtp,
+      refreshProfile,
+      updateProfile,
+      changePassword,
+      logout,
+    ]
   );
+
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 

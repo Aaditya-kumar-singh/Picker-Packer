@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Stack, router, useSegments } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/navigation/AppProvider";
-import { SyncProvider } from "@/sync/SyncContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 import { theme } from "@/theme";
 
 function RouteGuard() {
@@ -52,7 +52,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <SyncProvider>
+        <NotificationProvider>
           <RouteGuard />
           <Stack
             screenOptions={{
@@ -69,15 +69,12 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
             <Stack.Screen name="order/[id]" options={{ title: "Picking Order", headerShown: false }} />
-            <Stack.Screen name="pick/[orderId]/location" options={{ title: "Location Scan", headerShown: false }} />
             <Stack.Screen name="pick/[orderId]/sku" options={{ title: "SKU Scan", headerShown: false }} />
-            <Stack.Screen name="pick/[orderId]/quantity" options={{ title: "Quantity", headerShown: false }} />
-            <Stack.Screen name="pick/[orderId]/exception" options={{ title: "Exception" }} />
-            <Stack.Screen name="pick/[orderId]/complete" options={{ title: "Completion" }} />
+            <Stack.Screen name="pick/[orderId]/complete" options={{ title: "Assign Packer" }} />
 
             <Stack.Screen name="pack/order/[id]" options={{ title: "Packing Order", headerShown: false }} />
           </Stack>
-        </SyncProvider>
+        </NotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

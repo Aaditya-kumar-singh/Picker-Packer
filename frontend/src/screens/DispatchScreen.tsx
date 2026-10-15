@@ -13,25 +13,29 @@ import {
   StatusBadge,
   theme,
 } from "@/components/ui";
-import { newIdemKey } from "@/repositories/pickerRepository";
-import * as client from "@/api/client";
+import { packerAppApi } from "@/api/packerAppApi";
+import type { FulfillmentOrderDto, RiderCandidateDto } from "@/types";
 
 export function DispatchScreen() {
-  const [orders, setOrders] = useState<client.OrderSummary[]>([]);
-  const [riders, setRiders] = useState<client.Rider[]>([]);
+  const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
+  const [riders, setRiders] = useState<RiderCandidateDto[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [d, r] = await Promise.all([client.packerDispatch(), client.packerRiders()]);
-      setOrders(d.orders);
-      setRiders(r.riders);
+      const [assigned, r] = await Promise.all([
+        packerAppApi.getAssignedOrders(),
+        packerAppApi.getAvailableRiders(),
+      ]);
+      const packedOrders = assigned.filter((o) => o.orderStatus === "PACKED");
+      setOrders(packedOrders);
+      setRiders(r || []);
       setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load dispatch");
+    } catch (e: any) {
+      setError(e?.message || "Could not load dispatch orders");
     } finally {
       setLoading(false);
     }
@@ -43,14 +47,14 @@ export function DispatchScreen() {
     }, [load])
   );
 
-  async function assign(orderId: string, rider: client.Rider) {
+  async function assign(orderId: number, rider: RiderCandidateDto) {
     setBusy(orderId);
     setError(null);
     try {
-      await client.assignRider(orderId, rider.id, rider.name, newIdemKey());
+      await packerAppApi.assignRider(orderId, { riderId: rider.id });
       await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Rider assignment failed");
+    } catch (e: any) {
+      setError(e?.message || "Rider assignment failed");
     } finally {
       setBusy(null);
     }
@@ -74,7 +78,7 @@ export function DispatchScreen() {
           {riders.length === 0 ? (
             <EmptyState
               title="No Active Riders"
-              body="Add an active delivery rider for this warehouse before dispatching."
+              body="No active delivery riders available in this warehouse."
             />
           ) : null}
 
@@ -87,41 +91,29 @@ export function DispatchScreen() {
             />
           ) : (
             orders.map((o) => (
-              <View key={o.id} style={s.card}>
+              <View key={o.orderId} style={s.card}>
                 <View style={s.row}>
-                  <Text style={s.id}>{o.orderNumber || o.id}</Text>
-                  <StatusBadge
-                    text={o.status === "RIDER_ASSIGNED" ? "ASSIGNED" : "READY"}
-                    tone={o.status === "RIDER_ASSIGNED" ? "ok" : "warn"}
-                  />
+                  <Text style={s.id}>{o.orderNumber}</Text>
+                  <StatusBadge text={o.orderStatus} tone="warn" />
                 </View>
 
-                <Text style={s.customer}>{o.customer || "Warehouse Customer"}</Text>
+                <Text style={s.meta}>
+                  {o.totalItems} lines • ₹{o.grandTotal.toFixed(2)} ({o.paymentMethod})
+                </Text>
 
-                {o.riderName ? (
-                  <View style={s.assignedRow}>
-                    <Ionicons name="bicycle" size={14} color={theme.color.okInk} />
-                    <Text style={s.rider}>
-                      Assigned: <Text style={s.riderNameBold}>{o.riderName}</Text>
-                    </Text>
-                  </View>
-                ) : null}
-
-                {o.status === "PACKED" ? (
-                  <View style={s.riderList}>
-                    <Text style={s.selectLabel}>ASSIGN COURIER</Text>
-                    {riders.map((r) => (
-                      <PrimaryButton
-                        key={r.id}
-                        label={`Assign ${r.name}${r.phone ? ` (${r.phone})` : ""}`}
-                        icon="bicycle-outline"
-                        variant="amber"
-                        onPress={() => void assign(o.id, r)}
-                        disabled={busy !== null}
-                      />
-                    ))}
-                  </View>
-                ) : null}
+                <View style={s.riderList}>
+                  <Text style={s.selectLabel}>ASSIGN COURIER</Text>
+                  {riders.map((r) => (
+                    <PrimaryButton
+                      key={r.id}
+                      label={`Assign ${r.name}${r.phone ? ` (${r.phone})` : ""}`}
+                      icon="bicycle-outline"
+                      variant="amber"
+                      onPress={() => void assign(o.orderId, r)}
+                      disabled={busy !== null}
+                    />
+                  ))}
+                </View>
               </View>
             ))
           )}
@@ -159,39 +151,18 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   id: {
-    ...(theme.type.codeLg as object),
-    color: theme.color.ink,
     fontSize: 15,
+    fontWeight: "800",
+    color: theme.color.ink,
   },
-  customer: {
-    ...(theme.type.bodyMd as object),
-    color: theme.color.muted,
+  meta: {
     fontSize: 12,
+    color: theme.color.muted,
     marginTop: 2,
-  },
-  assignedRow: {
-    backgroundColor: theme.color.okBg,
-    borderRadius: theme.radius.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: theme.color.okBorder,
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  rider: {
-    fontSize: 11,
-    color: theme.color.okInk,
-  },
-  riderNameBold: {
-    fontWeight: "700",
   },
   riderList: {
     marginTop: theme.space.xs,
-    gap: 4,
+    gap: 6,
   },
   selectLabel: {
     fontSize: 10,

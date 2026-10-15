@@ -2,27 +2,52 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { ErrorBanner, FieldInput, PrimaryButton, Screen, theme } from "@/components/ui";
+import { ErrorBanner, FieldInput, PrimaryButton, SecondaryButton, Screen, theme } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 
 export function LoginScreen() {
-  const { loginWithEmail, loading, error } = useAuth();
-  const [email, setEmail] = useState("");
+  const { loginWithPassword, requestOtp, loading, error } = useAuth();
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [requestingOtp, setRequestingOtp] = useState(false);
 
   async function onContinue() {
-    if (!email.trim() || !password.trim()) {
-      setLocalError("Enter both Email and Password");
+    if (!identifier.trim() || !password.trim()) {
+      setLocalError("Enter both Mobile / Identifier and Password");
       return;
     }
     setLocalError(null);
-    const success = await loginWithEmail(email.trim(), password.trim(), rememberMe);
+    const success = await loginWithPassword(identifier.trim(), password.trim(), rememberMe);
     if (success) router.replace("/");
   }
 
-  const busy = loading;
+  async function onOtpLogin() {
+    if (!identifier.trim()) {
+      setLocalError("Enter your Mobile Number / Identifier to request an OTP");
+      return;
+    }
+    setLocalError(null);
+    setRequestingOtp(true);
+    try {
+      const res = await requestOtp(identifier.trim());
+      if (res) {
+        router.push({
+          pathname: "/otp",
+          params: {
+            pickerId: identifier.trim(),
+            expiresIn: String(res.expiresIn),
+            masked: res.masked,
+          },
+        } as never);
+      }
+    } finally {
+      setRequestingOtp(false);
+    }
+  }
+
+  const busy = loading || requestingOtp;
 
   return (
     <Screen center backgroundColor={theme.color.bg}>
@@ -38,17 +63,17 @@ export function LoginScreen() {
       {/* Sign In heading */}
       <View style={ls.headingCard}>
         <Text style={ls.headingTitle}>Sign In</Text>
-        <Text style={ls.headingDesc}>Enter your credentials to start your shift</Text>
+        <Text style={ls.headingDesc}>Enter your mobile number or identifier to start your shift</Text>
       </View>
 
       <FieldInput
-        label="Work Email"
-        value={email}
-        onChangeText={setEmail}
+        label="Mobile Number / Identifier"
+        value={identifier}
+        onChangeText={setIdentifier}
         autoCapitalize="none"
         autoCorrect={false}
-        keyboardType="email-address"
-        placeholder="username@ybm.internal"
+        keyboardType="phone-pad"
+        placeholder="e.g. 9876501234 or staff identifier"
         returnKeyType="next"
         editable={!busy}
       />
@@ -82,12 +107,21 @@ export function LoginScreen() {
       </Pressable>
 
       <ErrorBanner message={localError ? null : error} />
-      <PrimaryButton
-        label={busy ? "Authenticating…" : "LOG IN"}
-        icon="log-in-outline"
-        onPress={onContinue}
-        disabled={busy}
-      />
+
+      <View style={ls.buttonGroup}>
+        <PrimaryButton
+          label={busy ? "Authenticating…" : "LOG IN WITH PASSWORD"}
+          icon="log-in-outline"
+          onPress={onContinue}
+          disabled={busy}
+        />
+        <SecondaryButton
+          label={requestingOtp ? "Sending OTP…" : "LOG IN WITH OTP"}
+          icon="key-outline"
+          onPress={onOtpLogin}
+          disabled={busy}
+        />
+      </View>
 
       <View style={ls.footer}>
         <Ionicons name="shield-checkmark-outline" size={13} color={theme.color.muted} style={{ marginRight: 4 }} />
@@ -175,6 +209,10 @@ const ls = StyleSheet.create({
     ...(theme.type.bodyMd as object),
     color: theme.color.ink,
     fontWeight: "600",
+  },
+  buttonGroup: {
+    gap: 10,
+    marginTop: 8,
   },
   footer: {
     flexDirection: "row",

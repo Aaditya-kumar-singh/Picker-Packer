@@ -19,108 +19,98 @@ import {
   theme,
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
-import { getDeviceId, newIdemKey, pickerRepository } from "@/repositories/pickerRepository";
-import type { Order } from "@/types";
+import { pickerAppApi } from "@/api/pickerAppApi";
+import type { FulfillmentOrderDto } from "@/types";
 import {
-  formatPickByTime,
-  getBatchCount,
+  formatOrderDate,
   getCubePalette,
   getOrderProgress,
   getWarehouseDisplay,
 } from "@/utils/warehouse";
 
-type SortMode = "priority" | "sla" | "order";
+type SortMode = "order" | "date" | "items";
 
 export function OrdersScreen({ completed = false }: { completed?: boolean }) {
   const { picker } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 360;
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("priority");
-  const [startingId, setStartingId] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("date");
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await pickerRepository.getOrders();
-    if (r.ok) {
-      setOrders(r.data);
+    try {
+      if (completed) {
+        const sessionOrders = pickerAppApi.getSessionCompletedOrders();
+        setOrders(sessionOrders);
+      } else {
+        const assigned = await pickerAppApi.getAssignedOrders();
+        setOrders(assigned || []);
+      }
       setError(null);
-    } else {
-      setError(r.apiError.message);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load orders.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, []);
+  }, [completed]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+    }, [load])
   );
 
-  const wh = getWarehouseDisplay(picker?.warehouseId);
+  const wh = getWarehouseDisplay(picker?.warehouseId, picker?.warehouseName);
 
   const visibleOrders = useMemo(() => {
-    const base = completed
-      ? orders.filter((o) => o.status === "COMPLETED")
-      : orders.filter((o) => o.status !== "COMPLETED");
     const q = search.trim().toLowerCase();
     const searched = q
-      ? base.filter((o) =>
+      ? orders.filter((o) =>
           [
-            o.externalId,
-            ...o.lines.flatMap((l) => [l.skuCode, l.skuName, l.locationCode]),
+            o.orderNumber,
+            String(o.orderId),
+            o.paymentMethod,
+            ...(o.items || []).flatMap((i) => [
+              i.sku,
+              i.productName,
+              i.variantLabel ?? "",
+              i.locationCode ?? "",
+              i.zone ?? "",
+            ]),
           ]
             .join(" ")
             .toLowerCase()
-            .includes(q),
+            .includes(q)
         )
-      : base;
+      : orders;
 
     return [...searched].sort((a, b) => {
-      if (sortMode === "priority") {
-        if (b.priority !== a.priority) return b.priority - a.priority;
-        return new Date(a.slaDueAt).getTime() - new Date(b.slaDueAt).getTime();
+      if (sortMode === "date") {
+        return new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
       }
-      if (sortMode === "sla") {
-        return new Date(a.slaDueAt).getTime() - new Date(b.slaDueAt).getTime();
+      if (sortMode === "items") {
+        return b.totalItems - a.totalItems;
       }
-      return a.externalId.localeCompare(b.externalId);
+      return a.orderNumber.localeCompare(b.orderNumber);
     });
-  }, [orders, completed, search, sortMode]);
+  }, [orders, search, sortMode]);
 
   function cycleSort() {
     setSortMode((prev) =>
-      prev === "priority" ? "sla" : prev === "sla" ? "order" : "priority",
+      prev === "date" ? "items" : prev === "items" ? "order" : "date"
     );
   }
 
-  async function handleStartPicking(order: Order) {
-    if (startingId) return;
-    if (order.status === "ASSIGNED") {
-      setStartingId(order.id);
-      try {
-        await pickerRepository.beginPicking(
-          order.id,
-          getDeviceId(),
-          newIdemKey(),
-          order.version,
-        );
-      } finally {
-        setStartingId(null);
-      }
-    }
-    router.push(`/order/${order.id}` as never);
-  }
-
   const sortLabel =
-    sortMode === "priority"
-      ? "Sort"
-      : sortMode === "sla"
-        ? "Pick by"
-        : "Order ID";
+    sortMode === "date"
+      ? "Date"
+      : sortMode === "items"
+        ? "Items"
+        : "Order #";
 
   return (
     <View style={os.screen}>
@@ -176,7 +166,7 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search order, SKU or location..."
+            placeholder="Search order, SKU, item or location..."
             placeholderTextColor="#94A3B8"
             style={os.searchInput}
             autoCapitalize="none"
@@ -190,171 +180,130 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
           ) : null}
         </View>
 
-        {loading ? (
+        {loading && orders.length === 0 ? (
           <LoadingState label="Loading orders…" />
-        ) : error ? (
+        ) : error && orders.length === 0 ? (
           <ErrorState message={error} onRetry={() => void load()} />
         ) : visibleOrders.length === 0 ? (
           <EmptyState
             title={
               search
-                ? "No Matching Orders"
+                ? "No matching orders"
                 : completed
-                  ? "No Completed Orders"
+                  ? "No Completed Orders Yet"
                   : "No Assigned Orders"
             }
             body={
               search
-                ? "Try a different search term."
+                ? `No orders matched "${search}". Clear search to see all.`
                 : completed
-                  ? "Completed orders will appear here."
-                  : "Assigned work will appear when released."
+                  ? "Orders you pick and assign to packers during this shift will appear here."
+                  : "Your picking queue is clear. New orders assigned by the administrator will appear here."
             }
-            actionLabel="Refresh"
-            onAction={() => void load()}
+            actionLabel={search ? "Clear Search" : "Refresh"}
+            onAction={search ? () => setSearch("") : () => void load()}
           />
         ) : (
-          visibleOrders.map((o, idx) => {
-            const palette = getCubePalette(o, idx);
-            const prog = getOrderProgress(o);
-            const batches = getBatchCount(o.lines, o.totalLines);
-            const isBusy = startingId === o.id;
+          visibleOrders.map((order, idx) => {
+            const palette = getCubePalette(order, idx);
+            const prog = getOrderProgress(order);
+            const isCompleted = order.orderStatus === "PACKING" || order.orderStatus === "PACKED";
 
             return (
-              <View key={o.id} style={os.orderCard}>
-                {/* The summary row is independently clickable; keep action buttons
-                    outside it so web never renders a button inside another button. */}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Order ${o.externalId}`}
-                  onPress={() => router.push(`/order/${o.id}` as never)}
-                  style={({ pressed }) => [os.cardTopRow, pressed && os.pressed]}
-                >
-                  <View style={[os.cubeAvatar, { backgroundColor: palette.bg }]}>
-                    <Ionicons name="cube" size={22} color={palette.icon} />
+              <Pressable
+                key={order.orderId}
+                accessibilityRole="button"
+                accessibilityLabel={`Order ${order.orderNumber}`}
+                onPress={() => router.push(`/order/${order.orderId}` as never)}
+                style={({ pressed }) => [
+                  os.card,
+                  pressed && { opacity: 0.92, transform: [{ scale: 0.99 }] },
+                ]}
+              >
+                {/* Top Row: Icon + Order Number + Status / Payment Badge */}
+                <View style={os.cardTopRow}>
+                  <View style={[os.cubeCircle, { backgroundColor: palette.bg }]}>
+                    <Ionicons name="cube" size={20} color={palette.icon} />
                   </View>
 
-                  <View style={os.orderTitleBlock}>
-                    <Text
-                      style={os.orderId}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {o.externalId}
+                  <View style={os.cardHeaderInfo}>
+                    <View style={os.orderNumberRow}>
+                      <Text style={os.orderNumber} numberOfLines={1}>
+                        {order.orderNumber}
+                      </Text>
+                      <View style={[os.paymentBadge, { backgroundColor: "#E0F2FE" }]}>
+                        <Text style={os.paymentBadgeText}>
+                          {order.paymentMethod || "COD"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={os.orderMetaText}>
+                      {prog.totalLines} lines • ₹{order.grandTotal.toFixed(2)} • {formatOrderDate(order.orderDate)}
                     </Text>
-                    <Text
-                      style={os.itemsBatchesText}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {prog.totalLines} items  •  {batches} batches
-                    </Text>
-                    {o.lines.length > 0 ? (
-                      <Text style={os.productPreview} numberOfLines={2} maxFontSizeMultiplier={1.1}>
-                        {o.lines.slice(0, 2).map((line) => line.skuName).join(" • ")}
-                        {o.lines.length > 2 ? " +" + (o.lines.length - 2) + " more" : ""}
+                  </View>
+
+                  <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+                </View>
+
+                {/* Line Items Preview */}
+                {order.items && order.items.length > 0 ? (
+                  <View style={os.itemsPreviewBox}>
+                    {order.items.slice(0, 3).map((item) => (
+                      <View key={item.itemId} style={os.itemPreviewRow}>
+                        <View style={[os.itemDot, { backgroundColor: item.fullyScanned ? "#16A34A" : "#0D6EFD" }]} />
+                        <Text style={os.itemPreviewName} numberOfLines={1}>
+                          {item.productName}
+                          {item.variantLabel ? ` (${item.variantLabel})` : ""}
+                        </Text>
+                        <Text style={os.itemPreviewQty}>
+                          {item.pickedQty}/{item.orderedQty}
+                        </Text>
+                      </View>
+                    ))}
+                    {order.items.length > 3 ? (
+                      <Text style={os.moreItemsText}>
+                        +{order.items.length - 3} more items
                       </Text>
                     ) : null}
                   </View>
+                ) : null}
 
-                  <View style={os.progressBlock}>
-                    <View style={os.ratioChevronRow}>
-                      <Text style={os.ratioText} maxFontSizeMultiplier={1.1}>
-                        {prog.pickedLines}/{prog.totalLines} items
-                      </Text>
-                      <Ionicons name="chevron-forward" size={16} color="#475569" />
-                    </View>
-
-                    <View style={os.progressBarRow}>
-                      <View style={os.progressTrack}>
-                        <View
-                          style={[os.progressFill, { width: `${prog.pct}%` }]}
-                        />
-                      </View>
-                      <Text style={os.pctText} maxFontSizeMultiplier={1.1}>
-                        {prog.pct}%
-                      </Text>
-                    </View>
+                {/* Progress bar */}
+                <View style={os.progressRow}>
+                  <View style={os.progressTrack}>
+                    <View style={[os.progressFill, { width: `${prog.pct}%` }]} />
                   </View>
-                </Pressable>
+                  <Text style={os.progressText}>
+                    {prog.pickedLines}/{prog.totalLines} lines picked ({prog.pct}%)
+                  </Text>
+                </View>
 
-                {/* Bottom Row: Location + SLA on left, Start Picking CTA on right */}
-                <View style={[os.cardBottomRow, !compact && { paddingLeft: 52 }]}>
-                  <View style={os.metaLeftCol}>
-                    <View style={os.iconTextLine}>
-                      <Ionicons
-                        name="location-outline"
-                        size={14}
-                        color="#334155"
-                        style={os.lineIcon}
-                      />
-                      <Text
-                        style={os.whNameText}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={1.15}
-                      >
-                        {wh.name}
-                      </Text>
-                    </View>
-
-                    <Text
-                      style={os.whAddrText}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.15}
-                    >
-                      {wh.address}
-                    </Text>
-
-                    <View style={[os.iconTextLine, { marginTop: 6 }]}>
-                      <Ionicons
-                        name="time-outline"
-                        size={14}
-                        color="#334155"
-                        style={os.lineIcon}
-                      />
-                      <Text
-                        style={os.pickByText}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={1.15}
-                      >
-                        Pick by{" "}
-                        <Text style={os.pickByBold}>
-                          {formatPickByTime(o.slaDueAt)}
-                        </Text>
-                      </Text>
-                    </View>
+                {/* Bottom Footer Action */}
+                <View style={os.cardFooter}>
+                  <View style={os.whRow}>
+                    <Ionicons name="location-sharp" size={13} color="#64748B" />
+                    <Text style={os.whText}>{wh.shortAddress}</Text>
                   </View>
 
                   <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      completed
-                        ? `View ${o.externalId}`
-                        : `Start picking ${o.externalId}`
-                    }
-                    disabled={isBusy}
-                    onPress={() => void handleStartPicking(o)}
                     style={({ pressed }) => [
-                      os.startPickingBtn,
-                      completed && os.completedBtn,
-                      pressed && { opacity: 0.88 },
+                      os.actionBtn,
+                      isCompleted && os.actionBtnCompleted,
+                      pressed && { opacity: 0.85 },
                     ]}
+                    onPress={() => router.push(`/order/${order.orderId}` as never)}
                   >
-                    <Ionicons
-                      name={completed ? "checkmark-circle-outline" : "arrow-forward"}
-                      size={14}
-                      color="#FFFFFF"
-                    />
-                    <Text style={os.startPickingBtnText} maxFontSizeMultiplier={1.1}>
-                      {isBusy
-                        ? "Starting…"
-                        : completed
-                          ? "Completed"
-                          : "Start Picking"}
+                    <Text style={[os.actionBtnText, isCompleted && os.actionBtnTextCompleted]}>
+                      {isCompleted ? "View Order" : "Continue Picking"}
                     </Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={14}
+                      color={isCompleted ? "#0284C7" : "#FFFFFF"}
+                    />
                   </Pressable>
                 </View>
-              </View>
+              </Pressable>
             );
           })
         )}
@@ -377,219 +326,208 @@ const os = StyleSheet.create({
     paddingBottom: 28,
   },
   topHeaderRow: {
-    width: "100%",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    alignItems: "center",
+    marginBottom: 10,
   },
   titleLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    flexShrink: 1,
   },
   pageTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "900",
     color: "#0F172A",
-    letterSpacing: -0.3,
   },
   countPill: {
-    backgroundColor: "#E2E8F0",
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 999,
+    backgroundColor: "#E0F2FE",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
   countPillText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
-    color: "#334155",
+    color: "#0284C7",
   },
   sortBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     backgroundColor: "#FFFFFF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    minHeight: 36,
-    flexShrink: 0,
   },
   sortBtnText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: "#1E293B",
   },
   searchWrap: {
-    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    paddingHorizontal: 13,
-    marginBottom: 12,
-    minHeight: 46,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    marginBottom: 12,
   },
   searchInput: {
     flex: 1,
-    ...(theme.type.bodyMd as object),
-    color: "#0F172A",
-    minHeight: 42,
     fontSize: 14,
+    color: "#0F172A",
   },
-  orderCard: {
-    width: "100%",
+  card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    padding: 13,
-    marginBottom: 11,
-    shadowColor: "#0F172A",
+    shadowColor: theme.color.ink,
     shadowOpacity: 0.03,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  pressed: {
-    opacity: 0.92,
-  },
   cardTopRow: {
-    width: "100%",
     flexDirection: "row",
     alignItems: "center",
+    marginBottom: 10,
   },
-  cubeAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  cubeCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
+    marginRight: 10,
   },
-  orderTitleBlock: {
+  cardHeaderInfo: {
     flex: 1,
-    marginLeft: 10,
-    marginRight: 8,
   },
-  orderId: {
-    fontSize: 16,
+  orderNumberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  orderNumber: {
+    fontSize: 15,
     fontWeight: "800",
     color: "#0F172A",
   },
-  itemsBatchesText: {
-    fontSize: 12,
+  paymentBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  paymentBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0284C7",
+  },
+  orderMetaText: {
+    fontSize: 11,
     color: "#64748B",
     marginTop: 2,
   },
-  productPreview: {
+  itemsPreviewBox: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    padding: 8,
+    marginBottom: 10,
+  },
+  itemPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 2,
+  },
+  itemDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  itemPreviewName: {
+    flex: 1,
+    fontSize: 12,
+    color: "#334155",
+    fontWeight: "500",
+  },
+  itemPreviewQty: {
     fontSize: 11,
-    lineHeight: 14,
-    color: "#0F766E",
+    color: "#64748B",
     fontWeight: "700",
-    marginTop: 3,
   },
-  progressBlock: {
-    alignItems: "flex-end",
-    flexShrink: 0,
+  moreItemsText: {
+    fontSize: 11,
+    color: "#0284C7",
+    fontWeight: "600",
+    marginTop: 2,
+    marginLeft: 12,
   },
-  ratioChevronRow: {
+  progressRow: {
+    marginBottom: 10,
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 4,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#0D6EFD",
+    borderRadius: 3,
+  },
+  progressText: {
+    fontSize: 11,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  whRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
-  ratioText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#334155",
-  },
-  progressBarRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 5,
-  },
-  progressTrack: {
-    width: 58,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#E2E8F0",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#1D76DB",
-  },
-  pctText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#1565C0",
-    minWidth: 28,
-    textAlign: "right",
-  },
-  cardBottomRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    marginTop: 8,
-    gap: 8,
-  },
-  metaLeftCol: {
-    flex: 1,
-    paddingRight: 4,
-  },
-  iconTextLine: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  lineIcon: {
-    marginRight: 5,
-  },
-  whNameText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-  whAddrText: {
+  whText: {
     fontSize: 11,
     color: "#64748B",
-    marginTop: 1,
-    paddingLeft: 19,
   },
-  pickByText: {
-    flex: 1,
-    fontSize: 12,
-    color: "#334155",
-  },
-  pickByBold: {
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  startPickingBtn: {
+  actionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
+    gap: 4,
     backgroundColor: "#0D6EFD",
-    paddingHorizontal: 13,
-    minHeight: 36,
-    borderRadius: 10,
-    flexShrink: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
-  completedBtn: {
-    backgroundColor: "#16A34A",
+  actionBtnCompleted: {
+    backgroundColor: "#E0F2FE",
   },
-  startPickingBtnText: {
-    color: "#FFFFFF",
+  actionBtnText: {
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  actionBtnTextCompleted: {
+    color: "#0284C7",
   },
 });
