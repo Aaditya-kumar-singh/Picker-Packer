@@ -32,7 +32,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
 
       - name: TypeScript
@@ -45,10 +45,10 @@ jobs:
         run: npx expo config --type public --json > /tmp/expo-config.json
 
   build-and-release:
-    name: Build and publish signed APK
+    name: Build APK with EAS and publish GitHub Release
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,117 +60,122 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          # Explicit modern SDK packages; the deprecated "tools" package no longer exists.
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
-
-      - name: Install dependencies
+      - name: Install locked dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Prebuild Android project
-        working-directory: frontend
+      - name: Check Expo access token
         env:
-          EXPO_PUBLIC_API_BASE_URL: https://test.yourbuildmart.com/api/
-        run: npx expo prebuild --platform android --no-install --clean
-
-      - name: Configure Android release signing
-        working-directory: frontend
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ] || [ -z "${ANDROID_KEY_ALIAS:-}" ] || [ -z "${ANDROID_KEY_PASSWORD:-}" ]; then
-            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD Actions secrets."
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "::error::Add the EXPO_TOKEN repository Actions secret. The EAS project already manages the Android signing credentials."
             exit 1
           fi
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
-          {
-            echo "MYAPP_UPLOAD_STORE_FILE=release.keystore"
-            echo "MYAPP_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS"
-            echo "MYAPP_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
-            echo "MYAPP_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
-          } >> android/gradle.properties
+          npx eas-cli@24.14.0 whoami --non-interactive
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          path = Path("android/app/build.gradle")
-          source = path.read_text()
-          if "signingConfigs.release" in source:
-              raise SystemExit("Release signing config already exists; refusing to patch twice")
-          pattern = r"    signingConfigs \{\n        debug \{\n.*?\n        \}\n    \}"
-          match = re.search(pattern, source, re.S)
-          if not match:
-              raise SystemExit("Could not find Expo Android signingConfigs template")
-          replacement = """    signingConfigs {
-                  debug {
-                      storeFile file('debug.keystore')
-                      storePassword 'android'
-                      keyAlias 'androiddebugkey'
-                      keyPassword 'android'
-                  }
-                  release {
-                      storeFile file(MYAPP_UPLOAD_STORE_FILE)
-                      storePassword MYAPP_UPLOAD_STORE_PASSWORD
-                      keyAlias MYAPP_UPLOAD_KEY_ALIAS
-                      keyPassword MYAPP_UPLOAD_KEY_PASSWORD
-                  }
-              }"""
-          source = source[:match.start()] + replacement + source[match.end():]
-          release_start = source.index("        release {", source.index("    buildTypes {"))
-          release_end = source.index("\n        }", release_start)
-          release_block = source[release_start:release_end]
-          release_block = release_block.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
-          if "signingConfig signingConfigs.release" not in release_block:
-              raise SystemExit("Could not set release build signing configuration")
-          source = source[:release_start] + release_block + source[release_end:]
-          path.write_text(source)
-          PY
-
-      - name: Build signed release APK
-        working-directory: frontend/android
+      - name: Build signed APK using the existing EAS preview profile
+        working-directory: frontend
         env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_BASE_URL: https://test.yourbuildmart.com/api/
-        run: ./gradlew assembleRelease --no-daemon
-
-      - name: Verify APK and calculate checksum
-        id: apk
         run: |
           set -euo pipefail
-          APK="frontend/android/app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK"
-          echo "path=$APK" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          npx eas-cli@24.14.0 build \
+            --platform android \
+            --profile preview \
+            --non-interactive \
+            --wait \
+            --message "GitHub release for ${GITHUB_SHA}"
 
-      - name: Create GitHub Release and attach APK
+      - name: Find the completed EAS build for this commit
+        id: eas-build
+        working-directory: frontend
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx eas-cli@24.14.0 build:list \
+            --platform android \
+            --status finished \
+            --git-commit-hash "$GITHUB_SHA" \
+            --build-profile preview \
+            --limit 10 \
+            --json \
+            > "$RUNNER_TEMP/eas-builds.json"
+
+          BUILD_ID="$(node -e '
+            const fs = require("node:fs");
+            const builds = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const build = builds.find((entry) =>
+              entry.id &&
+              String(entry.status).toLowerCase() === "finished" &&
+              entry.buildProfile === "preview"
+            );
+            if (!build) {
+              console.error("No finished Android preview build was found for this Git commit.");
+              process.exit(1);
+            }
+            process.stdout.write(build.id);
+          ' "$RUNNER_TEMP/eas-builds.json")"
+
+          echo "id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "Completed EAS build: $BUILD_ID"
+
+      - name: Download APK from EAS
+        id: apk
+        working-directory: frontend
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_BUILD_ID: ${{ steps.eas-build.outputs.id }}
+        run: |
+          set -euo pipefail
+          npx eas-cli@24.14.0 build:download \
+            --build-id "$EAS_BUILD_ID" \
+            --json \
+            --non-interactive \
+            > "$RUNNER_TEMP/eas-download.json"
+
+          SOURCE_APK="$(node -e '
+            const fs = require("node:fs");
+            const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (!result.path) {
+              console.error("EAS did not return a downloaded APK path.");
+              process.exit(1);
+            }
+            process.stdout.write(result.path);
+          ' "$RUNNER_TEMP/eas-download.json")"
+
+          test -s "$SOURCE_APK"
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          APK_NAME="YBM-Picker-Packer-${SHORT_SHA}-android.apk"
+          cp "$SOURCE_APK" "$RUNNER_TEMP/$APK_NAME"
+          echo "path=$RUNNER_TEMP/$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "name=$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/$APK_NAME" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub prerelease with APK
         env:
           GH_TOKEN: ${{ github.token }}
           APK_PATH: ${{ steps.apk.outputs.path }}
+          APK_NAME: ${{ steps.apk.outputs.name }}
           APK_SHA256: ${{ steps.apk.outputs.sha256 }}
         run: |
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA:0:12}"
-          TAG="android-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
-          gh release create "$TAG" "$APK_PATH#YBM-Picker-Packer-${SHORT_SHA}-android.apk" \
+          TAG="android-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${SHORT_SHA}"
+          gh release create "$TAG" "$APK_PATH#$APK_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "YBM Picker-Packer Android ${SHORT_SHA}" \
-            --notes "Automated Android APK release.
+            --notes "Automated Android APK release using the configured EAS preview build profile.
 
-          Commit: ${GITHUB_SHA}
+          Source commit: ${GITHUB_SHA}
+          Build profile: preview
           API base URL: https://test.yourbuildmart.com/api/
-          SHA-256: ${APK_SHA256}
+          EAS build ID: ${{ steps.eas-build.outputs.id }}
+          APK SHA-256: ${APK_SHA256}
 
-          This build is signed with the configured persistent release keystore." \
-            --prerelease
+          This is a prerelease build for testing the test backend." \
+            --prerelease \
+            --latest=false
