@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -31,10 +31,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Regenerate lockfile for declared Expo SDK versions
-        run: npm install --package-lock-only --no-audit --no-fund
+        run: npm ci
 
       - name: TypeScript
         run: npx tsc --noEmit
@@ -45,17 +42,3 @@ jobs:
       - name: Validate Expo configuration
         run: npx expo config --type public --json > /tmp/expo-config.json
 
-      - name: Persist regenerated dependency lockfile
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        working-directory: .
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet -- frontend/package-lock.json; then
-            git add frontend/package-lock.json
-            git commit -m "chore: sync Expo SDK 57 lockfile [skip ci]"
-            git push origin HEAD:master
-          else
-            echo "package-lock.json is already synchronized."
-          fi
