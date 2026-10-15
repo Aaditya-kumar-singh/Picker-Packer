@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -41,3 +41,17 @@ jobs:
 
       - name: Validate Expo configuration
         run: npx expo config --type public --json > /tmp/expo-config.json
+
+      - name: Persist regenerated dependency lockfile
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- frontend/package-lock.json; then
+            git add frontend/package-lock.json
+            git commit -m "chore: sync Expo SDK 57 lockfile [skip ci]"
+            git push origin HEAD:master
+          else
+            echo "package-lock.json is already synchronized."
+          fi
