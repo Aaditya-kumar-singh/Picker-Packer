@@ -11,7 +11,7 @@ npx expo start
 
 ## Backend
 
-HTTP requests are centralized in `src/api/http.ts`. The default API URL is `https://test.yourbuildmart.com/api/`. Local `.env` may set `EXPO_PUBLIC_API_BASE_URL`.
+HTTP requests are centralized in `src/api/http.ts`. The default API URL is `https://test.yourbuildmart.com/api/`. Local `.env` may set `EXPO_PUBLIC_API_BASE_URL`. The configured host is a **test backend** and must not be used for production warehouse operations.
 
 ## Android release
 
