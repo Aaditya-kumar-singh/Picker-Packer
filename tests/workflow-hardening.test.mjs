@@ -37,10 +37,24 @@ test("Supabase is completely removed from frontend dependencies and config", () 
   assert.doesNotMatch(envExample, /SUPABASE/);
   assert.match(envExample, /EXPO_PUBLIC_API_BASE_URL/);
 
-  const eas = JSON.parse(read("frontend/eas.json"));
-  assert.equal(eas.build.preview.env.EXPO_PUBLIC_API_BASE_URL, "https://test.yourbuildmart.com/api/");
-  assert.equal(eas.build.production.environment, "production");
-  assert.equal(eas.build.production.env?.EXPO_PUBLIC_API_BASE_URL, undefined);
+  assert.equal(fs.existsSync(path.join(root, "frontend/eas.json")), false);
+  assert.equal(app.extra?.eas?.projectId, undefined);
+
+  const scripts = pkg.scripts;
+  assert.match(scripts["android:codespace"], /build-android-codespace/);
+  assert.match(scripts["setup:codespace-signing"], /setup-codespace-signing/);
+  assert.match(scripts.ship, /ship-codespace/);
+
+  const devcontainer = JSON.parse(read(".devcontainer/devcontainer.json"));
+  assert.ok(devcontainer.features["ghcr.io/devcontainers/features/java:1"]);
+  assert.ok(devcontainer.features["ghcr.io/nordcominc/devcontainer-features/android-sdk:1.2.0"]);
+
+  const releaseWorkflow = read(".github/workflows/android-release.yml");
+  assert.match(releaseWorkflow, /CODESPACES_TOKEN/);
+  assert.match(releaseWorkflow, /gh codespace create/);
+  assert.match(releaseWorkflow, /gh codespace ssh/);
+  assert.match(releaseWorkflow, /npm run ship/);
+  assert.doesNotMatch(releaseWorkflow, /EXPO_TOKEN|eas-cli|EAS Build/i);
 
   const readme = read("frontend/README.md");
   assert.match(readme, /test backend/i);

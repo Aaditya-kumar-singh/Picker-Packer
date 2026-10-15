@@ -11,171 +11,155 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  validate:
-    name: Validate app
+  release:
+    name: Build and release Picker-Packer APK in GitHub Codespaces
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: frontend
+    timeout-minutes: 90
+
     steps:
-      - name: Checkout
+      - name: Checkout release commit
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install locked dependencies
-        run: npm ci
-
-      - name: TypeScript
-        run: npx tsc --noEmit
-
-      - name: Tests
-        run: npm test
-
-      - name: Validate Expo config
-        run: npx expo config --type public --json > /tmp/expo-config.json
-
-  build-and-release:
-    name: Build APK with EAS and publish GitHub Release
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install locked dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Check Expo access token
+      - name: Authenticate GitHub CLI
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${EXPO_TOKEN:-}" ]; then
-            echo "::error::Add the EXPO_TOKEN repository Actions secret. The EAS project already manages the Android signing credentials."
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::CODESPACES_TOKEN is not configured in GitHub Actions."
+            echo "::error::Add it at Settings Ã¢â€ â€™ Secrets and variables Ã¢â€ â€™ Actions Ã¢â€ â€™ New repository secret."
             exit 1
           fi
-          npx eas-cli@24.14.0 whoami --non-interactive
 
-      - name: Build signed APK using the existing EAS preview profile
-        working-directory: frontend
+          echo "Checking GitHub token authentication..."
+          if ! gh api user --jq '"Authenticated as: " + .login'; then
+            echo "::error::CODESPACES_TOKEN is present but GitHub rejected it."
+            echo "::error::Check that the token is active, belongs to the correct GitHub account, and has access to Aaditya-kumar-singh/Picker-Packer."
+            exit 1
+          fi
+
+      - name: Verify Android signing Codespaces secrets
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPO_PUBLIC_API_BASE_URL: https://test.yourbuildmart.com/api/
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
         run: |
           set -euo pipefail
-          npx eas-cli@24.14.0 build \
-            --platform android \
-            --profile preview \
-            --non-interactive \
-            --wait \
-            --message "GitHub release for ${GITHUB_SHA}"
+          REQUIRED_SECRETS=(
+            ANDROID_KEYSTORE_BASE64
+            ANDROID_KEYSTORE_PASSWORD
+            ANDROID_KEY_ALIAS
+            ANDROID_KEY_PASSWORD
+          )
 
-      - name: Find the completed EAS build for this commit
-        id: eas-build
-        working-directory: frontend
+          AVAILABLE="$(gh secret list --user --app codespaces --repo Aaditya-kumar-singh/Picker-Packer --json name --jq '.[].name')"
+
+          MISSING=()
+          for SECRET_NAME in "${REQUIRED_SECRETS[@]}"; do
+            if ! grep -Fxq "$SECRET_NAME" <<< "$AVAILABLE"; then
+              MISSING+=("$SECRET_NAME")
+            fi
+          done
+
+          if [ "${#MISSING[@]}" -ne 0 ]; then
+            echo "::error::Missing Android signing Codespaces secret(s): ${MISSING[*]}"
+            echo "::error::These must be user Codespaces secrets associated with Aaditya-kumar-singh/Picker-Packer."
+            echo "::error::GitHub Actions cannot read Codespaces secret values."
+            echo "::error::Run npm run setup:codespace-signing inside a normal YBM Picker-Packer Codespace, or add the four secrets under GitHub Settings -> Codespaces -> Secrets."
+            exit 1
+          fi
+
+          echo "All four Android signing Codespaces secrets are configured."
+
+      - name: Create dedicated release Codespace
+        id: codespace
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
         run: |
           set -euo pipefail
-          npx eas-cli@24.14.0 build:list \
-            --platform android \
-            --status finished \
-            --git-commit-hash "$GITHUB_SHA" \
-            --build-profile preview \
-            --limit 10 \
-            --json \
-            > "$RUNNER_TEMP/eas-builds.json"
 
-          BUILD_ID="$(node -e '
-            const fs = require("node:fs");
-            const builds = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            const build = builds.find((entry) =>
-              entry.id &&
-              String(entry.status).toLowerCase() === "finished" &&
-              entry.buildProfile === "preview"
-            );
-            if (!build) {
-              console.error("No finished Android preview build was found for this Git commit.");
-              process.exit(1);
-            }
-            process.stdout.write(build.id);
-          ' "$RUNNER_TEMP/eas-builds.json")"
+          NAME="$(gh codespace create \
+            --repo Aaditya-kumar-singh/Picker-Packer \
+            --branch master \
+            --machine standardLinux32gb \
+            --idle-timeout 60m \
+            --retention-period 1h \
+            --display-name "YBM Picker-Packer Release ${GITHUB_RUN_NUMBER}" \
+            --default-permissions)"
 
-          echo "id=$BUILD_ID" >> "$GITHUB_OUTPUT"
-          echo "Completed EAS build: $BUILD_ID"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Created Codespace: $NAME"
 
-      - name: Download APK from EAS
-        id: apk
-        working-directory: frontend
+      - name: Wait for Codespace
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EAS_BUILD_ID: ${{ steps.eas-build.outputs.id }}
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
+          CODESPACE_NAME: ${{ steps.codespace.outputs.name }}
         run: |
           set -euo pipefail
-          npx eas-cli@24.14.0 build:download \
-            --build-id "$EAS_BUILD_ID" \
-            --json \
-            --non-interactive \
-            > "$RUNNER_TEMP/eas-download.json"
 
-          SOURCE_APK="$(node -e '
-            const fs = require("node:fs");
-            const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            if (!result.path) {
-              console.error("EAS did not return a downloaded APK path.");
-              process.exit(1);
-            }
-            process.stdout.write(result.path);
-          ' "$RUNNER_TEMP/eas-download.json")"
+          for i in {1..60}; do
+            STATE="$(gh codespace view -c "$CODESPACE_NAME" --json state --jq '.state')"
+            echo "Codespace state: $STATE"
 
-          test -s "$SOURCE_APK"
-          SHORT_SHA="${GITHUB_SHA:0:12}"
-          APK_NAME="YBM-Picker-Packer-${SHORT_SHA}-android.apk"
-          cp "$SOURCE_APK" "$RUNNER_TEMP/$APK_NAME"
-          echo "path=$RUNNER_TEMP/$APK_NAME" >> "$GITHUB_OUTPUT"
-          echo "name=$APK_NAME" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(sha256sum "$RUNNER_TEMP/$APK_NAME" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+            case "$STATE" in
+              Available)
+                exit 0
+                ;;
+              Shutdown|Deleted|Unavailable|Failed)
+                echo "::error::Codespace entered terminal state: $STATE"
+                exit 1
+                ;;
+            esac
 
-      - name: Publish GitHub prerelease with APK
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for Codespace."
+          exit 1
+
+      - name: Wait for Codespace SSH
         env:
-          GH_TOKEN: ${{ github.token }}
-          APK_PATH: ${{ steps.apk.outputs.path }}
-          APK_NAME: ${{ steps.apk.outputs.name }}
-          APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
+          CODESPACE_NAME: ${{ steps.codespace.outputs.name }}
         run: |
           set -euo pipefail
-          SHORT_SHA="${GITHUB_SHA:0:12}"
-          TAG="android-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}-${SHORT_SHA}"
-          gh release create "$TAG" "$APK_PATH#$APK_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "YBM Picker-Packer Android ${SHORT_SHA}" \
-            --notes "Automated Android APK release using the configured EAS preview build profile.
+          echo "Testing direct GitHub Codespaces SSH."
+          echo "GitHub CLI manages the Codespaces SSH key and connection."
+          for i in {1..6}; do
+            echo "SSH readiness attempt $i/6"
+            set +e
+            timeout 60s gh codespace ssh -c "$CODESPACE_NAME" -- 'bash -lc '"'"'command -v node >/dev/null && command -v java >/dev/null && echo YBM_CONTAINER_READY'"'"''
+            STATUS=$?
+            set -e
+            if [ "$STATUS" -eq 0 ]; then
+              echo "Codespace SSH and required runtimes are ready."
+              exit 0
+            fi
+            echo "SSH readiness attempt failed with exit code $STATUS."
+            if [ "$i" -eq 6 ]; then
+              echo "::error::Codespace became Available but GitHub CLI could not establish SSH."
+              echo "=== Codespace creation logs ==="
+              gh codespace logs -c "$CODESPACE_NAME" || true
+              exit 1
+            fi
+            sleep 15
+          done
 
-          Source commit: ${GITHUB_SHA}
-          Build profile: preview
-          API base URL: https://test.yourbuildmart.com/api/
-          EAS build ID: ${{ steps.eas-build.outputs.id }}
-          APK SHA-256: ${APK_SHA256}
-
-          This is a prerelease build for testing the test backend." \
-            --prerelease \
-            --latest=false
+      - name: Build, sign, and publish from Codespace
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
+          CODESPACE_NAME: ${{ steps.codespace.outputs.name }}
+        run: |
+          set -euo pipefail
+          gh codespace ssh -c "$CODESPACE_NAME" -- 'bash -lc '"'"'cd /workspaces/Picker-Packer/frontend && set -euo pipefail && echo "=== YBM Picker-Packer automated Codespace release ===" && echo "Commit: $(git rev-parse HEAD)" && echo "Branch: $(git branch --show-current)" && echo "Node: $(node --version)" && echo "Java:" && java -version && echo "Android SDK: $ANDROID_HOME" && npm ci --no-audit --no-fund && YBM_AUTOMATED_RELEASE=true npm run ship'"'"''
+      - name: Stop release Codespace
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
+          CODESPACE_NAME: ${{ steps.codespace.outputs.name }}
+        run: |
+          if [ -n "${CODESPACE_NAME:-}" ]; then
+            gh codespace stop -c "$CODESPACE_NAME" || true
+          fi
