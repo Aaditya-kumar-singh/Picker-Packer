@@ -1,56 +1,36 @@
-# YBM Picker & Packer Mobile App
+# YBM Picker & Packer
 
-Cross-platform React Native + Expo warehouse execution system (Android, iOS & Web) for **Picker** and **Packer** operations, backed by official REST APIs (`/api/picker-app/*`, `/api/packer-app/*`, and `/api/auth/*`).
+React Native / Expo warehouse picking and packing app for YourBuildMart.
 
-## Architecture & Features
+## Start locally
 
-- **Role-Separated Workflows**:
-  - **Picker (`ROLE_PICKER`)**:
-    - Dashboard with live stats (`assignedOrdersCount`, `completedOrdersCount`, `totalItemsPickedToday`).
-    - Assigned order work queue in `PICKING` status.
-    - Pick list with full warehouse location breakdown (`locationCode`, `zone`, `aisle`, `rack`, `bin`, `shelf`).
-    - Unit-by-unit barcode scanning (`POST /api/picker-app/orders/{id}/scan`) with instant haptic/audio feedback.
-    - Soft-failure error handling (HTTP 400 with `{ success: false }`) for mismatched/unrecognized barcodes.
-    - **Order Completion**: Picker assigns an active packer (`POST /api/picker-app/orders/{id}/assign-packer`) querying `GET /api/picker-app/available-packers`, transitioning order to `PACKING`.
-  - **Packer (`ROLE_PACKER`)**:
-    - Packer Dashboard with real-time packing metrics.
-    - Verification scanning (`POST /api/packer-app/orders/{id}/scan`) per physical unit.
-    - Automatic transition to `PACKED` once all units are verified.
-    - **Dispatch Flow**: Assign active delivery riders (`POST /api/packer-app/orders/{id}/assign-rider`) from `GET /api/packer-app/riders/available`, transitioning order to `RIDER_ASSIGNED` / `DISPATCHED`.
-- **Authentication**:
-  - JWT Bearer token authentication via `POST /api/auth/login` (Password or OTP login).
-  - Secure token persistence (`expo-secure-store` on native, `AsyncStorage` on web).
-  - Auto-logout on `401 UNAUTHORIZED`.
-- **Profile Management**:
-  - Staff profile viewing (`GET /profile`), editing (`PUT /profile`), and password change (`POST /change-password`).
-
-## Environment Variables
-
-Create `.env` in the `frontend` directory for local development:
-
-```env
-EXPO_PUBLIC_API_BASE_URL=https://test.yourbuildmart.com/api/
-```
-
-The preview EAS profile is intentionally configured for the test API. **Do not reuse that URL for production.** Before building the production profile, configure `EXPO_PUBLIC_API_BASE_URL` in the Expo/EAS environment named `production` to the verified production API base URL (including `/api` if that is the API prefix), then rebuild. The app now refuses to send production requests to the known test hosts and reports a configuration error if the production URL is missing or invalid. This guard prevents accidental test-data access; it does not provision or verify the production API itself.
-
-## Running Locally
-
-### 1. Configure the API
-
-The standalone reference backend is not present in the current repository. Configure `EXPO_PUBLIC_API_BASE_URL` to point to an available REST API environment before testing workflows. The production EAS profile intentionally has no API URL override: set the verified production URL in the EAS `production` environment and rebuild. The app rejects the known staging hosts in production builds.
-
-### 2. Start Frontend App
-```bash
-cd frontend
-npm install
+```powershell
+npm ci
 npx expo start
 ```
 
-## Verification & Quality Gates
+## REST API backend
 
-```bash
-cd frontend
+All authentication, picker, and packer HTTP requests use the shared client in `src/api/http.ts`. The app's default API base URL is:
+
+`https://test.yourbuildmart.com/api/`
+
+Local `.env` can override it:
+
+```dotenv
+EXPO_PUBLIC_API_BASE_URL=https://test.yourbuildmart.com/api/
+```
+
+All calls built with relative paths are sent to that base URL. The shared client adds the stored bearer token, unwraps the documented response envelopes, and clears the session on HTTP 401. Photo file paths returned by the API are also resolved against the same backend origin.
+
+The configured host is a **test backend**. Test builds and releases made from this configuration will access test-environment data. Before distributing a production app, change the URL to the verified production API host and rebuild; do not use this test hostname for real production work.
+
+## Quality checks
+
+```powershell
 npx tsc --noEmit
 npm test
+npx expo config --type public --json
 ```
+
+See the repository root README for automated GitHub Actions APK build/release setup and required signing secrets.
