@@ -26,8 +26,11 @@ function getBaseUrl(): string {
     if (parsed.protocol !== "https:") return "";
     const isTestHost = TEST_API_HOSTS.has(parsed.hostname.toLowerCase());
     const isProductionBuild = process.env.NODE_ENV === "production";
-    if (isProductionBuild && apiEnvironment !== "test" && apiEnvironment !== "production") return "";
-    if (apiEnvironment === "test" && !isTestHost) return "";
+    // Production-mode bundles may target the test API only when the build script
+    // explicitly identifies itself as the test release channel.
+    const explicitTestRelease = process.env.EXPO_PUBLIC_API_RELEASE_CHANNEL === "test";
+    if (isProductionBuild && apiEnvironment !== "production" && !(apiEnvironment === "test" && explicitTestRelease)) return "";
+    if (apiEnvironment === "test" && (!isTestHost || (isProductionBuild && !explicitTestRelease))) return "";
     if (apiEnvironment === "production" && isTestHost) return "";
     if (parsed.hostname === "test-admin.yourbuildmart.com") {
       parsed.hostname = "test.yourbuildmart.com";

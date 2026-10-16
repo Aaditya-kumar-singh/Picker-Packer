@@ -132,9 +132,10 @@ test("REST API client layers implement required endpoints and envelope unwrappin
   assert.doesNotMatch(httpSource, /DEFAULT_API_BASE_URL/);
   assert.match(httpSource, /TEST_API_HOSTS/);
   assert.match(httpSource, /EXPO_PUBLIC_API_ENV/);
-  assert.match(httpSource, /isProductionBuild && apiEnvironment !== "test" && apiEnvironment !== "production"/);
+  assert.match(httpSource, /isProductionBuild && apiEnvironment !== "production"/);
   assert.match(httpSource, /apiEnvironment === "production" && isTestHost/);
   assert.match(httpSource, /isProductionBuild/);
+  assert.match(httpSource, /EXPO_PUBLIC_API_RELEASE_CHANNEL === "test"/);
   assert.match(httpSource, /API_CONFIGURATION_ERROR/);
   assert.match(httpSource, /if \(!API_BASE_URL\) return null/);
   assert.doesNotMatch(httpSource, /"https:\/\/test\.yourbuildmart\.com"\s*;/);
@@ -193,6 +194,27 @@ test("picker order completion is handled via assign-packer step", () => {
   assert.match(completionScreen, /assignPacker/);
 });
 
+test("security and workflow guards prevent unsafe fallbacks", () => {
+  const authSource = read("frontend/src/api/authApi.ts");
+  const loginScreen = read("frontend/src/screens/LoginScreen.tsx");
+  const otpScreen = read("frontend/src/screens/OtpScreen.tsx");
+  assert.doesNotMatch(authSource, /developmentOtp/);
+  assert.doesNotMatch(loginScreen, /developmentOtp/);
+  assert.doesNotMatch(otpScreen, /developmentOtp|Development OTP/);
+  const provider = read("frontend/src/navigation/AppProvider.tsx");
+  assert.doesNotMatch(provider, /warehouseId: \(profile as any\)\.warehouseId \?\? 3/);
+  assert.doesNotMatch(provider, /warehouseName: profile\.address/);
+  const orderDetail = read("frontend/src/screens/OrderDetailScreen.tsx");
+  const skuScan = read("frontend/src/screens/SkuScanScreen.tsx");
+  assert.doesNotMatch(orderDetail, /SO-\$\{numOrderId\}|warehouseId: 3/);
+  assert.doesNotMatch(skuScan, /SO-\$\{numOrderId\}|warehouseId: 3/);
+  const completion = read("frontend/src/screens/CompletionScreen.tsx");
+  assert.match(completion, /isOrderFullyPicked/);
+  assert.match(completion, /A valid assigned order is required/);
+  const notifications = read("frontend/src/context/NotificationContext.tsx");
+  assert.match(notifications, /AppState\.addEventListener/);
+});
+
 test("packer order dispatch is handled via assign-rider step", () => {
   const dispatchScreen = read("frontend/src/screens/DispatchScreen.tsx");
   assert.match(dispatchScreen, /getAvailableRiders/);
@@ -202,10 +224,52 @@ test("packer order dispatch is handled via assign-rider step", () => {
   assert.match(packerOrderScreen, /assignRider/);
 
   const completedScreen = read("frontend/src/screens/PackerCompletedScreen.tsx");
-  assert.match(completedScreen, /RIDER_ASSIGNED/);
+  assert.doesNotMatch(completedScreen, /RIDER_ASSIGNED/);
+  assert.match(completedScreen, /orderStatus === "PACKED"/);
   assert.doesNotMatch(completedScreen, /getSessionDispatchedOrders/);
   const packerApi = read("frontend/src/api/packerAppApi.ts");
   assert.doesNotMatch(packerApi, /sessionDispatchedOrders|getSessionDispatchedOrders/);
+});
+
+
+test("warehouse identity and assignment boundaries fail closed", () => {
+  const profileTypes = read("frontend/src/types/index.ts");
+  assert.match(profileTypes, /warehouseId\?: number \| string \| null/);
+  assert.match(profileTypes, /warehouseName\?: string \| null/);
+
+  const warehouse = read("frontend/src/utils/warehouse.ts");
+  assert.match(warehouse, /WH-ID unavailable/);
+  assert.match(warehouse, /export function isSameWarehouse/);
+  assert.match(warehouse, /leftId === rightId/);
+
+  const provider = read("frontend/src/navigation/AppProvider.tsx");
+  assert.match(provider, /warehouseId: profile\.warehouseId/);
+  assert.match(provider, /warehouseName: profile\.warehouseName/);
+
+  const completion = read("frontend/src/screens/CompletionScreen.tsx");
+  assert.match(completion, /validOrder\.warehouseId/);
+  assert.match(completion, /isSameWarehouse\(packer\.warehouseId, orderWithItems\.warehouseId\)/);
+
+  const dispatch = read("frontend/src/screens/DispatchScreen.tsx");
+  assert.match(dispatch, /isSameWarehouse\(r\.warehouseId, o\.warehouseId\)/);
+
+  const packerApi = read("frontend/src/api/packerAppApi.ts");
+  assert.match(packerApi, /cachedAssignedOrders = cachedAssignedOrders\.filter\(\(order\) => order\.orderId !== orderId\)/);
+  assert.doesNotMatch(packerApi, /order\.orderStatus = "RIDER_ASSIGNED"/);
+});
+
+test("OTP request UI state never copies a server-provided OTP or response message", () => {
+  const auth = read("frontend/src/api/authApi.ts");
+  assert.match(auth, /message: "Verification code requested\."/);
+  assert.doesNotMatch(auth, /res\?\.message/);
+  assert.doesNotMatch(auth, /developmentOtp/);
+});
+
+test("CI runs automatically only for master changes", () => {
+  const ci = read(".github/workflows/ci.yml");
+  assert.match(ci, /push:\s+branches: \[master\]/);
+  assert.match(ci, /pull_request:\s+branches: \[master\]/);
+  assert.doesNotMatch(ci, /branches: \[master, aadi\]/);
 });
 
 // Integration tests require the optional standalone reference backend.
