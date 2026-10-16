@@ -1,5 +1,0 @@
-npm notice run ybm-picker-packer@1.0.2 web
-npm notice run expo start --web --port 8091
-Input is required, but 'npx expo' is in non-interactive mode.
-Required input:
-> Use port 8092 instead?
