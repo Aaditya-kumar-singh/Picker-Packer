@@ -39,7 +39,6 @@ export function LoginScreen() {
             pickerId: identifier.trim(),
             expiresIn: String(res.expiresIn),
             masked: res.masked,
-            developmentOtp: res.developmentOtp,
           },
         } as never);
       }

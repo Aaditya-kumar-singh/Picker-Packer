@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/navigation/AppProvider";
 import { pickerAppApi } from "@/api/pickerAppApi";
@@ -109,6 +110,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, [picker, isPacker]);
+
+  // Refresh order-derived notifications when the app returns to the foreground.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active" && picker) void loadNotifications();
+    });
+    return () => subscription.remove();
+  }, [picker?.id, loadNotifications]);
 
   // Load on user login / role change
   useEffect(() => {

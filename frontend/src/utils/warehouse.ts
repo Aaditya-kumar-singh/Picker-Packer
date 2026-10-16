@@ -14,11 +14,11 @@ export function getWarehouseDisplay(
 ): WarehouseDisplay {
   if (warehouseId === null || warehouseId === undefined) {
     return {
-      code: "WH-Main",
-      name: "Main Warehouse",
-      fullName: "Main Fulfillment Center",
-      address: profileAddress || "Central Distribution Center",
-      shortAddress: "Central Hub",
+      code: "WH-Unassigned",
+      name: "Warehouse not assigned",
+      fullName: "Warehouse identity unavailable",
+      address: profileAddress || "Ask your warehouse supervisor to confirm your assigned warehouse.",
+      shortAddress: "Unassigned",
     };
   }
 

@@ -42,7 +42,7 @@ interface AuthState {
   error: string | null;
   loginWithPassword: (identifier: string, password: string, rememberMe?: boolean) => Promise<boolean>;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<boolean>;
-  requestOtp: (identifier: string) => Promise<{ expiresIn: number; masked: string; developmentOtp?: string } | null>;
+  requestOtp: (identifier: string) => Promise<{ expiresIn: number; masked: string } | null>;
   verifyOtp: (identifier: string, otp: string) => Promise<boolean>;
   refreshProfile: () => Promise<void>;
   updateProfile: (patch: Partial<FulfillmentStaffProfileDto>) => Promise<{ ok: boolean; error?: string }>;
@@ -72,8 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role,
       phone: profile.phone,
       email: profile.email,
-      warehouseId: (profile as any).warehouseId ?? 3,
-      warehouseName: profile.address || undefined,
+      warehouseId: (profile as FulfillmentStaffProfileDto & { warehouseId?: number | string | null }).warehouseId ?? undefined,
+      warehouseName: (profile as FulfillmentStaffProfileDto & { warehouseName?: string | null }).warehouseName ?? undefined,
       profile,
     };
   }, []);
@@ -151,7 +151,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const response = await authApi.requestOtp({ identifier });
-      return { expiresIn: 300, masked: identifier, developmentOtp: response.developmentOtp };
+      // Never expose a server-returned development OTP to navigation or UI state.
+      return { expiresIn: 300, masked: identifier };
     } catch (e: any) {
       setError(e?.message || "Failed to send OTP.");
       return null;
