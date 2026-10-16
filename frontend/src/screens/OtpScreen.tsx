@@ -10,7 +10,7 @@ export function OtpScreen() {
   const { pickerId, expiresIn, masked, developmentOtp } = useLocalSearchParams<{ pickerId: string; expiresIn?: string; masked?: string; developmentOtp?: string }>();
   const { verifyOtp, requestOtp, loading, error } = useAuth();
   const [otp, setOtp] = useState("");
-  const [info, setInfo] = useState<string | null>(developmentOtp ? `Development OTP: ${developmentOtp}` : null);
+  const [info, setInfo] = useState<string | null>(__DEV__ && developmentOtp ? `Development OTP: ${developmentOtp}` : null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [otpMeta, setOtpMeta] = useState<{ expiresIn: string; masked: string } | null>(null);
   const showExpires = otpMeta?.expiresIn ?? expiresIn ?? null;
@@ -31,7 +31,7 @@ export function OtpScreen() {
     const r = await requestOtp(String(pickerId ?? ""));
     if (r) {
       setOtpMeta({ expiresIn: String(r.expiresIn), masked: r.masked });
-      setInfo(r.developmentOtp ? `Development OTP: ${r.developmentOtp}` : `New code sent to ${r.masked}`);
+      setInfo(__DEV__ && r.developmentOtp ? `Development OTP: ${r.developmentOtp}` : `New code sent to ${r.masked}`);
     } else {
       setInfo(null);
     }
