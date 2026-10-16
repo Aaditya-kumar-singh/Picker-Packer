@@ -1,7 +1,7 @@
 import { Text } from "@/components/Typography";
 // Picker Completion Screen — Assign Packer (PICKING → PACKING) per picker-app-api.md §2.3 & §2.6
 import { useCallback, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -169,7 +169,7 @@ export function CompletionScreen() {
           </Text>
         </Card>
       ) : (
-        <ScrollView style={s.packersList} showsVerticalScrollIndicator={false}>
+        <View style={s.packersList}>
           {packers.map((packer) => {
             const isSelected = selectedPackerId === packer.id;
             const photo = resolvePhotoUrl(packer.photoFilePath);
@@ -207,7 +207,7 @@ export function CompletionScreen() {
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
       )}
 
       <ErrorBanner message={error} />
@@ -280,7 +280,8 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   packersList: {
-    maxHeight: 280,
+    width: "100%",
+    gap: 0,
   },
   packerCard: {
     flexDirection: "row",

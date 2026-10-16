@@ -1,6 +1,6 @@
 import { Text, TextInput } from "@/components/Typography";
 import { useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppHeader, PrimaryButton, SecondaryButton, Screen, theme } from "@/components/ui";
@@ -252,7 +252,8 @@ export function ProfileScreen() {
       </View>
 
       {/* Edit Profile Modal */}
-      <Modal visible={editVisible} transparent animationType="slide">
+      <Modal visible={editVisible} transparent animationType="slide" onRequestClose={() => setEditVisible(false)}>
+        <KeyboardAvoidingView style={s.modalKeyboardAvoider} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View style={s.modalOverlay}>
           <View style={s.modalBox}>
             <View style={s.modalHeader}>
@@ -262,7 +263,7 @@ export function ProfileScreen() {
               </Pressable>
             </View>
 
-            <ScrollView style={{ maxHeight: 380 }}>
+            <ScrollView style={s.editFormScroll} contentContainerStyle={s.editFormContent} keyboardShouldPersistTaps="handled">
               <Text style={s.inputLabel}>Full Name</Text>
               <TextInput style={s.modalInput} value={editName} onChangeText={setEditName} placeholder="Name" />
 
@@ -293,10 +294,12 @@ export function ProfileScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Change Password Modal */}
-      <Modal visible={passVisible} transparent animationType="slide">
+      <Modal visible={passVisible} transparent animationType="slide" onRequestClose={() => setPassVisible(false)}>
+        <KeyboardAvoidingView style={s.modalKeyboardAvoider} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View style={s.modalOverlay}>
           <View style={s.modalBox}>
             <View style={s.modalHeader}>
@@ -306,6 +309,7 @@ export function ProfileScreen() {
               </Pressable>
             </View>
 
+            <ScrollView style={s.passwordFormScroll} contentContainerStyle={s.editFormContent} keyboardShouldPersistTaps="handled">
             <Text style={s.inputLabel}>Current Password</Text>
             <TextInput
               style={s.modalInput}
@@ -335,6 +339,7 @@ export function ProfileScreen() {
 
             {passError ? <Text style={s.errorText}>{passError}</Text> : null}
             {passSuccess ? <Text style={s.successText}>{passSuccess}</Text> : null}
+            </ScrollView>
 
             <View style={s.modalFooter}>
               <PrimaryButton
@@ -345,6 +350,7 @@ export function ProfileScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );
@@ -498,6 +504,20 @@ const s = StyleSheet.create({
   actionsContainer: {
     marginTop: 14,
     gap: 8,
+  },
+  modalKeyboardAvoider: {
+    flex: 1,
+  },
+  editFormScroll: {
+    flexShrink: 1,
+    maxHeight: 420,
+  },
+  passwordFormScroll: {
+    flexShrink: 1,
+    maxHeight: 420,
+  },
+  editFormContent: {
+    paddingBottom: 4,
   },
   modalOverlay: {
     flex: 1,

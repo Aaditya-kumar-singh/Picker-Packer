@@ -2,6 +2,7 @@ import { Text } from "@/components/Typography";
 // Compact picker item step: verify the SKU and count each physical item barcode scan as 1 EA.
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { BarcodeErrorModal, useBarcodeAlert } from "@/components/modals/BarcodeErrorModal";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui";
 import { formatItemLocation, isOrderFullyPicked, nextPendingLine } from "@/domain/order";
 import { pickerAppApi } from "@/api/pickerAppApi";
-import { alertWrongBarcode, beepSuccess } from "@/services/scanner";
+import { beepSuccess } from "@/services/scanner";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
 import type { FulfillmentOrderDto, FulfillmentOrderItemDto } from "@/types";
 
@@ -26,6 +27,7 @@ export function SkuScanScreen() {
   const [manual, setManual] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const { barcodeAlert, showBarcodeAlert, dismissBarcodeAlert } = useBarcodeAlert();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,7 +78,7 @@ export function SkuScanScreen() {
       setManual("");
       const msg = "Scan or type the product barcode.";
       setError(msg);
-      alertWrongBarcode("", line.sku, msg);
+      showBarcodeAlert("", line.sku, msg);
       return;
     }
 
@@ -99,13 +101,13 @@ export function SkuScanScreen() {
       } else {
         setManual("");
         setError(res.message);
-        alertWrongBarcode(barcode, line.sku, res.message);
+        showBarcodeAlert(barcode, line.sku, res.message);
       }
     } catch (err: any) {
       setManual("");
       const msg = err?.message || "Scan error";
       setError(msg);
-      alertWrongBarcode(barcode, line.sku, msg);
+      showBarcodeAlert(barcode, line.sku, msg);
     } finally {
       setBusy(false);
     }
@@ -188,6 +190,7 @@ export function SkuScanScreen() {
         disabled={busy}
         inputPlaceholder="Scan or type item barcode"
       />
+      <BarcodeErrorModal alert={barcodeAlert} onDismiss={dismissBarcodeAlert} />
     </Screen>
   );
 }

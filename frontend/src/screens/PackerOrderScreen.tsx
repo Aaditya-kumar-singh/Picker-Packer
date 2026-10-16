@@ -13,7 +13,8 @@ import {
   theme,
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
-import { alertWrongBarcode, beepSuccess } from "@/services/scanner";
+import { beepSuccess } from "@/services/scanner";
+import { BarcodeErrorModal, useBarcodeAlert } from "@/components/modals/BarcodeErrorModal";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
 import { packerAppApi } from "@/api/packerAppApi";
 import type {
@@ -46,6 +47,7 @@ export function PackerOrderScreen() {
   const [copiedBarcode, setCopiedBarcode] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const { barcodeAlert, showBarcodeAlert, dismissBarcodeAlert } = useBarcodeAlert();
 
   const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId, order?.warehouseName ?? picker?.warehouseName);
 
@@ -108,7 +110,7 @@ export function PackerOrderScreen() {
       inputRef.current?.clear();
       const msg = "Please scan or enter a product barcode.";
       setError(msg);
-      alertWrongBarcode("", activeItem?.sku, msg);
+      showBarcodeAlert("", activeItem?.sku, msg);
       setTimeout(() => inputRef.current?.focus(), 80);
       return false;
     }
@@ -150,7 +152,7 @@ export function PackerOrderScreen() {
         setBarcode("");
         inputRef.current?.clear();
         setError(res.message);
-        alertWrongBarcode(code, activeItem?.sku, res.message);
+        showBarcodeAlert(code, activeItem?.sku, res.message);
         setTimeout(() => inputRef.current?.focus(), 80);
         return false;
       }
@@ -159,7 +161,7 @@ export function PackerOrderScreen() {
       setBarcode("");
       inputRef.current?.clear();
       setError(`Scan failed: ${msg}`);
-      alertWrongBarcode(code, activeItem?.sku, msg);
+      showBarcodeAlert(code, activeItem?.sku, msg);
       setTimeout(() => inputRef.current?.focus(), 80);
       return false;
     } finally {
@@ -448,7 +450,7 @@ export function PackerOrderScreen() {
       </View>
 
       {/* Assign Rider Modal */}
-      <Modal visible={riderModal} transparent animationType="slide">
+      <Modal visible={riderModal} transparent animationType="slide" onRequestClose={() => setRiderModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
             <View style={s.modalTop}>
@@ -465,7 +467,7 @@ export function PackerOrderScreen() {
             {riders.length === 0 ? (
               <Text style={s.noRidersText}>No active riders available in this warehouse.</Text>
             ) : (
-              <ScrollView style={{ maxHeight: 300 }}>
+              <ScrollView style={s.modalListScroll} contentContainerStyle={s.modalScrollContent} keyboardShouldPersistTaps="handled">
                 {riders.map((r) => (
                   <Pressable
                     key={r.id}
@@ -497,7 +499,7 @@ export function PackerOrderScreen() {
       </Modal>
 
       {/* Order Info Modal */}
-      <Modal visible={orderInfoModal} transparent animationType="fade">
+      <Modal visible={orderInfoModal} transparent animationType="fade" onRequestClose={() => setOrderInfoModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
             <View style={s.modalTop}>
@@ -507,7 +509,7 @@ export function PackerOrderScreen() {
               </Pressable>
             </View>
 
-            <ScrollView style={{ maxHeight: 360 }}>
+            <ScrollView style={s.modalInfoScroll} contentContainerStyle={s.modalScrollContent} showsVerticalScrollIndicator>
               <Text style={s.infoSectionTitle}>Header</Text>
               <Text style={s.infoLine}>Order ID: {order.orderId}</Text>
               <Text style={s.infoLine}>Order Ref: {order.orderNumber}</Text>
@@ -532,6 +534,8 @@ export function PackerOrderScreen() {
           </View>
         </View>
       </Modal>
+
+      <BarcodeErrorModal alert={barcodeAlert} onDismiss={() => { dismissBarcodeAlert(); setTimeout(() => inputRef.current?.focus(), 120); }} />
 
       {/* Barcode Camera Modal */}
       <BarcodeScannerModal
@@ -894,10 +898,25 @@ const s = StyleSheet.create({
     padding: 16,
   },
   modalCard: {
+    width: "100%",
+    maxWidth: 520,
+    maxHeight: "85%",
+    flexShrink: 1,
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 20,
-    maxHeight: "85%",
+
+  },
+  modalListScroll: {
+    flexShrink: 1,
+    maxHeight: 320,
+  },
+  modalInfoScroll: {
+    flexShrink: 1,
+    maxHeight: 420,
+  },
+  modalScrollContent: {
+    paddingBottom: 4,
   },
   modalTop: {
     flexDirection: "row",

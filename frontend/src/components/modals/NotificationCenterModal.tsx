@@ -1,6 +1,6 @@
 import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
-import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 
 export interface AppNotification {
   id: string;
@@ -40,6 +40,7 @@ export function NotificationCenterModal({
   onSelectNotification,
   onViewAllOrders,
 }: NotificationCenterModalProps) {
+  const { height: windowHeight } = useWindowDimensions();
   return (
     <Modal
       visible={visible}
@@ -49,7 +50,7 @@ export function NotificationCenterModal({
     >
       <Pressable style={s.modalBackdrop} onPress={onClose}>
         <Pressable
-          style={[s.notifSheet, { marginTop: topOffset }]}
+          style={[s.notifSheet, { marginTop: topOffset, maxHeight: Math.max(220, windowHeight - topOffset - 24) }]}
           onPress={(e) => e.stopPropagation()}
         >
           <View style={s.notifHeaderRow}>
@@ -131,6 +132,7 @@ export function NotificationCenterModal({
             style={s.notifList}
             contentContainerStyle={s.notifListContent}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
             {notifications.length === 0 ? (
               <View style={s.emptyNotifBox}>
@@ -339,6 +341,8 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   notifList: {
+    flexShrink: 1,
+    flexGrow: 0,
     maxHeight: 380,
   },
   notifListContent: {
