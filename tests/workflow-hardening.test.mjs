@@ -263,9 +263,13 @@ test("OTP request UI state never copies a server-provided OTP or response messag
   assert.match(auth, /message: "Verification code requested\."/);
   assert.doesNotMatch(auth, /res\?\.message/);
   assert.doesNotMatch(auth, /developmentOtp/);
+});
 
+test("CI runs automatically only for master changes", () => {
   const ci = read(".github/workflows/ci.yml");
-  assert.match(ci, /branches: \[master, aadi\]/);
+  assert.match(ci, /push:\s+branches: \[master\]/);
+  assert.match(ci, /pull_request:\s+branches: \[master\]/);
+  assert.doesNotMatch(ci, /branches: \[master, aadi\]/);
 });
 
 // Integration tests require the optional standalone reference backend.
