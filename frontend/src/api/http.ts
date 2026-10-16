@@ -5,7 +5,7 @@ import type { ApiErrorEnvelope, ApiResponseEnvelope } from "@/types";
 
 const TOKEN_KEY = "ybm.auth.jwt";
 const ROLE_KEY = "ybm.auth.role";
-const DEFAULT_API_BASE_URL = "https://test.yourbuildmart.com/api";
+const TEST_API_HOSTS = new Set(["test.yourbuildmart.com", "test-admin.yourbuildmart.com"]);
 
 function getBaseUrl(): string {
   // Local web development uses Metro's proxy to avoid browser CORS preflight blocks.
@@ -17,10 +17,18 @@ function getBaseUrl(): string {
     return `${window.location.origin}/api`;
   }
 
-  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL;
+  // Native/release builds must receive their API URL explicitly; do not silently fall back to test.
+  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (!configuredUrl) return "";
+  const apiEnvironment = process.env.EXPO_PUBLIC_API_ENV?.trim().toLowerCase();
   try {
     const parsed = new URL(configuredUrl);
     if (parsed.protocol !== "https:") return "";
+    const isTestHost = TEST_API_HOSTS.has(parsed.hostname.toLowerCase());
+    const isProductionBuild = process.env.NODE_ENV === "production";
+    if (isProductionBuild && apiEnvironment !== "test" && apiEnvironment !== "production") return "";
+    if (apiEnvironment === "test" && !isTestHost) return "";
+    if (apiEnvironment === "production" && isTestHost) return "";
     if (parsed.hostname === "test-admin.yourbuildmart.com") {
       parsed.hostname = "test.yourbuildmart.com";
     }
@@ -198,7 +206,7 @@ export async function apiRequest<T>(
   if (!API_BASE_URL) {
     throw new ApiHttpError({
       error: "API_CONFIGURATION_ERROR",
-      message: "The API server is not configured for this build. Set EXPO_PUBLIC_API_BASE_URL to the correct non-staging API URL and rebuild the app.",
+      message: "The API server is not configured for this build. Set EXPO_PUBLIC_API_ENV and EXPO_PUBLIC_API_BASE_URL for the intended backend, then rebuild the app.",
       status: 0,
       fieldErrors: null,
     });

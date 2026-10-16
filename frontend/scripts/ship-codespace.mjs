@@ -49,7 +49,7 @@ const currentCommit = output('git', ['rev-parse', '--short=12', 'HEAD']);
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(root, 'package.json'), 'utf8'),
 );
-const assetName = `YBM-Picker-Packer-${packageJson.version}-${currentCommit}-android.apk`
+const assetName = `YBM-Picker-Packer-TEST-BACKEND-${packageJson.version}-${currentCommit}-android.apk`
 const metadataPath = path.join(releasesDir, `${assetName}.json`);
 
 if (!fs.existsSync(metadataPath)) {
@@ -57,6 +57,10 @@ if (!fs.existsSync(metadataPath)) {
 }
 
 const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+
+if (metadata.apiEnvironment !== 'test' || metadata.apiBaseUrl !== 'https://test.yourbuildmart.com/api/') {
+  throw new Error('Refusing to publish APK: expected explicit TEST-backend build metadata.');
+}
 
 if (metadata.commit !== currentCommit) {
   throw new Error(
@@ -78,10 +82,11 @@ if (!fs.existsSync(apkPath)) {
 
 const now = new Date();
 const timestamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
-const tag = `android-v${metadata.version}-${timestamp}`;
+const tag = `android-test-v${metadata.version}-${timestamp}`;
 
 const notes = [
-  'Automated Codespace Android release.',
+  'Automated Codespace Android TEST-BACKEND release.',
+  'WARNING: This APK connects to https://test.yourbuildmart.com/api/ and must not be used for production warehouse operations.',
   '',
   `Version: ${metadata.version}`,
   `Android versionCode: ${metadata.versionCode}`,
@@ -114,7 +119,7 @@ run(
     '--repo',
     'Aaditya-kumar-singh/Picker-Packer',
     '--title',
-    `YBM Picker-Packer ${metadata.version} Android ${metadata.commit}`,
+    `YBM Picker-Packer TEST BACKEND ${metadata.version} Android ${metadata.commit}`,
     '--prerelease',
     '--latest=false',
     '--target',

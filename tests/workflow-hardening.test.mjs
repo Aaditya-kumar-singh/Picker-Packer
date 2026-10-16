@@ -36,6 +36,7 @@ test("Supabase is completely removed from frontend dependencies and config", () 
   const envExample = read("frontend/.env.example");
   assert.doesNotMatch(envExample, /SUPABASE/);
   assert.match(envExample, /EXPO_PUBLIC_API_BASE_URL/);
+  assert.match(envExample, /EXPO_PUBLIC_API_ENV=test/);
 
   assert.equal(fs.existsSync(path.join(root, "frontend/eas.json")), false);
   assert.equal(app.extra?.eas?.projectId, undefined);
@@ -54,6 +55,18 @@ test("Supabase is completely removed from frontend dependencies and config", () 
   assert.match(releaseWorkflow, /gh codespace create/);
   assert.match(releaseWorkflow, /gh codespace ssh/);
   assert.match(releaseWorkflow, /npm run ship/);
+  assert.match(releaseWorkflow, /TEST-BACKEND APK Release/);
+
+  const buildScript = read("frontend/scripts/build-android-codespace.mjs");
+  assert.match(buildScript, /EXPO_PUBLIC_API_ENV = 'test'/);
+  assert.match(buildScript, /EXPO_PUBLIC_API_BASE_URL = 'https:\/\/test\.yourbuildmart\.com\/api\/'/);
+  assert.match(buildScript, /YBM-Picker-Packer-TEST-BACKEND-/);
+  assert.match(buildScript, /apiEnvironment: 'test'/);
+
+  const shipScript = read("frontend/scripts/ship-codespace.mjs");
+  assert.match(shipScript, /YBM-Picker-Packer-TEST-BACKEND-/);
+  assert.match(shipScript, /must not be used for production warehouse operations/);
+  assert.match(shipScript, /android-test-v\$\{metadata\.version\}/);
   assert.doesNotMatch(releaseWorkflow, /EXPO_TOKEN|eas-cli|EAS Build/i);
 
   const readme = read("frontend/README.md");
@@ -116,8 +129,12 @@ test("REST API client layers implement required endpoints and envelope unwrappin
   assert.match(httpSource, /Bearer \$\{token\}/);
   assert.match(httpSource, /auth_token|TOKEN_KEY/);
   assert.match(httpSource, /onUnauthorized/);
-  assert.match(httpSource, /DEFAULT_API_BASE_URL = "https:\/\/test\.yourbuildmart\.com\/api"/);
-  assert.doesNotMatch(httpSource, /if \(!__DEV__ && isStagingHost\)/);
+  assert.doesNotMatch(httpSource, /DEFAULT_API_BASE_URL/);
+  assert.match(httpSource, /TEST_API_HOSTS/);
+  assert.match(httpSource, /EXPO_PUBLIC_API_ENV/);
+  assert.match(httpSource, /isProductionBuild && apiEnvironment !== "test" && apiEnvironment !== "production"/);
+  assert.match(httpSource, /apiEnvironment === "production" && isTestHost/);
+  assert.match(httpSource, /isProductionBuild/);
   assert.match(httpSource, /API_CONFIGURATION_ERROR/);
   assert.match(httpSource, /if \(!API_BASE_URL\) return null/);
   assert.doesNotMatch(httpSource, /"https:\/\/test\.yourbuildmart\.com"\s*;/);

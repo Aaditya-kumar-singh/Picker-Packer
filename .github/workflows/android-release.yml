@@ -1,4 +1,4 @@
-name: Picker-Packer Android APK Release
+name: Picker-Packer Android TEST-BACKEND APK Release
 
 on:
   push:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   release:
-    name: Build and release Picker-Packer APK in GitHub Codespaces
+    name: Build and release TEST-BACKEND APK in GitHub Codespaces
     runs-on: ubuntu-latest
     timeout-minutes: 90
 

@@ -57,6 +57,8 @@ console.log(`YBM Picker-Packer ${version}`);
 console.log(`Commit: ${commit}`);
 console.log(`Android versionCode: ${versionCode}`);
 
+// This GitHub Codespaces workflow intentionally creates a TEST-backend APK, not a production APK.
+process.env.EXPO_PUBLIC_API_ENV = 'test';
 process.env.EXPO_PUBLIC_API_BASE_URL = 'https://test.yourbuildmart.com/api/';
 
 process.on('exit', () => {
@@ -110,7 +112,7 @@ if (!fs.existsSync(apkSource)) {
 const outputDir = path.join(root, 'dist', 'releases');
 fs.mkdirSync(outputDir, { recursive: true });
 
-const assetName = `YBM-Picker-Packer-${version}-${commit}-android.apk`
+const assetName = `YBM-Picker-Packer-TEST-BACKEND-${version}-${commit}-android.apk`
 const assetPath = path.join(outputDir, assetName);
 fs.copyFileSync(apkSource, assetPath);
 
@@ -132,6 +134,8 @@ const metadata = {
   commit,
   assetName,
   sha256,
+  apiEnvironment: 'test',
+  apiBaseUrl: 'https://test.yourbuildmart.com/api/',
 };
 
 const metadataPath = path.join(outputDir, `${assetName}.json`);
