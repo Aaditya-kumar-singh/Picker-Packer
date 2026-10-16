@@ -1,7 +1,7 @@
 import { Text, TextInput } from "@/components/Typography";
 // Screen 2 — OTP verification. Shift authentication, 6-digit pin, and device session lock.
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { ErrorBanner, PrimaryButton, Screen, SecondaryButton, theme } from "@/components/ui";
@@ -43,6 +43,12 @@ export function OtpScreen() {
 
   return (
     <Screen center>
+      <Image
+        source={require("../../assets/images/ybm-app-mark.png")}
+        style={os.logoMark}
+        resizeMode="contain"
+        accessibilityLabel="YourBuildMart"
+      />
       {/* Shift authentication badge + timer */}
       <View style={os.authRow}>
         <View style={os.authBadge}>
@@ -120,6 +126,12 @@ export function OtpScreen() {
 }
 
 const os = StyleSheet.create({
+  logoMark: {
+    width: 56,
+    height: 56,
+    alignSelf: "center",
+    marginBottom: theme.space.md,
+  },
   authRow: {
     flexDirection: "row",
     justifyContent: "space-between",

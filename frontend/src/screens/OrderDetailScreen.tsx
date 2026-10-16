@@ -158,6 +158,9 @@ export function OrderDetailScreen() {
         // Advance to next pending line if the current item is now fully picked
         const updatedTarget = res.items?.find((i) => i.itemId === target.itemId);
         if (updatedTarget && (updatedTarget.fullyScanned || (updatedTarget.pickedQty >= updatedTarget.orderedQty))) {
+          // Close the camera when this product's required quantity is confirmed.
+          // Keep the scan sheet open on the next pending product.
+          setCameraVisible(false);
           const nextLine = (res.items || []).find((i) => !i.fullyScanned && i.pickedQty < i.orderedQty) ?? null;
           setActiveScanLine(nextLine);
           if (!nextLine) {

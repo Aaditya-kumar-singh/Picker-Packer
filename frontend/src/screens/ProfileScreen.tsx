@@ -241,6 +241,16 @@ export function ProfileScreen() {
         />
       </View>
 
+      <View style={s.brandFooter}>
+        <Image
+          source={require("../../assets/images/yourbuildmart-wordmark.png")}
+          style={s.footerWordmark}
+          resizeMode="contain"
+          accessibilityLabel="YourBuildMart"
+        />
+        <Text style={s.footerAppVersion}>YourBuildMart Warehouse Operations • v1.0.2</Text>
+      </View>
+
       {/* Edit Profile Modal */}
       <Modal visible={editVisible} transparent animationType="slide">
         <View style={s.modalOverlay}>
@@ -542,5 +552,23 @@ const s = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
     fontWeight: "600",
+  },
+  brandFooter: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 28,
+    paddingBottom: 20,
+    marginTop: 8,
+  },
+  footerWordmark: {
+    width: 140,
+    height: 38,
+    marginBottom: 6,
+  },
+  footerAppVersion: {
+    fontSize: 11,
+    color: theme.color.muted,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
 });
