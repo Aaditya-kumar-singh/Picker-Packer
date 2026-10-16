@@ -4,7 +4,7 @@ A React Native / Expo warehouse picking and packing application for YourBuildMar
 
 ## API
 
-App API calls use `frontend/src/api/http.ts`. Default/release API base URL: `https://test.yourbuildmart.com/api/`. Change `EXPO_PUBLIC_API_BASE_URL` in `frontend/.env` for local development.
+App API calls use `frontend/src/api/http.ts`. Native and release builds require an explicit `EXPO_PUBLIC_API_BASE_URL`; there is no silent default. For local test-backend development, copy `frontend/.env.example` to `frontend/.env`, which configures `EXPO_PUBLIC_API_ENV=test` and `https://test.yourbuildmart.com/api/`. GitHub-generated APKs are labelled TEST-BACKEND and must not be used for production warehouse operations.
 
 ## Local checks
 
