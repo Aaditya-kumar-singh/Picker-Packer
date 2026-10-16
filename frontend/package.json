@@ -22,12 +22,12 @@
     "expo-web-browser": "^57.0.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-native": "^0.86.3",
-    "react-native-reanimated": "^4.5.1",
+    "react-native": "0.86.3",
+    "react-native-reanimated": "~4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-web": "^0.21.4",
-    "react-native-worklets": "^0.10.4"
+    "react-native-worklets": "~0.10.4"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
@@ -39,7 +39,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "node --test ../tests/*.test.mjs"
+    "test": "node --test ../tests/*.test.mjs",
+    "android:codespace": "node scripts/build-android-codespace.mjs",
+    "setup:codespace-signing": "bash scripts/setup-codespace-signing.sh",
+    "ship": "node scripts/ship-codespace.mjs",
+    "release:codespace": "node scripts/ship-codespace.mjs"
   },
   "private": true
 }

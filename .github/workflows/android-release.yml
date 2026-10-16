@@ -11,163 +11,155 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  validate:
-    name: Validate app
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript
-        run: npx tsc --noEmit
-
-      - name: Tests
-        run: npm test
-
-      - name: Validate Expo config
-        run: npx expo config --type public --json > /tmp/expo-config.json
-
-  build-and-release:
-    name: Build and publish signed APK
-    needs: validate
+  release:
+    name: Build and release Picker-Packer APK in GitHub Codespaces
     runs-on: ubuntu-latest
     timeout-minutes: 90
+
     steps:
-      - name: Checkout
+      - name: Checkout release commit
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Prebuild Android project
-        working-directory: frontend
+      - name: Authenticate GitHub CLI
         env:
-          EXPO_PUBLIC_API_BASE_URL: https://test.yourbuildmart.com/api/
-        run: npx expo prebuild --platform android --no-install --clean
-
-      - name: Configure Android release signing
-        working-directory: frontend
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ] || [ -z "${ANDROID_KEY_ALIAS:-}" ] || [ -z "${ANDROID_KEY_PASSWORD:-}" ]; then
-            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD Actions secrets."
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::CODESPACES_TOKEN is not configured in GitHub Actions."
+            echo "::error::Add it at Settings Ã¢â€ â€™ Secrets and variables Ã¢â€ â€™ Actions Ã¢â€ â€™ New repository secret."
             exit 1
           fi
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/release.keystore
-          {
-            echo "MYAPP_UPLOAD_STORE_FILE=release.keystore"
-            echo "MYAPP_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS"
-            echo "MYAPP_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
-            echo "MYAPP_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
-          } >> android/gradle.properties
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          path = Path("android/app/build.gradle")
-          source = path.read_text()
-          if "signingConfigs.release" in source:
-              raise SystemExit("Release signing config already exists; refusing to patch twice")
-          pattern = r"    signingConfigs \{\n        debug \{\n.*?\n        \}\n    \}"
-          match = re.search(pattern, source, re.S)
-          if not match:
-              raise SystemExit("Could not find Expo Android signingConfigs template")
-          replacement = """    signingConfigs {
-                  debug {
-                      storeFile file('debug.keystore')
-                      storePassword 'android'
-                      keyAlias 'androiddebugkey'
-                      keyPassword 'android'
-                  }
-                  release {
-                      storeFile file(MYAPP_UPLOAD_STORE_FILE)
-                      storePassword MYAPP_UPLOAD_STORE_PASSWORD
-                      keyAlias MYAPP_UPLOAD_KEY_ALIAS
-                      keyPassword MYAPP_UPLOAD_KEY_PASSWORD
-                  }
-              }"""
-          source = source[:match.start()] + replacement + source[match.end():]
-          release_start = source.index("        release {", source.index("    buildTypes {"))
-          release_end = source.index("\n        }", release_start)
-          release_block = source[release_start:release_end]
-          release_block = release_block.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
-          if "signingConfig signingConfigs.release" not in release_block:
-              raise SystemExit("Could not set release build signing configuration")
-          source = source[:release_start] + release_block + source[release_end:]
-          path.write_text(source)
-          PY
+          echo "Checking GitHub token authentication..."
+          if ! gh api user --jq '"Authenticated as: " + .login'; then
+            echo "::error::CODESPACES_TOKEN is present but GitHub rejected it."
+            echo "::error::Check that the token is active, belongs to the correct GitHub account, and has access to Aaditya-kumar-singh/Picker-Packer."
+            exit 1
+          fi
 
-      - name: Build signed release APK
-        working-directory: frontend/android
+      - name: Verify Android signing Codespaces secrets
         env:
-          EXPO_PUBLIC_API_BASE_URL: https://test.yourbuildmart.com/api/
-        run: ./gradlew assembleRelease --no-daemon
-
-      - name: Verify APK and calculate checksum
-        id: apk
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
         run: |
           set -euo pipefail
-          APK="frontend/android/app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK"
-          echo "path=$APK" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          REQUIRED_SECRETS=(
+            ANDROID_KEYSTORE_BASE64
+            ANDROID_KEYSTORE_PASSWORD
+            ANDROID_KEY_ALIAS
+            ANDROID_KEY_PASSWORD
+          )
 
-      - name: Create GitHub Release and attach APK
+          AVAILABLE="$(gh secret list --user --app codespaces --repo Aaditya-kumar-singh/Picker-Packer --json name --jq '.[].name')"
+
+          MISSING=()
+          for SECRET_NAME in "${REQUIRED_SECRETS[@]}"; do
+            if ! grep -Fxq "$SECRET_NAME" <<< "$AVAILABLE"; then
+              MISSING+=("$SECRET_NAME")
+            fi
+          done
+
+          if [ "${#MISSING[@]}" -ne 0 ]; then
+            echo "::error::Missing Android signing Codespaces secret(s): ${MISSING[*]}"
+            echo "::error::These must be user Codespaces secrets associated with Aaditya-kumar-singh/Picker-Packer."
+            echo "::error::GitHub Actions cannot read Codespaces secret values."
+            echo "::error::Run npm run setup:codespace-signing inside a normal YBM Picker-Packer Codespace, or add the four secrets under GitHub Settings -> Codespaces -> Secrets."
+            exit 1
+          fi
+
+          echo "All four Android signing Codespaces secrets are configured."
+
+      - name: Create dedicated release Codespace
+        id: codespace
         env:
-          GH_TOKEN: ${{ github.token }}
-          APK_PATH: ${{ steps.apk.outputs.path }}
-          APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
         run: |
           set -euo pipefail
-          SHORT_SHA="${GITHUB_SHA:0:12}"
-          TAG="android-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
-          gh release create "$TAG" "$APK_PATH#YBM-Picker-Packer-${SHORT_SHA}-android.apk" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "YBM Picker-Packer Android ${SHORT_SHA}" \
-            --notes "Automated Android APK release.
 
-          Commit: ${GITHUB_SHA}
-          API base URL: https://test.yourbuildmart.com/api/
-          SHA-256: ${APK_SHA256}
+          NAME="$(gh codespace create \
+            --repo Aaditya-kumar-singh/Picker-Packer \
+            --branch master \
+            --machine standardLinux32gb \
+            --idle-timeout 60m \
+            --retention-period 1h \
+            --display-name "YBM Picker-Packer Release ${GITHUB_RUN_NUMBER}" \
+            --default-permissions)"
 
-          This build is signed with the configured persistent release keystore." \
-            --prerelease
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Created Codespace: $NAME"
+
+      - name: Wait for Codespace
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
+          CODESPACE_NAME: ${{ steps.codespace.outputs.name }}
+        run: |
+          set -euo pipefail
+
+          for i in {1..60}; do
+            STATE="$(gh codespace view -c "$CODESPACE_NAME" --json state --jq '.state')"
+            echo "Codespace state: $STATE"
+
+            case "$STATE" in
+              Available)
+                exit 0
+                ;;
+              Shutdown|Deleted|Unavailable|Failed)
+                echo "::error::Codespace entered terminal state: $STATE"
+                exit 1
+                ;;
+            esac
+
+            sleep 10
+          done
+
+          echo "::error::Timed out waiting for Codespace."
+          exit 1
+
+      - name: Wait for Codespace SSH
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
+          CODESPACE_NAME: ${{ steps.codespace.outputs.name }}
+        run: |
+          set -euo pipefail
+          echo "Testing direct GitHub Codespaces SSH."
+          echo "GitHub CLI manages the Codespaces SSH key and connection."
+          for i in {1..6}; do
+            echo "SSH readiness attempt $i/6"
+            set +e
+            timeout 60s gh codespace ssh -c "$CODESPACE_NAME" -- 'bash -lc '"'"'command -v node >/dev/null && command -v java >/dev/null && echo YBM_CONTAINER_READY'"'"''
+            STATUS=$?
+            set -e
+            if [ "$STATUS" -eq 0 ]; then
+              echo "Codespace SSH and required runtimes are ready."
+              exit 0
+            fi
+            echo "SSH readiness attempt failed with exit code $STATUS."
+            if [ "$i" -eq 6 ]; then
+              echo "::error::Codespace became Available but GitHub CLI could not establish SSH."
+              echo "=== Codespace creation logs ==="
+              gh codespace logs -c "$CODESPACE_NAME" || true
+              exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Build, sign, and publish from Codespace
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
+          CODESPACE_NAME: ${{ steps.codespace.outputs.name }}
+        run: |
+          set -euo pipefail
+          gh codespace ssh -c "$CODESPACE_NAME" -- 'bash -lc '"'"'cd /workspaces/Picker-Packer/frontend && set -euo pipefail && echo "=== YBM Picker-Packer automated Codespace release ===" && echo "Commit: $(git rev-parse HEAD)" && echo "Branch: $(git branch --show-current)" && echo "Node: $(node --version)" && echo "Java:" && java -version && echo "Android SDK: $ANDROID_HOME" && npm ci --no-audit --no-fund && YBM_AUTOMATED_RELEASE=true npm run ship'"'"''
+      - name: Stop release Codespace
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACES_TOKEN }}
+          CODESPACE_NAME: ${{ steps.codespace.outputs.name }}
+        run: |
+          if [ -n "${CODESPACE_NAME:-}" ]; then
+            gh codespace stop -c "$CODESPACE_NAME" || true
+          fi
