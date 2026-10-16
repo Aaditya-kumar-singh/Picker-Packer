@@ -106,7 +106,7 @@ export function LoginScreen() {
             pickerId: identifier.trim(),
             expiresIn: String(res.expiresIn),
             masked: res.masked,
-            ...(__DEV__ && res.developmentOtp ? { developmentOtp: res.developmentOtp } : {}),
+
           },
         } as never);
       }
