@@ -21,10 +21,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -53,17 +53,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -73,6 +73,18 @@ jobs:
         with:
           packages: platform-tools
 
+      - name: Reclaim runner disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h /
+          # These hosted-runner toolchains and system images are not used by this
+          # React Native Android debug build. Keep Android platform tools and NDKs.
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/android/sdk/system-images /usr/local/lib/android/sdk/emulator
+          docker system prune --all --force || true
+          echo "Disk space after cleanup:"
+          df -h /
+
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
 
@@ -81,4 +93,6 @@ jobs:
 
       - name: Compile Android debug APK
         working-directory: frontend/android
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        # CI needs installable phone APKs. Omitting x86/x86_64 cuts native CMake
+        # outputs and reduces runner storage pressure without changing app code.
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
