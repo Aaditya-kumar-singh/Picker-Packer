@@ -61,8 +61,9 @@ export default function TabLayout() {
         },
         tabBarBackground: () => <View style={s.tabBarBackground} />,
         tabBarLabelStyle: {
+          fontFamily: "Poppins700",
           fontSize: 11,
-          fontWeight: "700",
+          fontWeight: "normal",
           marginBottom: 2,
         },
         tabBarItemStyle: {

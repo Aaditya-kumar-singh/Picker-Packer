@@ -1,5 +1,6 @@
+import { Text } from "@/components/Typography";
 import { Ionicons } from "@expo/vector-icons";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 export interface AppNotification {
   id: string;
@@ -298,7 +299,7 @@ const s = StyleSheet.create({
     gap: 7,
     flexShrink: 1,
   },
-  notifTitle: {
+  notifTitle: { fontFamily: "OpenSans",
     fontSize: 16,
     fontWeight: "900",
     color: "#0F172A",
@@ -358,7 +359,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 10,
   },
-  emptyNotifTitle: {
+  emptyNotifTitle: { fontFamily: "OpenSans",
     fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
@@ -401,7 +402,7 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     gap: 6,
   },
-  notifItemTitle: {
+  notifItemTitle: { fontFamily: "OpenSans",
     flex: 1,
     fontSize: 13.5,
     fontWeight: "700",

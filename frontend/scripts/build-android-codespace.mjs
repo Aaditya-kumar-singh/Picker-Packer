@@ -59,6 +59,7 @@ console.log(`Android versionCode: ${versionCode}`);
 
 // This GitHub Codespaces workflow intentionally creates a TEST-backend APK, not a production APK.
 process.env.EXPO_PUBLIC_API_ENV = 'test';
+process.env.EXPO_PUBLIC_API_RELEASE_CHANNEL = 'test';
 process.env.EXPO_PUBLIC_API_BASE_URL = 'https://test.yourbuildmart.com/api/';
 
 process.on('exit', () => {

@@ -1,19 +1,10 @@
+import { Text, TextInput } from "@/components/Typography";
 // YBM warehouse design system — shared tokens + primitives.
 // High-visibility, tactile, ergonomic UI components for industrial operations.
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { ReactNode } from "react";
 import type { TextInputProps } from "react-native";
@@ -615,7 +606,7 @@ const s = StyleSheet.create({
     marginTop: 16,
     marginBottom: 6,
   },
-  sectionTitle: {
+  sectionTitle: { fontFamily: "OpenSans",
     ...(theme.type.section as object),
     color: theme.color.ink,
   },
@@ -995,7 +986,7 @@ const s = StyleSheet.create({
     textAlign: "center",
     maxWidth: 280,
   },
-  emptyTitle: {
+  emptyTitle: { fontFamily: "OpenSans",
     ...(theme.type.section as object),
     textAlign: "center",
     marginTop: 4,

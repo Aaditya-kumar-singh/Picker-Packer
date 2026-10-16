@@ -110,8 +110,8 @@ export async function loginWithPassword(payload: PasswordLoginPayload): Promise<
   return { token, role, user: res?.user ?? res?.data?.user };
 }
 
-export async function requestOtp(payload: OtpRequestPayload): Promise<{ success: boolean; message: string; developmentOtp?: string }> {
-  const res = await apiRequest<any>("/api/auth/otp/request", {
+export async function requestOtp(payload: OtpRequestPayload): Promise<{ success: boolean; message: string }> {
+  await apiRequest<any>("/api/auth/otp/request", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify({
@@ -121,8 +121,7 @@ export async function requestOtp(payload: OtpRequestPayload): Promise<{ success:
   });
   return {
     success: true,
-    message: typeof res === "string" ? res : (res?.message ?? "OTP requested successfully"),
-    developmentOtp: typeof res?.developmentOtp === "string" ? res.developmentOtp : undefined,
+    message: "Verification code requested.",
   };
 }
 

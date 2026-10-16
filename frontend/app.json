@@ -4,7 +4,7 @@
     "slug": "ybm-picker-packer",
     "version": "1.0.2",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/ybm-app-mark.png",
     "scheme": "ybm-picker-packer",
     "userInterfaceStyle": "light",
     "plugins": [
@@ -24,7 +24,7 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#071A5E",
-        "foregroundImage": "./assets/icon.png"
+        "foregroundImage": "./assets/images/ybm-app-mark.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -39,7 +39,7 @@
       "package": "com.aaditya001.ybmpickerpacker"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/images/ybm-app-mark.png"
     },
     "extra": {
       "router": {}

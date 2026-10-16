@@ -1,15 +1,6 @@
+import { Text, TextInput } from "@/components/Typography";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppHeader, PrimaryButton, SecondaryButton, Screen, theme } from "@/components/ui";
@@ -248,6 +239,16 @@ export function ProfileScreen() {
           variant="danger"
           onPress={() => void logout().then(() => router.replace("/login" as never))}
         />
+      </View>
+
+      <View style={s.brandFooter}>
+        <Image
+          source={require("../../assets/images/yourbuildmart-wordmark.png")}
+          style={s.footerWordmark}
+          resizeMode="contain"
+          accessibilityLabel="YourBuildMart"
+        />
+        <Text style={s.footerAppVersion}>YourBuildMart Warehouse Operations • v1.0.2</Text>
       </View>
 
       {/* Edit Profile Modal */}
@@ -516,7 +517,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  modalTitle: {
+  modalTitle: { fontFamily: "OpenSans",
     fontSize: 18,
     fontWeight: "700",
     color: theme.color.ink,
@@ -551,5 +552,23 @@ const s = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
     fontWeight: "600",
+  },
+  brandFooter: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 28,
+    paddingBottom: 20,
+    marginTop: 8,
+  },
+  footerWordmark: {
+    width: 140,
+    height: 38,
+    marginBottom: 6,
+  },
+  footerAppVersion: {
+    fontSize: 11,
+    color: theme.color.muted,
+    fontWeight: "600",
+    letterSpacing: 0.3,
   },
 });

@@ -1,14 +1,9 @@
+import { Text } from "@/components/Typography";
 import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Image, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import NetInfo from "@react-native-community/netinfo";
 import {
@@ -94,26 +89,20 @@ export function BrandHeader() {
         >
           <View style={s.pickerTopRow}>
             <View style={s.pickerLeft}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open navigation menu"
-                hitSlop={8}
-                style={({ pressed }) => [
-                  s.menuBtn,
-                  pressed && { opacity: 0.75 },
-                ]}
-                onPress={() => router.push("/orders" as never)}
-              >
-                <Ionicons name="menu-outline" size={28} color="#FFFFFF" />
-              </Pressable>
+              <Image
+                source={require("../../assets/images/ybm-app-mark.png")}
+                style={[s.logoImage, compact && s.logoImageCompact]}
+                resizeMode="contain"
+                accessibilityLabel="YourBuildMart WMS"
+              />
 
               <View style={s.pickerBrandCopy}>
                 <View style={s.pickerTitleRow}>
                   <Text
-                    style={[s.pickerBrandName, compact && { fontSize: 19 }]}
+                    style={[s.pickerBrandName, compact && { fontSize: 16 }]}
                     maxFontSizeMultiplier={1.1}
                   >
-                    YBM
+                    YourBuildMart
                   </Text>
                   <View style={s.pickerRolePill}>
                     <Text
@@ -208,27 +197,17 @@ export function BrandHeader() {
       <View style={[s.header, { paddingTop: Math.max(insets.top, 0) + 6 }]}>
         <View style={s.topRow}>
           <View style={s.brand}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open packing orders"
-              hitSlop={8}
-              style={({ pressed }) => [
-                s.menuBtn,
-                pressed && { opacity: 0.75 },
-              ]}
-              onPress={() => router.push("/orders" as never)}
-            >
-              <Ionicons name="menu-outline" size={27} color="#FFFFFF" />
-            </Pressable>
-
-            <View style={[s.logo, compact && s.logoCompact]}>
-              <Text style={[s.logoText, compact && s.logoTextCompact]}>Y</Text>
-            </View>
+            <Image
+              source={require("../../assets/images/ybm-app-mark.png")}
+              style={[s.logoImage, compact && s.logoImageCompact]}
+              resizeMode="contain"
+              accessibilityLabel="YourBuildMart WMS"
+            />
 
             <View style={s.brandCopy}>
               <View style={s.nameRow}>
                 <Text style={s.name} maxFontSizeMultiplier={1.1}>
-                  YBM
+                  YourBuildMart
                 </Text>
                 <View style={s.badgeWms}>
                   <Text style={s.badgeWmsText} maxFontSizeMultiplier={1.1}>
@@ -347,15 +326,6 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginRight: 8,
   },
-  menuBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    marginRight: 8,
-  },
   pickerBrandCopy: {
     flex: 1,
   },
@@ -365,8 +335,9 @@ const s = StyleSheet.create({
     gap: 8,
   },
   pickerBrandName: {
+    fontFamily: "OpenSans",
     color: "#FFFFFF",
-    fontSize: 22,
+    fontSize: 12,
     fontWeight: "900",
     letterSpacing: 0.6,
   },
@@ -469,31 +440,18 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginRight: 8,
   },
-  logo: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: "#1565C0",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.85)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
+  logoImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
     marginRight: 9,
+    flexShrink: 0,
   },
-  logoCompact: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
-  },
-  logoText: {
-    color: "#FFFFFF",
-    fontSize: 22,
-    fontWeight: "900",
-    fontStyle: "italic",
-  },
-  logoTextCompact: {
-    fontSize: 18,
+  logoImageCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 7,
+    marginRight: 7,
   },
   brandCopy: {
     flex: 1,

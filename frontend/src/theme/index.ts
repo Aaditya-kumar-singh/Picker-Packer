@@ -99,11 +99,11 @@ export const theme = {
   },
 
   type: {
-    displayXl: { fontSize: 38, fontWeight: "800" as const, letterSpacing: -1, color: "#0f172a" },
-    display: { fontSize: 30, fontWeight: "800" as const, letterSpacing: -0.5, color: "#0f172a" },
-    title: { fontSize: 24, fontWeight: "700" as const, letterSpacing: -0.3, color: "#0f172a" },
-    titleMd: { fontSize: 20, fontWeight: "700" as const, letterSpacing: -0.2, color: "#0f172a" },
-    section: { fontSize: 17, fontWeight: "700" as const, letterSpacing: -0.1, color: "#0f172a" },
+    displayXl: { fontFamily: "OpenSans", fontSize: 38, fontWeight: "800" as const, letterSpacing: -1, color: "#0f172a" },
+    display: { fontFamily: "OpenSans", fontSize: 30, fontWeight: "800" as const, letterSpacing: -0.5, color: "#0f172a" },
+    title: { fontFamily: "OpenSans", fontSize: 24, fontWeight: "700" as const, letterSpacing: -0.3, color: "#0f172a" },
+    titleMd: { fontFamily: "OpenSans", fontSize: 20, fontWeight: "700" as const, letterSpacing: -0.2, color: "#0f172a" },
+    section: { fontFamily: "OpenSans", fontSize: 17, fontWeight: "700" as const, letterSpacing: -0.1, color: "#0f172a" },
     body: { fontSize: 16, fontWeight: "500" as const, lineHeight: 24, color: "#0f172a" },
     bodyMd: { fontSize: 15, fontWeight: "400" as const, lineHeight: 22, color: "#334155" },
     secondary: { fontSize: 13, fontWeight: "500" as const, color: "#64748b" },

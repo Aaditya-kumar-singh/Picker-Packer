@@ -213,9 +213,12 @@ returned. App needs `id`, `name`, `phone`, `vehicleType`, `rating`.
   "staffId": 21, "name": "Ravi Kumar", "phone": "9876543210",
   "email": "ravi@example.com", "status": "active", "rating": 4.5,
   "idCardType": "AADHAAR", "idCardNumber": "XXXX-1234",
-  "address": "Warehouse 3", "photoFilePath": "staff/ravi.jpg"
+  "address": "Warehouse 3", "photoFilePath": "staff/ravi.jpg",
+  "warehouseId": 3, "warehouseName": "Warehouse 3"
 }
 ```
+
+The profile response must include the authenticated packer's actual `warehouseId` and `warehouseName`. Return explicit `null` values when unassigned; do not encode warehouse identity in `address` or infer it from the address.
 
 ### 1.7 Raw order item (`GET /orders/{id}/items`)
 

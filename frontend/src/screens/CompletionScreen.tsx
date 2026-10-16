@@ -1,13 +1,7 @@
+import { Text } from "@/components/Typography";
 // Picker Completion Screen — Assign Packer (PICKING → PACKING) per picker-app-api.md §2.3 & §2.6
 import { useCallback, useState } from "react";
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -26,7 +20,8 @@ import {
 import { pickerAppApi } from "@/api/pickerAppApi";
 import { resolvePhotoUrl } from "@/api/http";
 import type { FulfillmentOrderDto, PackerCandidateDto } from "@/types";
-import { getOrderProgress } from "@/utils/warehouse";
+import { getOrderProgress, isSameWarehouse } from "@/utils/warehouse";
+import { isOrderFullyPicked } from "@/domain/order";
 
 export function CompletionScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
@@ -42,23 +37,41 @@ export function CompletionScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
+    setOrder(null);
+    setPackers([]);
+    setSelectedPackerId(null);
     try {
-      const cached = pickerAppApi.getCachedOrder(numOrderId);
-      if (cached) {
-        setOrder(cached);
-      } else {
-        const orders = await pickerAppApi.getAssignedOrders();
-        const found = orders.find((o) => o.orderId === numOrderId);
-        if (found) setOrder(found);
+      if (!Number.isSafeInteger(numOrderId) || numOrderId <= 0) {
+        setError("Invalid order ID. Return to the order list and select a valid order.");
+        return;
       }
-
+      const orders = await pickerAppApi.getAssignedOrders();
+      const validOrder = orders.find((candidate) => candidate.orderId === numOrderId);
+      if (!validOrder) {
+        setError("This order could not be found in your current picking queue. Assignment is unavailable.");
+        return;
+      }
+      if (!Number.isFinite(Number(validOrder.warehouseId)) || Number(validOrder.warehouseId) <= 0) {
+        setError("This order has no valid warehouse identity from the API. Refresh the order or ask your supervisor to correct the order record.");
+        return;
+      }
+      const items = await pickerAppApi.getOrderItems(numOrderId);
+      const orderWithItems = { ...validOrder, items };
+      setOrder(orderWithItems);
+      if (!isOrderFullyPicked(orderWithItems)) {
+        setError("This order is not fully picked yet. Finish scanning all items before assigning a packer.");
+        return;
+      }
       const availablePackers = await pickerAppApi.getAvailablePackers();
-      setPackers(availablePackers || []);
-      if (availablePackers && availablePackers.length > 0) {
-        setSelectedPackerId(availablePackers[0].id);
-      }
-      setError(null);
+      const warehousePackers = (availablePackers || []).filter((packer) =>
+        isSameWarehouse(packer.warehouseId, orderWithItems.warehouseId)
+      );
+      setPackers(warehousePackers);
+      if (warehousePackers.length > 0) setSelectedPackerId(warehousePackers[0].id);
     } catch (e: any) {
+      setOrder(null);
+      setPackers([]);
       setError(e?.message || "Failed to load order or available packers.");
     } finally {
       setLoading(false);
@@ -72,7 +85,7 @@ export function CompletionScreen() {
   );
 
   async function handleAssignPacker() {
-    if (!selectedPackerId || busy) return;
+    if (!order || !isOrderFullyPicked(order) || !selectedPackerId || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -97,7 +110,25 @@ export function CompletionScreen() {
     );
   }
 
-  const prog = order ? getOrderProgress(order) : { pickedLines: 0, totalLines: 0, pct: 100 };
+  if (!order) {
+    return (
+      <Screen>
+        <AppHeader title="Assign Packer" sub="Order validation required" showBack />
+        <ErrorBanner message={error || "A valid assigned order is required before a packer can be assigned."} />
+        <SecondaryButton label="Back to Orders" icon="arrow-back" onPress={() => router.replace("/orders" as never)} />
+      </Screen>
+    );
+  }
+  if (!isOrderFullyPicked(order)) {
+    return (
+      <Screen>
+        <AppHeader title={order.orderNumber} sub="Order is not ready for hand-off" showBack />
+        <ErrorBanner message={error || "Finish picking every item before assigning a packer."} />
+        <SecondaryButton label="Back to Order" icon="arrow-back" onPress={() => router.back()} />
+      </Screen>
+    );
+  }
+  const prog = getOrderProgress(order);
 
   return (
     <Screen contentContainerStyle={s.container}>
@@ -188,7 +219,7 @@ export function CompletionScreen() {
           icon="paper-plane"
           variant="success"
           onPress={handleAssignPacker}
-          disabled={busy || !selectedPackerId || Boolean(successMsg)}
+          disabled={busy || !order || !isOrderFullyPicked(order) || !selectedPackerId || Boolean(successMsg)}
         />
         <SecondaryButton
           label="Back to Order"
@@ -218,7 +249,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     marginBottom: theme.space.xs,
   },
-  title: {
+  title: { fontFamily: "OpenSans",
     fontSize: 18,
     fontWeight: "900",
     color: theme.color.ink,

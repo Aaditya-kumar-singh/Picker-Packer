@@ -1,16 +1,19 @@
+import { Text, TextInput } from "@/components/Typography";
 // Screen 2 — OTP verification. Shift authentication, 6-digit pin, and device session lock.
 import { useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { ErrorBanner, PrimaryButton, Screen, SecondaryButton, theme } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 
 export function OtpScreen() {
-  const { pickerId, expiresIn, masked, developmentOtp } = useLocalSearchParams<{ pickerId: string; expiresIn?: string; masked?: string; developmentOtp?: string }>();
+  const { pickerId, expiresIn, masked } = useLocalSearchParams<{ pickerId: string; expiresIn?: string; masked?: string }>();
   const { verifyOtp, requestOtp, loading, error } = useAuth();
   const [otp, setOtp] = useState("");
-  const [info, setInfo] = useState<string | null>(developmentOtp ? `Development OTP: ${developmentOtp}` : null);
+  const [info, setInfo] = useState<string | null>(null);
+
+
   const [localError, setLocalError] = useState<string | null>(null);
   const [otpMeta, setOtpMeta] = useState<{ expiresIn: string; masked: string } | null>(null);
   const showExpires = otpMeta?.expiresIn ?? expiresIn ?? null;
@@ -31,7 +34,8 @@ export function OtpScreen() {
     const r = await requestOtp(String(pickerId ?? ""));
     if (r) {
       setOtpMeta({ expiresIn: String(r.expiresIn), masked: r.masked });
-      setInfo(r.developmentOtp ? `Development OTP: ${r.developmentOtp}` : `New code sent to ${r.masked}`);
+      setInfo(`A new verification code was requested for ${r.masked}.`);
+
     } else {
       setInfo(null);
     }
@@ -39,6 +43,12 @@ export function OtpScreen() {
 
   return (
     <Screen center>
+      <Image
+        source={require("../../assets/images/ybm-app-mark.png")}
+        style={os.logoMark}
+        resizeMode="contain"
+        accessibilityLabel="YourBuildMart"
+      />
       {/* Shift authentication badge + timer */}
       <View style={os.authRow}>
         <View style={os.authBadge}>
@@ -116,6 +126,12 @@ export function OtpScreen() {
 }
 
 const os = StyleSheet.create({
+  logoMark: {
+    width: 56,
+    height: 56,
+    alignSelf: "center",
+    marginBottom: theme.space.md,
+  },
   authRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -160,7 +176,7 @@ const os = StyleSheet.create({
     color: theme.color.primary,
     fontWeight: "700",
   },
-  headline: {
+  headline: { fontFamily: "OpenSans",
     ...(theme.type.title as object),
     color: theme.color.ink,
     fontSize: 20,

@@ -1,14 +1,7 @@
+import { Text } from "@/components/Typography";
 // Packer Completed Orders per packer-app-api.md
 import { useCallback, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import {
@@ -35,8 +28,9 @@ export function PackerCompletedScreen() {
     setLoading(true);
     try {
       const assigned = await packerAppApi.getAssignedOrders();
-      // Both ready-to-dispatch and dispatched orders come from the server, so history survives relaunches.
-      const completedOrders = assigned.filter((o) => o.orderStatus === "PACKED" || o.orderStatus === "RIDER_ASSIGNED");
+      // The documented assigned-orders contract includes PACKING and PACKED only.
+      // Dispatched history requires a dedicated backend endpoint before it can be shown here.
+      const completedOrders = assigned.filter((o) => o.orderStatus === "PACKED");
       setOrders(completedOrders);
       setError(null);
     } catch (e: any) {
@@ -72,7 +66,7 @@ export function PackerCompletedScreen() {
             style={[s.pageTitle, compact && { fontSize: 19 }]}
             maxFontSizeMultiplier={1.15}
           >
-            Completed & Dispatched Orders
+            Completed Orders
           </Text>
           <View style={s.countPill}>
             <Text style={s.countPillText} maxFontSizeMultiplier={1.1}>
@@ -88,14 +82,13 @@ export function PackerCompletedScreen() {
         ) : orders.length === 0 ? (
           <EmptyState
             title="No Completed Orders"
-            body="Orders packed and dispatched by you during this shift will appear here."
+            body="Orders confirmed as packed by the server will appear here."
             actionLabel="Refresh"
             onAction={() => void load()}
           />
         ) : (
           orders.map((order, idx) => {
             const palette = CUBE_PALETTES[idx % CUBE_PALETTES.length];
-            const isDispatched = order.orderStatus === "RIDER_ASSIGNED";
 
             return (
               <Pressable
@@ -116,15 +109,9 @@ export function PackerCompletedScreen() {
                 </View>
 
                 <View style={s.rightCol}>
-                  <View style={[s.badge, isDispatched ? s.badgeDispatched : s.badgePacked]}>
-                    <Ionicons
-                      name={isDispatched ? "bicycle" : "checkmark-circle"}
-                      size={13}
-                      color={isDispatched ? "#0284C7" : "#16A34A"}
-                    />
-                    <Text style={[s.badgeText, isDispatched ? { color: "#0284C7" } : { color: "#16A34A" }]}>
-                      {isDispatched ? "DISPATCHED" : "PACKED"}
-                    </Text>
+                  <View style={[s.badge, s.badgePacked]}>
+                    <Ionicons name="checkmark-circle" size={13} color="#16A34A" />
+                    <Text style={[s.badgeText, { color: "#16A34A" }]}>PACKED</Text>
                   </View>
                 </View>
               </Pressable>
@@ -155,7 +142,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  pageTitle: {
+  pageTitle: { fontFamily: "OpenSans",
     fontSize: 18,
     fontWeight: "900",
     color: "#0F172A",
@@ -220,9 +207,6 @@ const s = StyleSheet.create({
   },
   badgePacked: {
     backgroundColor: "#DCFCE7",
-  },
-  badgeDispatched: {
-    backgroundColor: "#E0F2FE",
   },
   badgeText: {
     fontSize: 10,

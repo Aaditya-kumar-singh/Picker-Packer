@@ -1,16 +1,7 @@
+import { Text, TextInput } from "@/components/Typography";
 // Picking Order Screen — cross-device responsive Picker order & item scanning screen (Android, iOS & Web).
 import { useCallback, useMemo, useRef, useState } from "react";
-import {
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,7 +18,8 @@ import {
   isOrderFullyPicked,
   nextPendingLine,
 } from "@/domain/order";
-import { alertWrongBarcode, beepSuccess } from "@/services/scanner";
+import { beepError, beepSuccess } from "@/services/scanner";
+import BarcodeErrorModal, { type BarcodeErrorDetails } from "@/components/modals/BarcodeErrorModal";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
 import type { FulfillmentOrderDto, FulfillmentOrderItemDto } from "@/types";
 import { getOrderProgress, getWarehouseDisplay } from "@/utils/warehouse";
@@ -52,42 +44,30 @@ export function OrderDetailScreen() {
   const [scanSheetVisible, setScanSheetVisible] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
   const [manualBarcode, setManualBarcode] = useState("");
+  const [barcodeError, setBarcodeError] = useState<BarcodeErrorDetails | null>(null);
   const [batchesVisible, setBatchesVisible] = useState(false);
   const scanInputRef = useRef<TextInput>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const cached = pickerAppApi.getCachedOrder(numOrderId);
-      const items = await pickerAppApi.getOrderItems(numOrderId);
-
-      if (cached) {
-        setOrder({ ...cached, items });
-      } else {
-        const assigned = await pickerAppApi.getAssignedOrders();
-        const found = assigned.find((o) => o.orderId === numOrderId);
-        if (found) {
-          setOrder({ ...found, items });
-        } else {
-          setOrder({
-            orderId: numOrderId,
-            orderNumber: `SO-${numOrderId}`,
-            orderStatus: "PICKING",
-            orderDate: new Date().toISOString(),
-            grandTotal: 0,
-            paymentMethod: "COD",
-            warehouseId: 3,
-            pickerId: null,
-            packerId: null,
-            packerAssignedAt: null,
-            totalItems: items.length,
-            totalItemsScanned: items.filter((i) => i.fullyScanned).length,
-            items,
-          });
-        }
+      if (!Number.isSafeInteger(numOrderId) || numOrderId <= 0) {
+        setOrder(null);
+        setError("Invalid order ID. Return to the order list and select a valid order.");
+        return;
       }
-      setError(null);
+      const assigned = await pickerAppApi.getAssignedOrders();
+      const validOrder = assigned.find((candidate) => candidate.orderId === numOrderId);
+      if (!validOrder) {
+        setOrder(null);
+        setError("This order is not in your assigned picking queue. Refresh the order list or contact your supervisor.");
+        return;
+      }
+      const items = await pickerAppApi.getOrderItems(numOrderId);
+      setOrder({ ...validOrder, items });
     } catch (err: any) {
+      setOrder(null);
       setError(err?.message || "Failed to load order items.");
     } finally {
       setLoading(false);
@@ -100,7 +80,7 @@ export function OrderDetailScreen() {
     }, [load])
   );
 
-  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId);
+  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId, order?.warehouseName ?? picker?.warehouseName);
 
   const displayLines = useMemo(() => {
     if (!order?.items) return [];
@@ -148,7 +128,8 @@ export function OrderDetailScreen() {
       scanInputRef.current?.clear();
       const msg = "Scan or enter the product barcode.";
       setError(msg);
-      alertWrongBarcode("", target.sku, msg);
+      beepError();
+      setBarcodeError({ scannedValue: "", expectedValue: target.sku, reason: msg });
       setTimeout(() => scanInputRef.current?.focus(), 80);
       return;
     }
@@ -180,6 +161,9 @@ export function OrderDetailScreen() {
         // Advance to next pending line if the current item is now fully picked
         const updatedTarget = res.items?.find((i) => i.itemId === target.itemId);
         if (updatedTarget && (updatedTarget.fullyScanned || (updatedTarget.pickedQty >= updatedTarget.orderedQty))) {
+          // Close the camera when this product's required quantity is confirmed.
+          // Keep the scan sheet open on the next pending product.
+          setCameraVisible(false);
           const nextLine = (res.items || []).find((i) => !i.fullyScanned && i.pickedQty < i.orderedQty) ?? null;
           setActiveScanLine(nextLine);
           if (!nextLine) {
@@ -196,7 +180,8 @@ export function OrderDetailScreen() {
         setManualBarcode("");
         scanInputRef.current?.clear();
         setError(res.message);
-        alertWrongBarcode(code, target.sku, res.message);
+        beepError();
+        setBarcodeError({ scannedValue: code, expectedValue: target.sku, reason: res.message });
         setTimeout(() => scanInputRef.current?.focus(), 80);
       }
     } catch (err: any) {
@@ -204,7 +189,8 @@ export function OrderDetailScreen() {
       scanInputRef.current?.clear();
       const msg = err?.message || "Scan error";
       setError(msg);
-      alertWrongBarcode(code, target.sku, msg);
+      beepError();
+      setBarcodeError({ scannedValue: code, expectedValue: target.sku, reason: msg });
       setTimeout(() => scanInputRef.current?.focus(), 80);
     } finally {
       setBusy(false);
@@ -586,6 +572,13 @@ export function OrderDetailScreen() {
       </Modal>
 
       {/* Continuous Camera Scanner Modal */}
+      <BarcodeErrorModal
+        visible={!!barcodeError}
+        scannedValue={barcodeError?.scannedValue ?? ""}
+        expectedValue={barcodeError?.expectedValue}
+        reason={barcodeError?.reason}
+        onRetry={() => { setBarcodeError(null); setTimeout(() => scanInputRef.current?.focus(), 80); }}
+      />
       <BarcodeScannerModal
         visible={cameraVisible}
         onClose={() => setCameraVisible(false)}
@@ -621,7 +614,7 @@ const od = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  topBarTitle: {
+  topBarTitle: { fontFamily: "OpenSans",
     fontSize: 17,
     fontWeight: "800",
     color: "#0F172A",
@@ -769,7 +762,7 @@ const od = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  pickItemsTitle: {
+  pickItemsTitle: { fontFamily: "OpenSans",
     fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
@@ -990,7 +983,7 @@ const od = StyleSheet.create({
     alignItems: "flex-start",
     marginBottom: 14,
   },
-  modalTitle: {
+  modalTitle: { fontFamily: "OpenSans",
     fontSize: 17,
     fontWeight: "800",
     color: "#0F172A",
