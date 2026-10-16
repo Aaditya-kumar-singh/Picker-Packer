@@ -18,7 +18,8 @@ import {
   isOrderFullyPicked,
   nextPendingLine,
 } from "@/domain/order";
-import { alertWrongBarcode, beepSuccess } from "@/services/scanner";
+import { beepError, beepSuccess } from "@/services/scanner";
+import BarcodeErrorModal, { type BarcodeErrorDetails } from "@/components/modals/BarcodeErrorModal";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
 import type { FulfillmentOrderDto, FulfillmentOrderItemDto } from "@/types";
 import { getOrderProgress, getWarehouseDisplay } from "@/utils/warehouse";
@@ -43,6 +44,7 @@ export function OrderDetailScreen() {
   const [scanSheetVisible, setScanSheetVisible] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
   const [manualBarcode, setManualBarcode] = useState("");
+  const [barcodeError, setBarcodeError] = useState<BarcodeErrorDetails | null>(null);
   const [batchesVisible, setBatchesVisible] = useState(false);
   const scanInputRef = useRef<TextInput>(null);
 
@@ -126,7 +128,8 @@ export function OrderDetailScreen() {
       scanInputRef.current?.clear();
       const msg = "Scan or enter the product barcode.";
       setError(msg);
-      alertWrongBarcode("", target.sku, msg);
+      beepError();
+      setBarcodeError({ scannedValue: "", expectedValue: target.sku, reason: msg });
       setTimeout(() => scanInputRef.current?.focus(), 80);
       return;
     }
@@ -177,7 +180,8 @@ export function OrderDetailScreen() {
         setManualBarcode("");
         scanInputRef.current?.clear();
         setError(res.message);
-        alertWrongBarcode(code, target.sku, res.message);
+        beepError();
+        setBarcodeError({ scannedValue: code, expectedValue: target.sku, reason: res.message });
         setTimeout(() => scanInputRef.current?.focus(), 80);
       }
     } catch (err: any) {
@@ -185,7 +189,8 @@ export function OrderDetailScreen() {
       scanInputRef.current?.clear();
       const msg = err?.message || "Scan error";
       setError(msg);
-      alertWrongBarcode(code, target.sku, msg);
+      beepError();
+      setBarcodeError({ scannedValue: code, expectedValue: target.sku, reason: msg });
       setTimeout(() => scanInputRef.current?.focus(), 80);
     } finally {
       setBusy(false);
@@ -567,6 +572,13 @@ export function OrderDetailScreen() {
       </Modal>
 
       {/* Continuous Camera Scanner Modal */}
+      <BarcodeErrorModal
+        visible={!!barcodeError}
+        scannedValue={barcodeError?.scannedValue ?? ""}
+        expectedValue={barcodeError?.expectedValue}
+        reason={barcodeError?.reason}
+        onRetry={() => { setBarcodeError(null); setTimeout(() => scanInputRef.current?.focus(), 80); }}
+      />
       <BarcodeScannerModal
         visible={cameraVisible}
         onClose={() => setCameraVisible(false)}
