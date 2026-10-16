@@ -26,7 +26,7 @@ import {
 import { pickerAppApi } from "@/api/pickerAppApi";
 import { resolvePhotoUrl } from "@/api/http";
 import type { FulfillmentOrderDto, PackerCandidateDto } from "@/types";
-import { getOrderProgress } from "@/utils/warehouse";
+import { getOrderProgress, isSameWarehouse } from "@/utils/warehouse";
 import { isOrderFullyPicked } from "@/domain/order";
 
 export function CompletionScreen() {
@@ -58,6 +58,10 @@ export function CompletionScreen() {
         setError("This order could not be found in your current picking queue. Assignment is unavailable.");
         return;
       }
+      if (!Number.isFinite(Number(validOrder.warehouseId)) || Number(validOrder.warehouseId) <= 0) {
+        setError("This order has no valid warehouse identity from the API. Refresh the order or ask your supervisor to correct the order record.");
+        return;
+      }
       const items = await pickerAppApi.getOrderItems(numOrderId);
       const orderWithItems = { ...validOrder, items };
       setOrder(orderWithItems);
@@ -66,8 +70,11 @@ export function CompletionScreen() {
         return;
       }
       const availablePackers = await pickerAppApi.getAvailablePackers();
-      setPackers(availablePackers || []);
-      if (availablePackers && availablePackers.length > 0) setSelectedPackerId(availablePackers[0].id);
+      const warehousePackers = (availablePackers || []).filter((packer) =>
+        isSameWarehouse(packer.warehouseId, orderWithItems.warehouseId)
+      );
+      setPackers(warehousePackers);
+      if (warehousePackers.length > 0) setSelectedPackerId(warehousePackers[0].id);
     } catch (e: any) {
       setOrder(null);
       setPackers([]);

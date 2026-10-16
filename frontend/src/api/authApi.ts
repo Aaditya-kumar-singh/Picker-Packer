@@ -111,7 +111,7 @@ export async function loginWithPassword(payload: PasswordLoginPayload): Promise<
 }
 
 export async function requestOtp(payload: OtpRequestPayload): Promise<{ success: boolean; message: string }> {
-  const res = await apiRequest<any>("/api/auth/otp/request", {
+  await apiRequest<any>("/api/auth/otp/request", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify({
@@ -121,7 +121,7 @@ export async function requestOtp(payload: OtpRequestPayload): Promise<{ success:
   });
   return {
     success: true,
-    message: typeof res === "string" ? res : (res?.message ?? "OTP requested successfully"),
+    message: "Verification code requested.",
   };
 }
 

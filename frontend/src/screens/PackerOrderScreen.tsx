@@ -55,7 +55,7 @@ export function PackerOrderScreen() {
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
   const inputRef = useRef<TextInput>(null);
 
-  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId);
+  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId, order?.warehouseName ?? picker?.warehouseName);
 
   const load = useCallback(async () => {
     try {

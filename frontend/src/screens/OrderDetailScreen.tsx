@@ -87,7 +87,7 @@ export function OrderDetailScreen() {
     }, [load])
   );
 
-  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId);
+  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId, order?.warehouseName ?? picker?.warehouseName);
 
   const displayLines = useMemo(() => {
     if (!order?.items) return [];

@@ -1,4 +1,4 @@
-import type { FulfillmentOrderDto, FulfillmentOrderItemDto } from "@/types";
+﻿import type { FulfillmentOrderDto, FulfillmentOrderItemDto } from "@/types";
 
 export interface WarehouseDisplay {
   code: string;
@@ -10,26 +10,37 @@ export interface WarehouseDisplay {
 
 export function getWarehouseDisplay(
   warehouseId?: number | string | null,
-  profileAddress?: string | null
+  warehouseName?: string | null
 ): WarehouseDisplay {
   if (warehouseId === null || warehouseId === undefined) {
     return {
-      code: "WH-Unassigned",
-      name: "Warehouse not assigned",
-      fullName: "Warehouse identity unavailable",
-      address: profileAddress || "Ask your warehouse supervisor to confirm your assigned warehouse.",
-      shortAddress: "Unassigned",
+      code: "WH-ID unavailable",
+      name: warehouseName?.trim() || "Warehouse not assigned",
+      fullName: warehouseName?.trim() || "Warehouse identity unavailable",
+      address: warehouseName?.trim() || "Ask your warehouse supervisor to confirm your assigned warehouse.",
+      shortAddress: warehouseName?.trim() || "Unassigned",
     };
   }
 
   const strId = String(warehouseId);
   return {
     code: `WH-${strId}`,
-    name: `Warehouse #${strId}`,
-    fullName: `Warehouse #${strId} Fulfillment Center`,
-    address: profileAddress || `Warehouse #${strId}`,
-    shortAddress: `WH #${strId}`,
+    name: warehouseName?.trim() || `Warehouse #${strId}`,
+    fullName: warehouseName?.trim() || `Warehouse #${strId}`,
+    address: warehouseName?.trim() || `Warehouse #${strId}`,
+    shortAddress: warehouseName?.trim() || `WH #${strId}`,
   };
+}
+
+/** Fail closed when either record lacks a warehouse identity. */
+export function isSameWarehouse(
+  left?: number | string | null,
+  right?: number | string | null
+): boolean {
+  if (left === null || left === undefined || right === null || right === undefined) return false;
+  const leftId = String(left).trim();
+  const rightId = String(right).trim();
+  return leftId.length > 0 && rightId.length > 0 && leftId === rightId;
 }
 
 export function formatOrderDate(dateStr?: string | null): string {

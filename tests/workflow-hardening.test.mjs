@@ -231,6 +231,43 @@ test("packer order dispatch is handled via assign-rider step", () => {
   assert.doesNotMatch(packerApi, /sessionDispatchedOrders|getSessionDispatchedOrders/);
 });
 
+
+test("warehouse identity and assignment boundaries fail closed", () => {
+  const profileTypes = read("frontend/src/types/index.ts");
+  assert.match(profileTypes, /warehouseId\?: number \| string \| null/);
+  assert.match(profileTypes, /warehouseName\?: string \| null/);
+
+  const warehouse = read("frontend/src/utils/warehouse.ts");
+  assert.match(warehouse, /WH-ID unavailable/);
+  assert.match(warehouse, /export function isSameWarehouse/);
+  assert.match(warehouse, /leftId === rightId/);
+
+  const provider = read("frontend/src/navigation/AppProvider.tsx");
+  assert.match(provider, /warehouseId: profile\.warehouseId/);
+  assert.match(provider, /warehouseName: profile\.warehouseName/);
+
+  const completion = read("frontend/src/screens/CompletionScreen.tsx");
+  assert.match(completion, /validOrder\.warehouseId/);
+  assert.match(completion, /isSameWarehouse\(packer\.warehouseId, orderWithItems\.warehouseId\)/);
+
+  const dispatch = read("frontend/src/screens/DispatchScreen.tsx");
+  assert.match(dispatch, /isSameWarehouse\(r\.warehouseId, o\.warehouseId\)/);
+
+  const packerApi = read("frontend/src/api/packerAppApi.ts");
+  assert.match(packerApi, /cachedAssignedOrders = cachedAssignedOrders\.filter\(\(order\) => order\.orderId !== orderId\)/);
+  assert.doesNotMatch(packerApi, /order\.orderStatus = "RIDER_ASSIGNED"/);
+});
+
+test("OTP request UI state never copies a server-provided OTP or response message", () => {
+  const auth = read("frontend/src/api/authApi.ts");
+  assert.match(auth, /message: "Verification code requested\."/);
+  assert.doesNotMatch(auth, /res\?\.message/);
+  assert.doesNotMatch(auth, /developmentOtp/);
+
+  const ci = read(".github/workflows/ci.yml");
+  assert.match(ci, /branches: \[master, aadi\]/);
+});
+
 // Integration tests require the optional standalone reference backend.
 test("reference REST backend integration and contract validation", async (t) => {
   const backendPath = path.join(root, "backend", "server.js");

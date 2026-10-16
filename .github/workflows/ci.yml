@@ -2,9 +2,9 @@ name: Picker-Packer CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, aadi]
   pull_request:
-    branches: [master]
+    branches: [master, aadi]
   workflow_dispatch:
 
 permissions:

@@ -72,8 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role,
       phone: profile.phone,
       email: profile.email,
-      warehouseId: (profile as FulfillmentStaffProfileDto & { warehouseId?: number | string | null }).warehouseId ?? undefined,
-      warehouseName: (profile as FulfillmentStaffProfileDto & { warehouseName?: string | null }).warehouseName ?? undefined,
+      warehouseId: profile.warehouseId ?? undefined,
+      warehouseName: profile.warehouseName ?? undefined,
       profile,
     };
   }, []);

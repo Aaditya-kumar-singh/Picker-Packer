@@ -213,9 +213,12 @@ returned. App needs only `id`, `name`, `phone`, `rating`, `photoFilePath`.
   "staffId": 12, "name": "Amit Verma", "phone": "9876501234",
   "email": "amit@example.com", "status": "active", "rating": 4.8,
   "idCardType": "AADHAAR", "idCardNumber": "XXXX-5678",
-  "address": "Delhi", "photoFilePath": "staff/amit.jpg"
+  "address": "Delhi", "photoFilePath": "staff/amit.jpg",
+  "warehouseId": 3, "warehouseName": "Warehouse 3"
 }
 ```
+
+The profile response must include the authenticated picker's actual `warehouseId` and `warehouseName`. Return explicit `null` values when unassigned; do not encode warehouse identity in `address` or infer it from the address.
 
 ---
 
