@@ -48,37 +48,24 @@ export function OrderDetailScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const cached = pickerAppApi.getCachedOrder(numOrderId);
-      const items = await pickerAppApi.getOrderItems(numOrderId);
-
-      if (cached) {
-        setOrder({ ...cached, items });
-      } else {
-        const assigned = await pickerAppApi.getAssignedOrders();
-        const found = assigned.find((o) => o.orderId === numOrderId);
-        if (found) {
-          setOrder({ ...found, items });
-        } else {
-          setOrder({
-            orderId: numOrderId,
-            orderNumber: `SO-${numOrderId}`,
-            orderStatus: "PICKING",
-            orderDate: new Date().toISOString(),
-            grandTotal: 0,
-            paymentMethod: "COD",
-            warehouseId: 3,
-            pickerId: null,
-            packerId: null,
-            packerAssignedAt: null,
-            totalItems: items.length,
-            totalItemsScanned: items.filter((i) => i.fullyScanned).length,
-            items,
-          });
-        }
+      if (!Number.isSafeInteger(numOrderId) || numOrderId <= 0) {
+        setOrder(null);
+        setError("Invalid order ID. Return to the order list and select a valid order.");
+        return;
       }
-      setError(null);
+      const assigned = await pickerAppApi.getAssignedOrders();
+      const validOrder = assigned.find((candidate) => candidate.orderId === numOrderId);
+      if (!validOrder) {
+        setOrder(null);
+        setError("This order is not in your assigned picking queue. Refresh the order list or contact your supervisor.");
+        return;
+      }
+      const items = await pickerAppApi.getOrderItems(numOrderId);
+      setOrder({ ...validOrder, items });
     } catch (err: any) {
+      setOrder(null);
       setError(err?.message || "Failed to load order items.");
     } finally {
       setLoading(false);
@@ -91,7 +78,7 @@ export function OrderDetailScreen() {
     }, [load])
   );
 
-  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId);
+  const wh = getWarehouseDisplay(order?.warehouseId ?? picker?.warehouseId, order?.warehouseName ?? picker?.warehouseName);
 
   const displayLines = useMemo(() => {
     if (!order?.items) return [];

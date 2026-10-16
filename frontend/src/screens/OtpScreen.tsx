@@ -8,10 +8,11 @@ import { ErrorBanner, PrimaryButton, Screen, SecondaryButton, theme } from "@/co
 import { useAuth } from "@/navigation/AppProvider";
 
 export function OtpScreen() {
-  const { pickerId, expiresIn, masked, developmentOtp } = useLocalSearchParams<{ pickerId: string; expiresIn?: string; masked?: string; developmentOtp?: string }>();
+  const { pickerId, expiresIn, masked } = useLocalSearchParams<{ pickerId: string; expiresIn?: string; masked?: string }>();
   const { verifyOtp, requestOtp, loading, error } = useAuth();
   const [otp, setOtp] = useState("");
   const [info, setInfo] = useState<string | null>(__DEV__ && developmentOtp ? `Development OTP: ${developmentOtp}` : null);
+  const [info, setInfo] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [otpMeta, setOtpMeta] = useState<{ expiresIn: string; masked: string } | null>(null);
   const showExpires = otpMeta?.expiresIn ?? expiresIn ?? null;
@@ -33,6 +34,7 @@ export function OtpScreen() {
     if (r) {
       setOtpMeta({ expiresIn: String(r.expiresIn), masked: r.masked });
       setInfo(__DEV__ && r.developmentOtp ? `Development OTP: ${r.developmentOtp}` : `New code sent to ${r.masked}`);
+      setInfo(`A new verification code was requested for ${r.masked}.`);
     } else {
       setInfo(null);
     }

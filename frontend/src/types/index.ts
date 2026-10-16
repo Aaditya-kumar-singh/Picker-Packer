@@ -144,6 +144,9 @@ export interface FulfillmentStaffProfileDto {
   idCardNumber: string | null;
   address: string | null;
   photoFilePath: string | null;
+  /** Assigned warehouse identity returned by the REST profile endpoint when available. */
+  warehouseId?: number | string | null;
+  warehouseName?: string | null;
 }
 
 /** Raw order item from GET /api/packer-app/orders/{id}/items */

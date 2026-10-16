@@ -16,6 +16,7 @@ import {
 } from "@/components/ui";
 import { packerAppApi } from "@/api/packerAppApi";
 import type { FulfillmentOrderDto, RiderCandidateDto } from "@/types";
+import { isSameWarehouse } from "@/utils/warehouse";
 
 export function DispatchScreen() {
   const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
@@ -104,7 +105,12 @@ export function DispatchScreen() {
 
                 <View style={s.riderList}>
                   <Text style={s.selectLabel}>ASSIGN COURIER</Text>
-                  {riders.map((r) => (
+                  {riders.filter((r) => isSameWarehouse(r.warehouseId, o.warehouseId)).length === 0 ? (
+                    <Text style={s.meta}>
+                      No active riders are available for this order's warehouse, or its warehouse identity is missing.
+                    </Text>
+                  ) : null}
+                  {riders.filter((r) => isSameWarehouse(r.warehouseId, o.warehouseId)).map((r) => (
                     <PrimaryButton
                       key={r.id}
                       label={`Assign ${r.name}${r.phone ? ` (${r.phone})` : ""}`}

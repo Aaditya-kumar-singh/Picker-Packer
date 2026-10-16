@@ -42,3 +42,43 @@ jobs:
       - name: Validate Expo configuration
         run: npx expo config --type public --json > /tmp/expo-config.json
 
+  android-build:
+    name: Compile Android app
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: validate
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Android native project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Compile Android debug APK
+        working-directory: frontend/android
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace

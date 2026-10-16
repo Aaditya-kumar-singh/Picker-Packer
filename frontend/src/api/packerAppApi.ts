@@ -69,9 +69,9 @@ export const packerAppApi = {
       }),
     });
 
-    // Update the local cache optimistically. The next list refresh reads persisted state from the API.
-    const order = cachedAssignedOrders.find((o) => o.orderId === orderId);
-    if (order) order.orderStatus = "RIDER_ASSIGNED";
+    // Assigned-order API only returns PACKING/PACKED orders. Remove the dispatched
+    // order from this active queue instead of inventing a client-side status transition.
+    cachedAssignedOrders = cachedAssignedOrders.filter((order) => order.orderId !== orderId);
 
     return typeof res === "string" ? res : "Rider assigned";
   },
