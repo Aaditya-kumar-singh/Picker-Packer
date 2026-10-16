@@ -1,6 +1,7 @@
+import { Text } from "@/components/Typography";
 // Compact picker item step: verify the SKU and count each physical item barcode scan as 1 EA.
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -265,7 +266,7 @@ const s = StyleSheet.create({
     padding: 32,
     marginTop: 40,
   },
-  centerTitle: {
+  centerTitle: { fontFamily: "OpenSans",
     fontSize: 20,
     fontWeight: "800",
     color: "#0F172A",

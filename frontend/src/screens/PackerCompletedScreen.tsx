@@ -1,14 +1,7 @@
+import { Text } from "@/components/Typography";
 // Packer Completed Orders per packer-app-api.md
 import { useCallback, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import {
@@ -155,7 +148,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  pageTitle: {
+  pageTitle: { fontFamily: "OpenSans",
     fontSize: 18,
     fontWeight: "900",
     color: "#0F172A",

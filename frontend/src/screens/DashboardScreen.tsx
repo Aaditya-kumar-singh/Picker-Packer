@@ -1,15 +1,8 @@
+import { Text } from "@/components/Typography";
 // Picker Dashboard — cross-device responsive Home screen (Android, iOS & Web).
 import { useCallback, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import {
   EmptyState,
@@ -599,7 +592,7 @@ const ds = StyleSheet.create({
     alignItems: "center",
     gap: 5,
   },
-  warehouseTitle: {
+  warehouseTitle: { fontFamily: "OpenSans",
     fontSize: 15,
     fontWeight: "800",
     color: "#0F172A",
@@ -832,7 +825,7 @@ const ds = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  sectionTitle: {
+  sectionTitle: { fontFamily: "OpenSans",
     fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",

@@ -1,15 +1,7 @@
+import { Text, TextInput } from "@/components/Typography";
 // Assigned Orders — cross-device responsive Picker work queue (Android, iOS & Web).
 import { useCallback, useMemo, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import {
@@ -336,7 +328,7 @@ const os = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  pageTitle: {
+  pageTitle: { fontFamily: "OpenSans",
     fontSize: 20,
     fontWeight: "900",
     color: "#0F172A",

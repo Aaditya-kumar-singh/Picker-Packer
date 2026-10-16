@@ -1,16 +1,7 @@
+import { Text, TextInput } from "@/components/Typography";
 // Picking Order Screen — cross-device responsive Picker order & item scanning screen (Android, iOS & Web).
 import { useCallback, useMemo, useRef, useState } from "react";
-import {
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -621,7 +612,7 @@ const od = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  topBarTitle: {
+  topBarTitle: { fontFamily: "OpenSans",
     fontSize: 17,
     fontWeight: "800",
     color: "#0F172A",
@@ -769,7 +760,7 @@ const od = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  pickItemsTitle: {
+  pickItemsTitle: { fontFamily: "OpenSans",
     fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
@@ -990,7 +981,7 @@ const od = StyleSheet.create({
     alignItems: "flex-start",
     marginBottom: 14,
   },
-  modalTitle: {
+  modalTitle: { fontFamily: "OpenSans",
     fontSize: 17,
     fontWeight: "800",
     color: "#0F172A",

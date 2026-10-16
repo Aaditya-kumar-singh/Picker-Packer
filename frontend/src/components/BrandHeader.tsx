@@ -1,14 +1,9 @@
+import { Text } from "@/components/Typography";
 import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import NetInfo from "@react-native-community/netinfo";
 import {
@@ -364,7 +359,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  pickerBrandName: {
+  pickerBrandName: { fontFamily: "OpenSans",
     color: "#FFFFFF",
     fontSize: 22,
     fontWeight: "900",

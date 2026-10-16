@@ -1,15 +1,7 @@
+import { Text, TextInput } from "@/components/Typography";
 // Packer Order Processing per packer-app-api.md
 import { useCallback, useMemo, useRef, useState } from "react";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -574,7 +566,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  topBarTitle: {
+  topBarTitle: { fontFamily: "OpenSans",
     fontSize: 17,
     fontWeight: "800",
     color: "#0F172A",
@@ -793,7 +785,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  sectionTitle: {
+  sectionTitle: { fontFamily: "OpenSans",
     fontSize: 15,
     fontWeight: "800",
     color: "#0F172A",
@@ -913,7 +905,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
-  modalTitle: {
+  modalTitle: { fontFamily: "OpenSans",
     fontSize: 17,
     fontWeight: "800",
     color: "#0F172A",
@@ -972,7 +964,7 @@ const s = StyleSheet.create({
     fontWeight: "700",
     color: "#B45309",
   },
-  infoSectionTitle: {
+  infoSectionTitle: { fontFamily: "OpenSans",
     fontSize: 12,
     fontWeight: "800",
     color: "#D95D00",
@@ -990,7 +982,7 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
   },
-  rawItemTitle: {
+  rawItemTitle: { fontFamily: "OpenSans",
     fontSize: 12,
     fontWeight: "700",
     color: "#0F172A",

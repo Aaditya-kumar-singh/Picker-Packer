@@ -1,5 +1,6 @@
+import { Text, TextInput } from "@/components/Typography";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -22,12 +23,19 @@ export function LoginScreen() {
   const availableHeight = fullHeight.current - insets.top - insets.bottom;
   const compact = availableHeight < 850;
   const tiny = availableHeight < 620;
-  const [cardOffset, setCardOffset] = useState(0);
-  const offsetRef = useRef(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [measuredViewportHeight, setMeasuredViewportHeight] = useState(availableHeight);
+  const scroll = useRef<ScrollView>(null);
+  const cardTop = useRef(0);
+  const cardHeight = useRef(0);
+  const viewportHeight = useRef(availableHeight);
   const keyboardTop = useRef<number | null>(null);
-  const activeInput = useRef<TextInput | null>(null);
-  const identifierInput = useRef<TextInput>(null);
   const passwordInput = useRef<TextInput>(null);
+  const keyboardVisible = keyboardHeight > 0 || fullHeight.current - height > 100;
+  // Some Android keyboards overlay the window instead of resizing it. Add only
+  // the missing inset, so scrollTo has room to reveal the full form in either mode.
+  const resizedBy = Math.max(0, availableHeight - measuredViewportHeight);
+  const keyboardInset = Math.max(0, keyboardHeight - resizedBy);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -36,34 +44,39 @@ export function LoginScreen() {
   const [requestingOtp, setRequestingOtp] = useState(false);
   const busy = loading || requestingOtp;
   const showBrand = true;
-  const showFeatures = availableHeight >= 720 && !localError && !error;
-  const cardDrop = tiny
-    ? Math.max(0, Math.min(45, (availableHeight - 485) * 0.5))
-    : Math.min(compact ? 58 : 65, availableHeight * 0.075);
+  const showFeatures = availableHeight >= 720;
+  const brandHeight = compact ? 110 : 160;
+  const cardStart = Math.min(availableHeight * 0.3,
+    availableHeight - (compact ? 430 : 470) - (showFeatures ? (compact ? 99 : 116) : 0) - 12);
+  const cardDrop = Math.max(8, cardStart - brandHeight - (compact ? 8 : 18));
 
-  const keepInputVisible = useCallback(() => {
-    const top = keyboardTop.current;
-    if (top === null) return;
-    activeInput.current?.measureInWindow((_x, y, _width, inputHeight) => {
-      // Move only enough to uncover the active field, rather than collapsing the page.
-      const overlap = Math.max(0, y + inputHeight + offsetRef.current + 12 - top);
-      offsetRef.current = overlap;
-      setCardOffset(overlap);
-    });
-  }, []);
+  const revealForm = useCallback(() => {
+    const visibleHeight = Math.min(viewportHeight.current,
+      keyboardTop.current === null ? viewportHeight.current : keyboardTop.current - insets.top);
+    const overlap = Math.max(0, cardTop.current + cardHeight.current + 12 - visibleHeight);
+    // Move only by the overlap; keep the card title visible if the keyboard is tall.
+    const offset = Math.min(Math.max(0, cardTop.current - 8), overlap);
+    scroll.current?.scrollTo({ y: offset, animated: true });
+  }, [insets.top]);
 
   useEffect(() => {
     const shown = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", (event) => {
       keyboardTop.current = event.endCoordinates.screenY;
-      requestAnimationFrame(keepInputVisible);
+      setKeyboardHeight(event.endCoordinates.height);
     });
     const hidden = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", () => {
       keyboardTop.current = null;
-      offsetRef.current = 0;
-      setCardOffset(0);
+      setKeyboardHeight(0);
+      scroll.current?.scrollTo({ y: 0, animated: true });
     });
     return () => { shown.remove(); hidden.remove(); };
-  }, [keepInputVisible]);
+  }, []);
+
+  useEffect(() => {
+    if (!keyboardVisible) return;
+    const frame = requestAnimationFrame(revealForm);
+    return () => cancelAnimationFrame(frame);
+  }, [keyboardVisible, keyboardHeight, keyboardInset, revealForm]);
 
   async function onContinue() {
     if (!identifier.trim() || !password.trim()) {
@@ -104,19 +117,35 @@ export function LoginScreen() {
 
   return (
     <View style={s.root}>
-      <Image source={require("../../assets/images/warehouse-login-yourbuildmart.png")} resizeMode="stretch" style={[s.background, { height: fullHeight.current }]} accessible={false} />
+      <Image source={require("../../assets/images/warehouse-picker-background.jpg")} resizeMode="stretch" style={[s.background, { height: fullHeight.current }]} accessible={false} />
       <SafeAreaView style={s.safe}>
-        <View style={[s.content, compact && s.contentCompact, { flex: 0, flexShrink: 0, height: availableHeight, maxWidth: Math.min(width, 540) }]}>
+        <ScrollView
+          ref={scroll}
+          style={s.safe}
+          scrollEnabled={keyboardVisible}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: keyboardVisible ? keyboardInset + 16 : 0 }}
+          onContentSizeChange={() => { if (keyboardVisible) revealForm(); }}
+          onLayout={(event) => {
+            viewportHeight.current = event.nativeEvent.layout.height;
+            setMeasuredViewportHeight(event.nativeEvent.layout.height);
+            if (keyboardVisible) revealForm();
+          }}
+        >
+        <View style={[s.content, compact && s.contentCompact, { flex: 0, flexShrink: 0, minHeight: availableHeight, maxWidth: Math.min(width, 540) }]}>
           {showBrand ? (
-            <View style={s.brand}>
+            <View style={[s.brand, { height: brandHeight }]}>
               <Image source={require("../../assets/images/ybm-app-mark.png")} resizeMode="contain" style={[s.logo, compact && s.logoCompact]} accessibilityLabel="YourBuildMart logo" />
-              <Text style={[s.brandTitle, compact && s.brandTitleCompact]} numberOfLines={1} adjustsFontSizeToFit><Text style={s.brandBold}>YBM</Text> WAREHOUSE</Text>
+              <Text style={[s.brandTitle, compact && s.brandTitleCompact]} numberOfLines={1} adjustsFontSizeToFit>WAREHOUSE</Text>
               <Text style={[s.brandSubtitle, compact && s.brandSubtitleCompact]}>Warehouse Execution System</Text>
               {!tiny ? <Text style={[s.tagline, compact && s.taglineCompact]}>Pick <Text style={s.dot}>•</Text> Pack <Text style={s.dot}>•</Text> Dispatch</Text> : null}
             </View>
           ) : null}
 
-          <View style={[s.card, compact && s.cardCompact, { marginTop: cardDrop, transform: [{ translateY: -cardOffset }] }]}>
+          <View onLayout={(event) => { cardTop.current = event.nativeEvent.layout.y; cardHeight.current = event.nativeEvent.layout.height; if (keyboardVisible) revealForm(); }} style={[s.card, compact && s.cardCompact, { marginTop: cardDrop }]}>
             <Text style={[s.headingTitle, compact && s.headingTitleCompact]}>Sign In</Text>
             <Text style={[s.headingDesc, compact && s.headingDescCompact]}>Enter your mobile number or identifier to start your shift</Text>
 
@@ -124,8 +153,6 @@ export function LoginScreen() {
             <View style={s.inputWrap}>
               <Ionicons name="person-outline" size={19} color="#7d8ca0" />
               <TextInput
-                ref={identifierInput}
-                onFocus={() => { activeInput.current = identifierInput.current; requestAnimationFrame(keepInputVisible); }}
                 style={s.input}
                 value={identifier}
                 onChangeText={(value) => { setIdentifier(value); setLocalError(null); }}
@@ -147,7 +174,6 @@ export function LoginScreen() {
               <Ionicons name="lock-closed-outline" size={19} color="#7d8ca0" />
               <TextInput
                 ref={passwordInput}
-                onFocus={() => { activeInput.current = passwordInput.current; requestAnimationFrame(keepInputVisible); }}
                 style={s.input}
                 value={password}
                 onChangeText={(value) => { setPassword(value); setLocalError(null); }}
@@ -171,7 +197,9 @@ export function LoginScreen() {
               <Text style={s.rememberText}>Remember me</Text>
             </Pressable>
 
-            {localError || error ? <Text style={s.error} accessibilityRole="alert" numberOfLines={2}>{localError || error}</Text> : null}
+            <View style={s.errorSlot}>
+              {localError || error ? <Text style={s.error} accessibilityRole="alert" numberOfLines={2}>{localError || error}</Text> : null}
+            </View>
 
             <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} onPress={onContinue} disabled={busy} style={({ pressed }) => [s.primaryButton, (pressed || busy) && s.buttonFaded]}>
               <Ionicons name="log-in-outline" size={19} color="#fff" />
@@ -197,6 +225,7 @@ export function LoginScreen() {
             </View>
           ) : null}
         </View>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -206,14 +235,13 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#e7f4fc" },
   background: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, width: "100%", height: "100%" },
   safe: { flex: 1 },
-  content: { flex: 1, alignSelf: "center", width: "100%", paddingHorizontal: 20, paddingTop: 18, paddingBottom: 12, justifyContent: "space-between" },
+  content: { flex: 1, alignSelf: "center", width: "100%", paddingHorizontal: 20, paddingTop: 18, paddingBottom: 12, justifyContent: "flex-start" },
   contentCompact: { paddingTop: 8, paddingBottom: 4, paddingHorizontal: 16 },
   brand: { alignItems: "flex-start" },
   logo: { width: 64, height: 64, marginBottom: 6 },
   logoCompact: { width: 48, height: 48, marginBottom: 4 },
-  brandTitle: { color: "#08274e", fontSize: 25, fontWeight: "400", letterSpacing: -0.7 },
+  brandTitle: { fontFamily: "OpenSans", color: "#08274e", fontSize: 25, fontWeight: "400", letterSpacing: -0.7 },
   brandTitleCompact: { fontSize: 20 },
-  brandBold: { fontWeight: "900" },
   brandSubtitle: { color: "#6483a1", fontSize: 14, marginTop: 1 },
   brandSubtitleCompact: { fontSize: 11 },
   tagline: { color: "#6685a5", fontSize: 15, marginTop: 9 },
@@ -221,7 +249,7 @@ const s = StyleSheet.create({
   dot: { color: "#fa8412", fontWeight: "900" },
   card: { backgroundColor: "#fff", borderRadius: 23, paddingHorizontal: 20, paddingTop: 17, paddingBottom: 15, shadowColor: "#102a48", shadowOpacity: 0.13, shadowRadius: 18, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
   cardCompact: { borderRadius: 20, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 11 },
-  headingTitle: { color: "#0c2142", fontSize: 28, fontWeight: "800", letterSpacing: -0.7 },
+  headingTitle: { fontFamily: "OpenSans", color: "#0c2142", fontSize: 28, fontWeight: "800", letterSpacing: -0.7 },
   headingTitleCompact: { fontSize: 23 },
   headingDesc: { color: "#6d7d92", fontSize: 13, lineHeight: 18, marginBottom: 11 },
   headingDescCompact: { fontSize: 11, lineHeight: 15, marginBottom: 6 },
@@ -234,6 +262,7 @@ const s = StyleSheet.create({
   checkboxChecked: { backgroundColor: "#087ab5", borderColor: "#087ab5" },
   rememberText: { fontSize: 12, color: "#142544", fontWeight: "600" },
   error: { color: "#a32121", fontSize: 11, lineHeight: 14, marginBottom: 3 },
+  errorSlot: { height: 31, justifyContent: "center" },
   primaryButton: { height: 45, backgroundColor: "#0877b4", borderRadius: 11, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
   primaryText: { color: "#fff", fontSize: 13, fontWeight: "800" },
   secondaryButton: { height: 44, borderColor: "#86bcde", borderWidth: 1.5, backgroundColor: "#fff", borderRadius: 11, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
@@ -244,8 +273,8 @@ const s = StyleSheet.create({
   or: { color: "#8592a2", fontSize: 11, fontWeight: "600" },
   security: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 10 },
   securityText: { fontSize: 10, color: "#78869a" },
-  features: { flexDirection: "row", minHeight: 80 },
-  featuresCompact: { minHeight: 63 },
+  features: { flexDirection: "row", minHeight: 80, marginTop: 28 },
+  featuresCompact: { minHeight: 63, marginTop: 24 },
   feature: { flex: 1, alignItems: "center", justifyContent: "center" },
   featureDivider: { position: "absolute", left: 0, height: 45, width: 1, backgroundColor: "#cfdae5" },
   featureIcon: { width: 43, height: 43, borderRadius: 22, alignItems: "center", justifyContent: "center", marginBottom: 4 },

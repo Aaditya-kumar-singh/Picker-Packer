@@ -1,6 +1,7 @@
+import { Text, TextInput } from "@/components/Typography";
 // Screen 2 — OTP verification. Shift authentication, 6-digit pin, and device session lock.
 import { useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { ErrorBanner, PrimaryButton, Screen, SecondaryButton, theme } from "@/components/ui";
@@ -160,7 +161,7 @@ const os = StyleSheet.create({
     color: theme.color.primary,
     fontWeight: "700",
   },
-  headline: {
+  headline: { fontFamily: "OpenSans",
     ...(theme.type.title as object),
     color: theme.color.ink,
     fontSize: 20,
