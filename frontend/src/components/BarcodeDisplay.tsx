@@ -1,5 +1,6 @@
+import { Text, TextInput } from "@/components/Typography";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View, } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";

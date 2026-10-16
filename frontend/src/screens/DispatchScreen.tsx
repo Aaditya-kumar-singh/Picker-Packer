@@ -1,6 +1,7 @@
+import { Text } from "@/components/Typography";
 // Dispatch Screen — Assign packed orders to active delivery riders.
 import { useCallback, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {

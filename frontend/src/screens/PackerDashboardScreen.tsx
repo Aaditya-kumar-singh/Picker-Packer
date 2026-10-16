@@ -1,15 +1,7 @@
+import { Text, TextInput } from "@/components/Typography";
 // Packer Dashboard & Assigned Packing Orders per packer-app-api.md
 import { useCallback, useMemo, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import {
@@ -590,7 +582,7 @@ const s = StyleSheet.create({
   whCopy: {
     flex: 1,
   },
-  whTitle: {
+  whTitle: { fontFamily: "OpenSans",
     fontSize: 15,
     fontWeight: "800",
     color: "#0F172A",
@@ -734,7 +726,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 10,
   },
-  sectionTitle: {
+  sectionTitle: { fontFamily: "OpenSans",
     fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
@@ -765,7 +757,7 @@ const s = StyleSheet.create({
   queueInfo: {
     flex: 1,
   },
-  queueTitle: {
+  queueTitle: { fontFamily: "OpenSans",
     fontSize: 14,
     fontWeight: "800",
     color: "#0F172A",
@@ -811,7 +803,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  ordersPageTitle: {
+  ordersPageTitle: { fontFamily: "OpenSans",
     fontSize: 19,
     fontWeight: "900",
     color: "#0F172A",

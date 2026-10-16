@@ -1,5 +1,6 @@
+import { Text } from "@/components/Typography";
 import { useEffect } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/navigation/AppProvider";
 

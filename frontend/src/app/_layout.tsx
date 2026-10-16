@@ -1,9 +1,12 @@
 import { useEffect } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { useFonts } from "expo-font";
 import { Stack, router, useSegments } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/navigation/AppProvider";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { theme } from "@/theme";
+import { fontAssets } from "@/theme/fonts";
 
 function RouteGuard() {
   const { picker, ready } = useAuth();
@@ -49,6 +52,12 @@ function RouteGuard() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts(fontAssets);
+
+  if (!fontsLoaded && !fontError) {
+    return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.color.bg }}><ActivityIndicator color={theme.color.primaryContainer} accessibilityLabel="Loading app" /></View>;
+  }
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
@@ -59,7 +68,7 @@ export default function RootLayout() {
               headerShown: true,
               headerStyle: { backgroundColor: theme.color.surface },
               headerTintColor: theme.color.primaryContainer,
-              headerTitleStyle: { fontWeight: "700", fontSize: 16 },
+              headerTitleStyle: { fontFamily: "OpenSans700", fontWeight: "normal", fontSize: 16 },
               headerShadowVisible: false,
             }}
           >

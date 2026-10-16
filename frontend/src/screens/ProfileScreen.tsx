@@ -1,15 +1,6 @@
+import { Text, TextInput } from "@/components/Typography";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppHeader, PrimaryButton, SecondaryButton, Screen, theme } from "@/components/ui";
@@ -516,7 +507,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  modalTitle: {
+  modalTitle: { fontFamily: "OpenSans",
     fontSize: 18,
     fontWeight: "700",
     color: theme.color.ink,

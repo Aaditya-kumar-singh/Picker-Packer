@@ -1,13 +1,7 @@
+import { Text } from "@/components/Typography";
 // Picker Completion Screen — Assign Packer (PICKING → PACKING) per picker-app-api.md §2.3 & §2.6
 import { useCallback, useState } from "react";
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -255,7 +249,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     marginBottom: theme.space.xs,
   },
-  title: {
+  title: { fontFamily: "OpenSans",
     fontSize: 18,
     fontWeight: "900",
     color: theme.color.ink,

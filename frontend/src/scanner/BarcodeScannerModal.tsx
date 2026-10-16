@@ -1,5 +1,6 @@
+import { Text } from "@/components/Typography";
 import { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { theme } from "@/components/ui";
 
@@ -116,7 +117,7 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
   overlay: { ...StyleSheet.absoluteFill, justifyContent: "space-between", alignItems: "center", padding: 20 },
   topBar: { width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "rgba(0,0,0,0.58)", borderRadius: 14, padding: 12, marginTop: 8 },
-  title: { color: "#fff", fontSize: 17, fontWeight: "800" },
+  title: { fontFamily: "OpenSans", color: "#fff", fontSize: 17, fontWeight: "800" },
   close: { minHeight: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: "#fff", justifyContent: "center" },
   closeText: { color: theme.color.ink, fontWeight: "800" },
   target: { width: "82%", height: 150, borderWidth: 3, borderColor: "#fff", borderRadius: 18 },

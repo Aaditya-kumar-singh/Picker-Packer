@@ -1,6 +1,7 @@
+import { Text, TextInput } from "@/components/Typography";
 // Screen 2 — OTP verification. Shift authentication, 6-digit pin, and device session lock.
 import { useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { ErrorBanner, PrimaryButton, Screen, SecondaryButton, theme } from "@/components/ui";
@@ -10,6 +11,7 @@ export function OtpScreen() {
   const { pickerId, expiresIn, masked } = useLocalSearchParams<{ pickerId: string; expiresIn?: string; masked?: string }>();
   const { verifyOtp, requestOtp, loading, error } = useAuth();
   const [otp, setOtp] = useState("");
+  const [info, setInfo] = useState<string | null>(__DEV__ && developmentOtp ? `Development OTP: ${developmentOtp}` : null);
   const [info, setInfo] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [otpMeta, setOtpMeta] = useState<{ expiresIn: string; masked: string } | null>(null);
@@ -31,6 +33,7 @@ export function OtpScreen() {
     const r = await requestOtp(String(pickerId ?? ""));
     if (r) {
       setOtpMeta({ expiresIn: String(r.expiresIn), masked: r.masked });
+      setInfo(__DEV__ && r.developmentOtp ? `Development OTP: ${r.developmentOtp}` : `New code sent to ${r.masked}`);
       setInfo(`A new verification code was requested for ${r.masked}.`);
     } else {
       setInfo(null);
@@ -160,7 +163,7 @@ const os = StyleSheet.create({
     color: theme.color.primary,
     fontWeight: "700",
   },
-  headline: {
+  headline: { fontFamily: "OpenSans",
     ...(theme.type.title as object),
     color: theme.color.ink,
     fontSize: 20,
