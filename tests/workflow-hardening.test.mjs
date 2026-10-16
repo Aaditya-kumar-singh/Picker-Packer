@@ -99,8 +99,8 @@ test("REST API client layers implement required endpoints and envelope unwrappin
   assert.match(httpSource, /Bearer \$\{token\}/);
   assert.match(httpSource, /auth_token|TOKEN_KEY/);
   assert.match(httpSource, /onUnauthorized/);
-  assert.match(httpSource, /return __DEV__ \? "https:\/\/test\.yourbuildmart\.com\/api" : ""/);
-  assert.match(httpSource, /if \(!__DEV__ && isStagingHost\)/);
+  assert.match(httpSource, /DEFAULT_API_BASE_URL = "https:\/\/test\.yourbuildmart\.com\/api"/);
+  assert.doesNotMatch(httpSource, /if \(!__DEV__ && isStagingHost\)/);
   assert.match(httpSource, /API_CONFIGURATION_ERROR/);
   assert.match(httpSource, /if \(!API_BASE_URL\) return null/);
   assert.doesNotMatch(httpSource, /"https:\/\/test\.yourbuildmart\.com"\s*;/);

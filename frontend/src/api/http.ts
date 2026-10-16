@@ -5,9 +5,10 @@ import type { ApiErrorEnvelope, ApiResponseEnvelope } from "@/types";
 
 const TOKEN_KEY = "ybm.auth.jwt";
 const ROLE_KEY = "ybm.auth.role";
+const DEFAULT_API_BASE_URL = "https://test.yourbuildmart.com/api";
 
 function getBaseUrl(): string {
-  // If running in a web browser on localhost, route through Metro proxy to avoid browser CORS preflight blocks.
+  // Local web development uses Metro's proxy to avoid browser CORS preflight blocks.
   if (
     Platform.OS === "web" &&
     typeof window !== "undefined" &&
@@ -16,34 +17,29 @@ function getBaseUrl(): string {
     return `${window.location.origin}/api`;
   }
 
-  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (!envUrl) {
-    // Keep a convenient development default, but never silently send a production app to staging.
-    return __DEV__ ? "https://test.yourbuildmart.com/api" : "";
-  }
-
+  const configuredUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL;
   try {
-    const parsed = new URL(envUrl);
-    const isStagingHost =
-      parsed.hostname === "test.yourbuildmart.com" ||
-      parsed.hostname === "test-admin.yourbuildmart.com";
-    if (!__DEV__ && isStagingHost) {
-      return "";
-    }
+    const parsed = new URL(configuredUrl);
+    if (parsed.protocol !== "https:") return "";
 
-    // Preserve the legacy admin hostname migration only for development/test builds.
+    // Preserve the legacy hostname migration and use the configured test API in all builds.
     if (parsed.hostname === "test-admin.yourbuildmart.com") {
       parsed.hostname = "test.yourbuildmart.com";
     }
-    return parsed.toString().replace(/\/+$/, "");
+
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/, "");
   } catch {
+    // Invalid configuration must fail closed instead of sending requests to an unintended host.
     return "";
   }
 }
 
 export const API_BASE_URL = getBaseUrl();
 
-/** Resolves relative photo paths (e.g. "staff/ravi.jpg") against backend base URL */
+/** Resolve relative photo paths against the backend origin. */
 export function resolvePhotoUrl(filePath?: string | null): string | null {
   if (!filePath || filePath.trim().length === 0) return null;
   if (filePath.startsWith("http://") || filePath.startsWith("https://") || filePath.startsWith("data:")) {
@@ -75,7 +71,7 @@ export class ApiHttpError extends Error {
   }
 }
 
-// In-memory cache for fast synchronous access
+// In-memory cache for fast synchronous access.
 let memoryToken: string | null = null;
 let memoryRole: "PICKER" | "PACKER" | null = null;
 
@@ -104,7 +100,7 @@ export async function getStoredToken(): Promise<string | null> {
       memoryToken = legacyToken;
       return legacyToken;
     } catch {
-      throw new Error("Could not migrate your session to secure storage. Please sign in again.");
+      throw new Error("Could not migrate your session to secure storage. Please try signing in again.");
     }
   }
 
@@ -120,7 +116,6 @@ export async function setStoredToken(token: string | null): Promise<void> {
       try {
         await SecureStore.deleteItemAsync(TOKEN_KEY);
       } catch {
-        // Remove any legacy copy even if the secure store is temporarily unavailable.
         await AsyncStorage.removeItem(TOKEN_KEY).catch(() => undefined);
         throw new Error("Could not clear the secure session. Restart the app before signing in again.");
       }
@@ -194,9 +189,8 @@ export interface HttpRequestOptions extends Omit<RequestInit, "headers"> {
 }
 
 /**
- * Universal JSON request helper.
- * Automatically unwraps `{ success: true, message, data }` envelopes.
- * Transparently captures 400 scan soft-failures (`{ success: false, data: { ... } }`).
+ * Shared JSON request helper. Auth, picker, and packer operations use this API base URL.
+ * Unwraps success envelopes and preserves documented 400 scan soft-failures.
  */
 export async function apiRequest<T>(
   path: string,
@@ -206,14 +200,14 @@ export async function apiRequest<T>(
   if (!API_BASE_URL) {
     throw new ApiHttpError({
       error: "API_CONFIGURATION_ERROR",
-      message: "The API server is not configured for this build. Set EXPO_PUBLIC_API_BASE_URL to the correct non-staging API URL and rebuild the app.",
+      message: "The API server URL is invalid. Set EXPO_PUBLIC_API_BASE_URL to a valid HTTPS API URL and rebuild the app.",
       status: 0,
       fieldErrors: null,
     });
   }
 
   let normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  let base = API_BASE_URL;
+  const base = API_BASE_URL;
   if (base.endsWith("/api") && normalizedPath.startsWith("/api/")) {
     normalizedPath = normalizedPath.slice(4);
   }
@@ -222,24 +216,19 @@ export async function apiRequest<T>(
     : `${base}${normalizedPath}`;
 
   const requestHeaders: Record<string, string> = {
-    "Accept": "application/json",
+    Accept: "application/json",
     "Content-Type": "application/json",
     ...headers,
   };
 
   if (!skipAuth) {
     const token = await getStoredToken();
-    if (token) {
-      requestHeaders["Authorization"] = `Bearer ${token}`;
-    }
+    if (token) requestHeaders.Authorization = `Bearer ${token}`;
   }
 
   let response: Response;
   try {
-    response = await fetch(url, {
-      ...rest,
-      headers: requestHeaders,
-    });
+    response = await fetch(url, { ...rest, headers: requestHeaders });
   } catch (netErr: any) {
     throw new ApiHttpError({
       error: "NETWORK_ERROR",
@@ -269,20 +258,16 @@ export async function apiRequest<T>(
     }
   }
 
-  if (typeof body === "string" && (body.trim().startsWith("<!doctype") || body.trim().startsWith("<html"))) {
+  if (typeof body === "string" && (body.trim().toLowerCase().startsWith("<!doctype") || body.trim().toLowerCase().startsWith("<html"))) {
     throw new ApiHttpError({
       error: "INVALID_RESPONSE",
-      message: "Received web HTML page instead of API JSON response. Please check your API URL configuration.",
+      message: "Received an HTML page instead of API JSON. Check the configured API URL.",
       status: response.status,
       fieldErrors: null,
     });
   }
 
-  // Handle 400 Soft-Failures:
-  // picker-app-api.md and packer-app-api.md specify that POST /orders/{id}/scan
-  // returns HTTP 400 with a success envelope where "success": false.
   if (response.status === 400 && body && typeof body === "object" && body.success === false) {
-    // Return this as a valid soft-failure response payload
     return (body.data ?? body) as T;
   }
 
@@ -305,7 +290,6 @@ export async function apiRequest<T>(
     });
   }
 
-  // If response is standard success envelope, unwrap data
   if (body && typeof body === "object" && "success" in body && "data" in body) {
     return body.data as T;
   }

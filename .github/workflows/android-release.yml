@@ -1,0 +1,173 @@
+name: Picker-Packer Android APK Release
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: picker-packer-android-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Validate app
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test
+
+      - name: Validate Expo config
+        run: npx expo config --type public --json > /tmp/expo-config.json
+
+  build-and-release:
+    name: Build and publish signed APK
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Prebuild Android project
+        working-directory: frontend
+        env:
+          EXPO_PUBLIC_API_BASE_URL: https://test.yourbuildmart.com/api/
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Configure Android release signing
+        working-directory: frontend
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ] || [ -z "${ANDROID_KEY_ALIAS:-}" ] || [ -z "${ANDROID_KEY_PASSWORD:-}" ]; then
+            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD Actions secrets."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/release.keystore
+          {
+            echo "MYAPP_UPLOAD_STORE_FILE=release.keystore"
+            echo "MYAPP_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+            echo "MYAPP_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+            echo "MYAPP_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+          } >> android/gradle.properties
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path("android/app/build.gradle")
+          source = path.read_text()
+          if "signingConfigs.release" in source:
+              raise SystemExit("Release signing config already exists; refusing to patch twice")
+          pattern = r"    signingConfigs \{\n        debug \{\n.*?\n        \}\n    \}"
+          match = re.search(pattern, source, re.S)
+          if not match:
+              raise SystemExit("Could not find Expo Android signingConfigs template")
+          replacement = """    signingConfigs {
+                  debug {
+                      storeFile file('debug.keystore')
+                      storePassword 'android'
+                      keyAlias 'androiddebugkey'
+                      keyPassword 'android'
+                  }
+                  release {
+                      storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                      storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                      keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                      keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+                  }
+              }"""
+          source = source[:match.start()] + replacement + source[match.end():]
+          release_start = source.index("        release {", source.index("    buildTypes {"))
+          release_end = source.index("\n        }", release_start)
+          release_block = source[release_start:release_end]
+          release_block = release_block.replace("signingConfig signingConfigs.debug", "signingConfig signingConfigs.release")
+          if "signingConfig signingConfigs.release" not in release_block:
+              raise SystemExit("Could not set release build signing configuration")
+          source = source[:release_start] + release_block + source[release_end:]
+          path.write_text(source)
+          PY
+
+      - name: Build signed release APK
+        working-directory: frontend/android
+        env:
+          EXPO_PUBLIC_API_BASE_URL: https://test.yourbuildmart.com/api/
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Verify APK and calculate checksum
+        id: apk
+        run: |
+          set -euo pipefail
+          APK="frontend/android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release and attach APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_PATH: ${{ steps.apk.outputs.path }}
+          APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          TAG="android-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+          gh release create "$TAG" "$APK_PATH#YBM-Picker-Packer-${SHORT_SHA}-android.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "YBM Picker-Packer Android ${SHORT_SHA}" \
+            --notes "Automated Android APK release.
+
+          Commit: ${GITHUB_SHA}
+          API base URL: https://test.yourbuildmart.com/api/
+          SHA-256: ${APK_SHA256}
+
+          This build is signed with the configured persistent release keystore." \
+            --prerelease
