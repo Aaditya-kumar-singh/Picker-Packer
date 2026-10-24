@@ -22,6 +22,7 @@ export function ProfileScreen() {
   const [editIdNumber, setEditIdNumber] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState(false);
   const [failedPhotoUri, setFailedPhotoUri] = useState<string | null>(null);
 
   // Change Password Modal State
@@ -53,6 +54,7 @@ export function ProfileScreen() {
     setEditIdType(p?.idCardType || "AADHAAR");
     setEditIdNumber(p?.idCardNumber || "");
     setEditError(null);
+    setEditSuccess(false);
     setEditVisible(true);
   }
 
@@ -69,8 +71,8 @@ export function ProfileScreen() {
         idCardNumber: editIdNumber.trim() || null,
       });
       if (result.ok) {
-        setEditVisible(false);
         await refreshProfile();
+        setEditSuccess(true);
       } else {
         setEditError(result.error || authError || "Failed to update profile. Please try again.");
       }
@@ -276,42 +278,55 @@ export function ProfileScreen() {
       <Modal visible={editVisible} transparent animationType="slide">
         <View style={s.modalOverlay}>
           <View style={s.modalBox}>
-            <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Edit Profile</Text>
-              <Pressable onPress={() => setEditVisible(false)} hitSlop={10}>
-                <Ionicons name="close" size={24} color={theme.color.ink} />
-              </Pressable>
-            </View>
+            {editSuccess ? (
+              <View style={s.profileSuccessContent}>
+                <Ionicons name="checkmark-circle" size={56} color={theme.color.okPrimary} />
+                <Text style={s.profileSuccessTitle}>Profile updated successfully!</Text>
+                <Text style={s.profileSuccessMessage}>Your profile changes have been saved.</Text>
+                <View style={s.profileSuccessButton}>
+                  <PrimaryButton label="OK" onPress={() => setEditVisible(false)} />
+                </View>
+              </View>
+            ) : (
+              <>
+                <View style={s.modalHeader}>
+                  <Text style={s.modalTitle}>Edit Profile</Text>
+                  <Pressable onPress={() => setEditVisible(false)} hitSlop={10}>
+                    <Ionicons name="close" size={24} color={theme.color.ink} />
+                  </Pressable>
+                </View>
 
-            <ScrollView style={{ maxHeight: 380 }}>
-              <Text style={s.inputLabel}>Full Name</Text>
-              <TextInput style={s.modalInput} value={editName} onChangeText={setEditName} placeholder="Name" />
+                <ScrollView style={{ maxHeight: 380 }}>
+                  <Text style={s.inputLabel}>Full Name</Text>
+                  <TextInput style={s.modalInput} value={editName} onChangeText={setEditName} placeholder="Name" />
 
-              <Text style={s.inputLabel}>Phone Number</Text>
-              <TextInput style={s.modalInput} value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="Phone" />
+                  <Text style={s.inputLabel}>Phone Number</Text>
+                  <TextInput style={s.modalInput} value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="Phone" />
 
-              <Text style={s.inputLabel}>Email Address</Text>
-              <TextInput style={s.modalInput} value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" placeholder="Email" />
+                  <Text style={s.inputLabel}>Email Address</Text>
+                  <TextInput style={s.modalInput} value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" placeholder="Email" />
 
-              <Text style={s.inputLabel}>Warehouse Address</Text>
-              <TextInput style={s.modalInput} value={editAddress} onChangeText={setEditAddress} placeholder="Address / Station" />
+                  <Text style={s.inputLabel}>Warehouse Address</Text>
+                  <TextInput style={s.modalInput} value={editAddress} onChangeText={setEditAddress} placeholder="Address / Station" />
 
-              <Text style={s.inputLabel}>ID Card Type</Text>
-              <TextInput style={s.modalInput} value={editIdType} onChangeText={setEditIdType} placeholder="AADHAAR / PAN / VOTER" />
+                  <Text style={s.inputLabel}>ID Card Type</Text>
+                  <TextInput style={s.modalInput} value={editIdType} onChangeText={setEditIdType} placeholder="AADHAAR / PAN / VOTER" />
 
-              <Text style={s.inputLabel}>ID Card Number</Text>
-              <TextInput style={s.modalInput} value={editIdNumber} onChangeText={setEditIdNumber} placeholder="XXXX-1234" />
+                  <Text style={s.inputLabel}>ID Card Number</Text>
+                  <TextInput style={s.modalInput} value={editIdNumber} onChangeText={setEditIdNumber} placeholder="XXXX-1234" />
 
-              {editError ? <Text style={s.errorText}>{editError}</Text> : null}
-            </ScrollView>
+                  {editError ? <Text style={s.errorText}>{editError}</Text> : null}
+                </ScrollView>
 
-            <View style={s.modalFooter}>
-              <PrimaryButton
-                label={savingProfile ? "Saving…" : "SAVE CHANGES"}
-                onPress={handleSaveProfile}
-                disabled={savingProfile}
-              />
-            </View>
+                <View style={s.modalFooter}>
+                  <PrimaryButton
+                    label={savingProfile ? "Saving…" : "SAVE CHANGES"}
+                    onPress={handleSaveProfile}
+                    disabled={savingProfile}
+                  />
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -606,6 +621,27 @@ const s = StyleSheet.create({
   },
   modalFooter: {
     marginTop: 16,
+  },
+  profileSuccessContent: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  profileSuccessTitle: {
+    color: theme.color.ink,
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 12,
+    textAlign: "center",
+  },
+  profileSuccessMessage: {
+    color: theme.color.muted,
+    fontSize: 13,
+    marginTop: 6,
+    textAlign: "center",
+  },
+  profileSuccessButton: {
+    alignSelf: "stretch",
+    marginTop: 20,
   },
   errorText: {
     color: "#DC2626",

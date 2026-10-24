@@ -42,7 +42,10 @@
       "favicon": "./assets/images/ybm-app-mark.png"
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "0ee042f6-b53e-4dc4-b6be-b6969fd59c61"
+      }
     }
   }
 }
