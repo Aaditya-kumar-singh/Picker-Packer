@@ -1,6 +1,6 @@
 import { Text, TextInput } from "@/components/Typography";
 import { useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppHeader, PrimaryButton, SecondaryButton, Screen, theme } from "@/components/ui";
@@ -275,64 +275,54 @@ export function ProfileScreen() {
       </View>
 
       {/* Edit Profile Modal */}
-      <Modal visible={editVisible} transparent animationType="slide">
+      <Modal visible={editVisible} transparent animationType="slide" onRequestClose={() => setEditVisible(false)}>
+        <KeyboardAvoidingView style={s.modalKeyboardAvoider} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View style={s.modalOverlay}>
           <View style={s.modalBox}>
-            {editSuccess ? (
-              <View style={s.profileSuccessContent}>
-                <Ionicons name="checkmark-circle" size={56} color={theme.color.okPrimary} />
-                <Text style={s.profileSuccessTitle}>Profile updated successfully!</Text>
-                <Text style={s.profileSuccessMessage}>Your profile changes have been saved.</Text>
-                <View style={s.profileSuccessButton}>
-                  <PrimaryButton label="OK" onPress={() => setEditVisible(false)} />
-                </View>
-              </View>
-            ) : (
-              <>
-                <View style={s.modalHeader}>
-                  <Text style={s.modalTitle}>Edit Profile</Text>
-                  <Pressable onPress={() => setEditVisible(false)} hitSlop={10}>
-                    <Ionicons name="close" size={24} color={theme.color.ink} />
-                  </Pressable>
-                </View>
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Edit Profile</Text>
+              <Pressable onPress={() => setEditVisible(false)} hitSlop={10}>
+                <Ionicons name="close" size={24} color={theme.color.ink} />
+              </Pressable>
+            </View>
 
-                <ScrollView style={{ maxHeight: 380 }}>
-                  <Text style={s.inputLabel}>Full Name</Text>
-                  <TextInput style={s.modalInput} value={editName} onChangeText={setEditName} placeholder="Name" />
+            <ScrollView style={s.editFormScroll} contentContainerStyle={s.editFormContent} keyboardShouldPersistTaps="handled">
+              <Text style={s.inputLabel}>Full Name</Text>
+              <TextInput style={s.modalInput} value={editName} onChangeText={setEditName} placeholder="Name" />
 
-                  <Text style={s.inputLabel}>Phone Number</Text>
-                  <TextInput style={s.modalInput} value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="Phone" />
+              <Text style={s.inputLabel}>Phone Number</Text>
+              <TextInput style={s.modalInput} value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="Phone" />
 
-                  <Text style={s.inputLabel}>Email Address</Text>
-                  <TextInput style={s.modalInput} value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" placeholder="Email" />
+              <Text style={s.inputLabel}>Email Address</Text>
+              <TextInput style={s.modalInput} value={editEmail} onChangeText={setEditEmail} keyboardType="email-address" placeholder="Email" />
 
-                  <Text style={s.inputLabel}>Warehouse Address</Text>
-                  <TextInput style={s.modalInput} value={editAddress} onChangeText={setEditAddress} placeholder="Address / Station" />
+              <Text style={s.inputLabel}>Warehouse Address</Text>
+              <TextInput style={s.modalInput} value={editAddress} onChangeText={setEditAddress} placeholder="Address / Station" />
 
-                  <Text style={s.inputLabel}>ID Card Type</Text>
-                  <TextInput style={s.modalInput} value={editIdType} onChangeText={setEditIdType} placeholder="AADHAAR / PAN / VOTER" />
+              <Text style={s.inputLabel}>ID Card Type</Text>
+              <TextInput style={s.modalInput} value={editIdType} onChangeText={setEditIdType} placeholder="AADHAAR / PAN / VOTER" />
 
-                  <Text style={s.inputLabel}>ID Card Number</Text>
-                  <TextInput style={s.modalInput} value={editIdNumber} onChangeText={setEditIdNumber} placeholder="XXXX-1234" />
+              <Text style={s.inputLabel}>ID Card Number</Text>
+              <TextInput style={s.modalInput} value={editIdNumber} onChangeText={setEditIdNumber} placeholder="XXXX-1234" />
 
-                  {editError ? <Text style={s.errorText}>{editError}</Text> : null}
-                </ScrollView>
+              {editError ? <Text style={s.errorText}>{editError}</Text> : null}
+            </ScrollView>
 
-                <View style={s.modalFooter}>
-                  <PrimaryButton
-                    label={savingProfile ? "Saving…" : "SAVE CHANGES"}
-                    onPress={handleSaveProfile}
-                    disabled={savingProfile}
-                  />
-                </View>
-              </>
-            )}
+            <View style={s.modalFooter}>
+              <PrimaryButton
+                label={savingProfile ? "Saving…" : "SAVE CHANGES"}
+                onPress={handleSaveProfile}
+                disabled={savingProfile}
+              />
+            </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Change Password Modal */}
-      <Modal visible={passVisible} transparent animationType="slide">
+      <Modal visible={passVisible} transparent animationType="slide" onRequestClose={() => setPassVisible(false)}>
+        <KeyboardAvoidingView style={s.modalKeyboardAvoider} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View style={s.modalOverlay}>
           <View style={s.modalBox}>
             <View style={s.modalHeader}>
@@ -342,6 +332,7 @@ export function ProfileScreen() {
               </Pressable>
             </View>
 
+            <ScrollView style={s.passwordFormScroll} contentContainerStyle={s.editFormContent} keyboardShouldPersistTaps="handled">
             <Text style={s.inputLabel}>Current Password</Text>
             <View style={s.passwordInputWrap}>
               <TextInput
@@ -401,6 +392,7 @@ export function ProfileScreen() {
 
             {passError ? <Text style={s.errorText}>{passError}</Text> : null}
             {passSuccess ? <Text style={s.successText}>{passSuccess}</Text> : null}
+            </ScrollView>
 
             <View style={s.modalFooter}>
               <PrimaryButton
@@ -411,6 +403,7 @@ export function ProfileScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );
@@ -564,6 +557,20 @@ const s = StyleSheet.create({
   actionsContainer: {
     marginTop: 14,
     gap: 8,
+  },
+  modalKeyboardAvoider: {
+    flex: 1,
+  },
+  editFormScroll: {
+    flexShrink: 1,
+    maxHeight: 420,
+  },
+  passwordFormScroll: {
+    flexShrink: 1,
+    maxHeight: 420,
+  },
+  editFormContent: {
+    paddingBottom: 4,
   },
   modalOverlay: {
     flex: 1,

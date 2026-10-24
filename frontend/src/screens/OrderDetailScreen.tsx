@@ -1,7 +1,7 @@
 import { Text, TextInput } from "@/components/Typography";
 // Picking Order Screen — cross-device responsive Picker order & item scanning screen (Android, iOS & Web).
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,8 +18,8 @@ import {
   isOrderFullyPicked,
   nextPendingLine,
 } from "@/domain/order";
-import { beepError, beepSuccess } from "@/services/scanner";
-import BarcodeErrorModal, { type BarcodeErrorDetails } from "@/components/modals/BarcodeErrorModal";
+import { beepSuccess } from "@/services/scanner";
+import { BarcodeErrorModal, useBarcodeAlert } from "@/components/modals/BarcodeErrorModal";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
 import type { FulfillmentOrderDto, FulfillmentOrderItemDto } from "@/types";
 import { getOrderProgress, getWarehouseDisplay } from "@/utils/warehouse";
@@ -44,9 +44,9 @@ export function OrderDetailScreen() {
   const [scanSheetVisible, setScanSheetVisible] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
   const [manualBarcode, setManualBarcode] = useState("");
-  const [barcodeError, setBarcodeError] = useState<BarcodeErrorDetails | null>(null);
   const [batchesVisible, setBatchesVisible] = useState(false);
   const scanInputRef = useRef<TextInput>(null);
+  const { barcodeAlert, showBarcodeAlert, dismissBarcodeAlert } = useBarcodeAlert();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,8 +128,7 @@ export function OrderDetailScreen() {
       scanInputRef.current?.clear();
       const msg = "Scan or enter the product barcode.";
       setError(msg);
-      beepError();
-      setBarcodeError({ scannedValue: "", expectedValue: target.sku, reason: msg });
+showBarcodeAlert("", target.sku, msg);
       setTimeout(() => scanInputRef.current?.focus(), 80);
       return;
     }
@@ -180,8 +179,7 @@ export function OrderDetailScreen() {
         setManualBarcode("");
         scanInputRef.current?.clear();
         setError(res.message);
-        beepError();
-        setBarcodeError({ scannedValue: code, expectedValue: target.sku, reason: res.message });
+showBarcodeAlert(code, target.sku, res.message);
         setTimeout(() => scanInputRef.current?.focus(), 80);
       }
     } catch (err: any) {
@@ -189,8 +187,7 @@ export function OrderDetailScreen() {
       scanInputRef.current?.clear();
       const msg = err?.message || "Scan error";
       setError(msg);
-      beepError();
-      setBarcodeError({ scannedValue: code, expectedValue: target.sku, reason: msg });
+showBarcodeAlert(code, target.sku, msg);
       setTimeout(() => scanInputRef.current?.focus(), 80);
     } finally {
       setBusy(false);
@@ -481,8 +478,13 @@ export function OrderDetailScreen() {
           animationType="slide"
           onRequestClose={() => setScanSheetVisible(false)}
         >
-          <View style={od.modalBackdrop}>
-            <View style={od.scanModalCard}>
+          <KeyboardAvoidingView
+            style={od.modalKeyboardAvoider}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={0}
+          >
+            <View style={od.modalBackdrop}>
+              <View style={od.scanModalCard}>
               <View style={od.modalHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={od.modalTitle}>{activeScanLine.productName}</Text>
@@ -543,8 +545,9 @@ export function OrderDetailScreen() {
                   <Text style={od.modalErrorText}>{error}</Text>
                 </View>
               ) : null}
+              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       ) : null}
 
@@ -571,14 +574,9 @@ export function OrderDetailScreen() {
         </View>
       </Modal>
 
+      <BarcodeErrorModal alert={barcodeAlert} onDismiss={() => { dismissBarcodeAlert(); setTimeout(() => scanInputRef.current?.focus(), 120); }} />
+
       {/* Continuous Camera Scanner Modal */}
-      <BarcodeErrorModal
-        visible={!!barcodeError}
-        scannedValue={barcodeError?.scannedValue ?? ""}
-        expectedValue={barcodeError?.expectedValue}
-        reason={barcodeError?.reason}
-        onRetry={() => { setBarcodeError(null); setTimeout(() => scanInputRef.current?.focus(), 80); }}
-      />
       <BarcodeScannerModal
         visible={cameraVisible}
         onClose={() => setCameraVisible(false)}
@@ -958,6 +956,9 @@ const od = StyleSheet.create({
     fontWeight: "700",
     color: "#0F172A",
   },
+  modalKeyboardAvoider: {
+    flex: 1,
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -969,6 +970,7 @@ const od = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 20,
     paddingBottom: 32,
+    maxHeight: "90%",
   },
   batchesModalCard: {
     backgroundColor: "#FFFFFF",
