@@ -252,7 +252,8 @@ export async function apiRequest<T>(
     });
   }
 
-  if (response.status === 401) {
+  // Sign-in requests have no active session to expire; let the form show the API error.
+  if (response.status === 401 && !skipAuth) {
     triggerUnauthorized();
     throw new ApiHttpError({
       error: "UNAUTHORIZED",

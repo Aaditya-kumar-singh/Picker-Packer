@@ -154,7 +154,10 @@ test("REST API client layers implement required endpoints and envelope unwrappin
   const pickerSource = read("frontend/src/api/pickerAppApi.ts");
   assert.match(pickerSource, /\/api\/picker-app\/stats/);
   assert.match(pickerSource, /\/api\/picker-app\/orders\/assigned/);
-  assert.match(pickerSource, /\/api\/picker-app\/orders\/completed/);
+  assert.match(pickerSource, /\/api\/picker-app\/orders\/history\?\$\{query\}/);
+  assert.match(pickerSource, /\/api\/picker-app\/orders\/history\/count/);
+  assert.match(pickerSource, /\/api\/picker-app\/profile\/status/);
+  assert.doesNotMatch(pickerSource, /\/api\/picker-app\/orders\/completed/);
   assert.doesNotMatch(pickerSource, /sessionCompletedOrders|getSessionCompletedOrders/);
   assert.match(pickerSource, /\/api\/picker-app\/orders\/\$\{orderId\}\/items/);
   assert.match(pickerSource, /\/api\/picker-app\/orders\/\$\{orderId\}\/scan/);
@@ -172,6 +175,9 @@ test("REST API client layers implement required endpoints and envelope unwrappin
   assert.match(packerSource, /\/api\/packer-app\/orders\/\$\{orderId\}\/assign-rider/);
   assert.match(packerSource, /\/api\/packer-app\/profile/);
   assert.match(packerSource, /\/api\/packer-app\/change-password/);
+  assert.match(packerSource, /\/api\/packer-app\/orders\/history\?\$\{query\}/);
+  assert.match(packerSource, /\/api\/packer-app\/orders\/history\/count/);
+  assert.match(packerSource, /\/api\/packer-app\/profile\/status/);
 
   const facade = read("frontend/src/api/client.ts");
   assert.match(facade, /pickerAppApi/);
@@ -223,10 +229,11 @@ test("packer order dispatch is handled via assign-rider step", () => {
   const packerOrderScreen = read("frontend/src/screens/PackerOrderScreen.tsx");
   assert.match(packerOrderScreen, /assignRider/);
 
-  const completedScreen = read("frontend/src/screens/PackerCompletedScreen.tsx");
-  assert.doesNotMatch(completedScreen, /RIDER_ASSIGNED/);
-  assert.match(completedScreen, /orderStatus === "PACKED"/);
-  assert.doesNotMatch(completedScreen, /getSessionDispatchedOrders/);
+  const historyScreen = read("frontend/src/screens/HistoryScreen.tsx");
+  assert.match(historyScreen, /getHistoryOrderCount/);
+  assert.match(historyScreen, /getHistory\(pageNumber, PAGE_SIZE\)/);
+  assert.match(historyScreen, /new Map<number, FulfillmentHistoryDto\[\]>/);
+  assert.doesNotMatch(historyScreen, /getAssignedOrders|getSessionDispatchedOrders/);
   const packerApi = read("frontend/src/api/packerAppApi.ts");
   assert.doesNotMatch(packerApi, /sessionDispatchedOrders|getSessionDispatchedOrders/);
 });

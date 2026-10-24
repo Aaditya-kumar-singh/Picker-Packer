@@ -22,7 +22,7 @@ import {
 
 type SortMode = "order" | "date" | "items";
 
-export function OrdersScreen({ completed = false }: { completed?: boolean }) {
+export function OrdersScreen() {
   const { picker } = useAuth();
   const { width } = useWindowDimensions();
   const compact = width < 360;
@@ -35,20 +35,15 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      if (completed) {
-        const completedOrders = await pickerAppApi.getCompletedOrders();
-        setOrders(completedOrders);
-      } else {
-        const assigned = await pickerAppApi.getAssignedOrders();
-        setOrders(assigned || []);
-      }
+      const assigned = await pickerAppApi.getAssignedOrders();
+      setOrders(assigned || []);
       setError(null);
     } catch (err: any) {
       setError(err?.message || "Failed to load orders.");
     } finally {
       setLoading(false);
     }
-  }, [completed]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -56,7 +51,6 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
     }, [load])
   );
 
-  const wh = getWarehouseDisplay(picker?.warehouseId, picker?.warehouseName);
 
   const visibleOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -124,7 +118,7 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
         <View style={os.topHeaderRow}>
           <View style={os.titleLeft}>
             <Text style={[os.pageTitle, compact && { fontSize: 19 }]} maxFontSizeMultiplier={1.15}>
-              {completed ? "Completed Orders" : "Assigned Orders"}
+              Assigned Orders
             </Text>
             <View style={os.countPill}>
               <Text style={os.countPillText} maxFontSizeMultiplier={1.1}>
@@ -181,16 +175,12 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
             title={
               search
                 ? "No matching orders"
-                : completed
-                  ? "No Completed Orders Yet"
-                  : "No Assigned Orders"
+                : "No Assigned Orders"
             }
             body={
               search
                 ? `No orders matched "${search}". Clear search to see all.`
-                : completed
-                  ? "Orders you pick and assign to packers during this shift will appear here."
-                  : "Your picking queue is clear. New orders assigned by the administrator will appear here."
+                : "Your picking queue is clear. New orders assigned by the administrator will appear here."
             }
             actionLabel={search ? "Clear Search" : "Refresh"}
             onAction={search ? () => setSearch("") : () => void load()}
@@ -199,7 +189,6 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
           visibleOrders.map((order, idx) => {
             const palette = getCubePalette(order, idx);
             const prog = getOrderProgress(order);
-            const isCompleted = order.orderStatus === "PACKING" || order.orderStatus === "PACKED";
 
             return (
               <Pressable
@@ -274,24 +263,23 @@ export function OrdersScreen({ completed = false }: { completed?: boolean }) {
                 <View style={os.cardFooter}>
                   <View style={os.whRow}>
                     <Ionicons name="location-sharp" size={13} color="#64748B" />
-                    <Text style={os.whText}>{wh.shortAddress}</Text>
+                    <Text style={os.whText}>{getWarehouseDisplay(order.warehouseId, order.warehouseName).shortAddress}</Text>
                   </View>
 
                   <Pressable
                     style={({ pressed }) => [
                       os.actionBtn,
-                      isCompleted && os.actionBtnCompleted,
                       pressed && { opacity: 0.85 },
                     ]}
                     onPress={() => router.push(`/order/${order.orderId}` as never)}
                   >
-                    <Text style={[os.actionBtnText, isCompleted && os.actionBtnTextCompleted]}>
-                      {isCompleted ? "View Order" : "Continue Picking"}
+                    <Text style={os.actionBtnText}>
+                      Continue Picking
                     </Text>
                     <Ionicons
                       name="arrow-forward"
                       size={14}
-                      color={isCompleted ? "#0284C7" : "#FFFFFF"}
+                      color="#FFFFFF"
                     />
                   </Pressable>
                 </View>

@@ -20,7 +20,7 @@ export interface FulfillmentOrderItemDto {
   variantLabel: string | null;
   orderedQty: number;
   pickedQty: number;
-  packedQty: number;
+  packedQty: number | null;
   fullyScanned: boolean;
   barcode?: string | null;
   // Pick location fields (included in picker responses; null if not mapped)
@@ -102,6 +102,31 @@ export interface PackerStatsDto {
   completedOrders: number;
   todayOrdersPacked: number;
   todayItemsScanned: number;
+}
+
+export interface FulfillmentHistoryDto {
+  taskId: number;
+  orderId: number;
+  orderNumber: string;
+  orderStatus: OrderStatus;
+  itemId: number;
+  productName: string;
+  variantLabel: string | null;
+  sku: string;
+  barcode: string;
+  scannedQty: number;
+  orderedQty: number;
+  taskType: "PICK" | "PACK";
+  scannedAt: string;
+}
+
+export interface HistoryPageDto {
+  content: FulfillmentHistoryDto[];
+  totalElements: number;
+  totalPages: number;
+  last: boolean;
+  number: number;
+  size: number;
 }
 
 /** GET /api/picker-app/available-packers candidate */

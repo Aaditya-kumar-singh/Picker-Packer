@@ -30,7 +30,7 @@ function getPackerStatsSummary(order: FulfillmentOrderDto) {
       : itemCount;
   const packedUnits =
     order.items && order.items.length > 0
-      ? order.items.reduce((sum, i) => sum + i.packedQty, 0)
+      ? order.items.reduce((sum, i) => sum + (i.packedQty ?? 0), 0)
       : order.totalItemsScanned;
   const pct =
     totalUnits > 0 ? Math.min(100, Math.round((packedUnits / totalUnits) * 100)) : 0;
@@ -48,6 +48,7 @@ export function PackerDashboardScreen({
 
   const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
   const [stats, setStats] = useState<PackerStatsDto | null>(null);
+  const [historyCount, setHistoryCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -56,12 +57,14 @@ export function PackerDashboardScreen({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [fetchedStats, fetchedOrders] = await Promise.all([
+      const [fetchedStats, fetchedOrders, fetchedHistoryCount] = await Promise.all([
         packerAppApi.getStats(),
         packerAppApi.getAssignedOrders(),
+        packerAppApi.getHistoryOrderCount().catch(() => null),
       ]);
       setOrders(fetchedOrders || []);
       setStats(fetchedStats);
+      setHistoryCount(fetchedHistoryCount);
       setError(null);
     } catch (e: any) {
       setError(e?.message || "Could not load packing queue");
@@ -76,7 +79,9 @@ export function PackerDashboardScreen({
     }, [load])
   );
 
-  const wh = getWarehouseDisplay(picker?.warehouseId, picker?.warehouseName);
+  const warehouseId = orders[0]?.warehouseId ?? picker?.warehouseId;
+  const warehouseName = orders[0]?.warehouseName ?? picker?.warehouseName;
+  const wh = getWarehouseDisplay(warehouseId, warehouseName);
 
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -304,7 +309,7 @@ export function PackerDashboardScreen({
                           numberOfLines={1}
                           maxFontSizeMultiplier={1.15}
                         >
-                          {wh.name}
+                          {getWarehouseDisplay(o.warehouseId, o.warehouseName).name}
                         </Text>
                       </View>
 
@@ -313,18 +318,14 @@ export function PackerDashboardScreen({
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.15}
                       >
-                        {wh.shortAddress} • {formatOrderDate(o.orderDate)}
+                        {getWarehouseDisplay(o.warehouseId, o.warehouseName).shortAddress} • {formatOrderDate(o.orderDate)}
                       </Text>
                     </View>
 
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Start packing ${o.orderNumber}`}
-                      onPress={() => router.push(`/pack/order/${o.orderId}` as never)}
-                      style={({ pressed }) => [
+                    <View
+                      style={[
                         s.compactOrangeBtn,
                         complete && { backgroundColor: "#16A34A" },
-                        pressed && { opacity: 0.88 },
                       ]}
                     >
                       <Ionicons name="cube-outline" size={16} color="#FFFFFF" />
@@ -341,7 +342,7 @@ export function PackerDashboardScreen({
                           color={complete ? "#16A34A" : "#D95D00"}
                         />
                       </View>
-                    </Pressable>
+                    </View>
                   </View>
                 </Pressable>
               );
@@ -373,7 +374,7 @@ export function PackerDashboardScreen({
         }
       >
         {/* Warehouse Card */}
-        <Pressable
+        {warehouseId != null || warehouseName ? <Pressable
           accessibilityRole="button"
           onPress={() => router.push("/profile" as never)}
           style={({ pressed }) => [s.warehouseCard, pressed && s.cardPressed]}
@@ -390,7 +391,7 @@ export function PackerDashboardScreen({
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color="#64748B" />
-        </Pressable>
+        </Pressable> : null}
 
         {/* 4 Metric KPI Cards */}
         <View style={s.metricsGrid}>
@@ -408,7 +409,7 @@ export function PackerDashboardScreen({
 
           <Pressable
             style={({ pressed }) => [s.metricCard, pressed && s.cardPressed]}
-            onPress={() => router.push("/completed-orders" as never)}
+            onPress={() => router.push("/orders" as never)}
           >
             <View style={[s.metricIconCircle, { backgroundColor: "#DCFCE7" }]}>
               <Ionicons name="checkmark-done" size={16} color="#16A34A" />
@@ -425,9 +426,9 @@ export function PackerDashboardScreen({
             <View style={[s.metricIconCircle, { backgroundColor: "#E0F2FE" }]}>
               <Ionicons name="bicycle" size={16} color="#0284C7" />
             </View>
-            <Text style={s.metricVal}>{stats?.todayOrdersPacked ?? 0}</Text>
-            <Text style={s.metricLabel}>Dispatched</Text>
-            <Text style={s.metricSub}>Today</Text>
+            <Text style={s.metricVal}>{historyCount ?? "–"}</Text>
+            <Text style={s.metricLabel}>History</Text>
+            <Text style={s.metricSub}>Orders</Text>
           </Pressable>
 
           <Pressable

@@ -6,6 +6,7 @@ import type {
   RiderCandidateDto,
   FulfillmentStaffProfileDto,
   RawSalesOrderItemDto,
+  HistoryPageDto,
 } from "@/types";
 
 // In-memory cache for currently loaded order details. The server remains authoritative.
@@ -15,7 +16,8 @@ export const packerAppApi = {
   /** 2.1 GET /api/packer-app/orders/assigned */
   async getAssignedOrders(): Promise<FulfillmentOrderDto[]> {
     const orders = await apiRequest<FulfillmentOrderDto[]>("/api/packer-app/orders/assigned");
-    cachedAssignedOrders = orders || [];
+    if (!Array.isArray(orders)) throw new Error("The assigned packing orders response is invalid.");
+    cachedAssignedOrders = orders;
     return cachedAssignedOrders;
   },
 
@@ -111,6 +113,25 @@ export const packerAppApi = {
       body: JSON.stringify(payload),
     });
     return typeof res === "string" ? res : "Password updated";
+  },
+
+  async getHistory(page = 0, size = 20, orderId?: number): Promise<HistoryPageDto> {
+    const query = `page=${page}&size=${size}${orderId === undefined ? "" : `&orderId=${orderId}`}`;
+    const result = await apiRequest<HistoryPageDto>(`/api/packer-app/orders/history?${query}`);
+    if (!result || !Array.isArray(result.content) || typeof result.last !== "boolean") {
+      throw new Error("The packing history response is invalid.");
+    }
+    return result;
+  },
+
+  async getHistoryOrderCount(): Promise<number> {
+    const count = await apiRequest<number>("/api/packer-app/orders/history/count");
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("The packing history count is invalid.");
+    return count;
+  },
+
+  async toggleStatus(): Promise<FulfillmentStaffProfileDto> {
+    return apiRequest<FulfillmentStaffProfileDto>("/api/packer-app/profile/status", { method: "PUT" });
   },
 
   /** Clears cached order details on logout. Persisted workflow state stays on the server. */

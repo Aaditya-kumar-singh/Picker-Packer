@@ -6,16 +6,18 @@ import type {
   PickerStatsDto,
   PackerCandidateDto,
   FulfillmentStaffProfileDto,
+  HistoryPageDto,
 } from "@/types";
 
-// In-memory cache is only for the active picking queue. Completed work is always read from the server.
+// In-memory cache is only for the active picking queue. Scan history is read from the server.
 let cachedAssignedOrders: FulfillmentOrderDto[] = [];
 
 export const pickerAppApi = {
   /** 2.1 GET /api/picker-app/orders/assigned */
   async getAssignedOrders(): Promise<FulfillmentOrderDto[]> {
     const orders = await apiRequest<FulfillmentOrderDto[]>("/api/picker-app/orders/assigned");
-    cachedAssignedOrders = orders || [];
+    if (!Array.isArray(orders)) throw new Error("The assigned orders response is invalid.");
+    cachedAssignedOrders = orders;
     return cachedAssignedOrders;
   },
 
@@ -101,9 +103,23 @@ export const pickerAppApi = {
     return typeof res === "string" ? res : "Password updated";
   },
 
-  /** Completed picking work is fetched from the server so it survives app restarts and device changes. */
-  async getCompletedOrders(): Promise<FulfillmentOrderDto[]> {
-    return (await apiRequest<FulfillmentOrderDto[]>("/api/picker-app/orders/completed")) || [];
+  async getHistory(page = 0, size = 20, orderId?: number): Promise<HistoryPageDto> {
+    const query = `page=${page}&size=${size}${orderId === undefined ? "" : `&orderId=${orderId}`}`;
+    const result = await apiRequest<HistoryPageDto>(`/api/picker-app/orders/history?${query}`);
+    if (!result || !Array.isArray(result.content) || typeof result.last !== "boolean") {
+      throw new Error("The picking history response is invalid.");
+    }
+    return result;
+  },
+
+  async getHistoryOrderCount(): Promise<number> {
+    const count = await apiRequest<number>("/api/picker-app/orders/history/count");
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("The picking history count is invalid.");
+    return count;
+  },
+
+  async toggleStatus(): Promise<FulfillmentStaffProfileDto> {
+    return apiRequest<FulfillmentStaffProfileDto>("/api/picker-app/profile/status", { method: "PUT" });
   },
 
   /** Clears session-only active queue cache on logout. */

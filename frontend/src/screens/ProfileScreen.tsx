@@ -8,7 +8,9 @@ import { useAuth } from "@/navigation/AppProvider";
 import { resolvePhotoUrl } from "@/api/http";
 
 export function ProfileScreen() {
-  const { picker, logout, updateProfile, changePassword, refreshProfile, error: authError } = useAuth();
+  const { picker, logout, updateProfile, toggleStatus, changePassword, refreshProfile, error: authError } = useAuth();
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // Edit Profile Modal State
   const [editVisible, setEditVisible] = useState(false);
@@ -30,6 +32,9 @@ export function ProfileScreen() {
   const [savingPass, setSavingPass] = useState(false);
   const [passError, setPassError] = useState<string | null>(null);
   const [passSuccess, setPassSuccess] = useState<string | null>(null);
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   if (!picker) return null;
 
@@ -82,6 +87,9 @@ export function ProfileScreen() {
     setConfirmPass("");
     setPassError(null);
     setPassSuccess(null);
+    setShowCurrentPass(false);
+    setShowNewPass(false);
+    setShowConfirmPass(false);
     setPassVisible(true);
   }
 
@@ -149,9 +157,9 @@ export function ProfileScreen() {
           ) : null}
 
           {p?.status ? (
-            <View style={s.statusBadge}>
-              <View style={s.statusDot} />
-              <Text style={s.statusText}>{p.status.toUpperCase()}</Text>
+            <View style={[s.statusBadge, p.status.toLowerCase() !== "active" && { backgroundColor: "#F1F5F9" }]}>
+              <View style={[s.statusDot, p.status.toLowerCase() !== "active" && { backgroundColor: "#64748B" }]} />
+              <Text style={[s.statusText, p.status.toLowerCase() !== "active" && { color: "#475569" }]}>{p.status.toUpperCase()}</Text>
             </View>
           ) : null}
         </View>
@@ -200,8 +208,8 @@ export function ProfileScreen() {
             <Ionicons name="business-outline" size={16} color={theme.color.muted} />
           </View>
           <View style={s.detailContent}>
-            <Text style={s.label}>ASSIGNED WAREHOUSE / ADDRESS</Text>
-            <Text style={s.value}>{p?.address || `Warehouse #${picker.warehouseId || 3}`}</Text>
+            <Text style={s.label}>ADDRESS</Text>
+            <Text style={s.value}>{p?.address || "Not provided"}</Text>
           </View>
         </View>
 
@@ -223,6 +231,19 @@ export function ProfileScreen() {
 
       {/* Profile Actions */}
       <View style={s.actionsContainer}>
+        <SecondaryButton
+          label={statusBusy ? "UPDATING STATUS…" : p?.status?.toLowerCase() === "active" ? "GO OFF DUTY" : "GO ON DUTY"}
+          icon="power-outline"
+          onPress={() => {
+            if (statusBusy) return;
+            setStatusBusy(true);
+            setStatusError(null);
+            void toggleStatus().then((result) => {
+              if (!result.ok) setStatusError(result.error || "Could not update duty status.");
+            }).finally(() => setStatusBusy(false));
+          }}
+        />
+        {statusError ? <Text style={{ color: "#B91C1C" }}>{statusError}</Text> : null}
         <SecondaryButton
           label="EDIT PROFILE"
           icon="create-outline"
@@ -307,31 +328,61 @@ export function ProfileScreen() {
             </View>
 
             <Text style={s.inputLabel}>Current Password</Text>
-            <TextInput
-              style={s.modalInput}
-              value={currentPass}
-              onChangeText={setCurrentPass}
-              secureTextEntry
-              placeholder="Enter current password"
-            />
+            <View style={s.passwordInputWrap}>
+              <TextInput
+                style={[s.modalInput, s.passwordInput]}
+                value={currentPass}
+                onChangeText={setCurrentPass}
+                secureTextEntry={!showCurrentPass}
+                placeholder="Enter current password"
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={showCurrentPass ? "Hide current password" : "Show current password"}
+                onPress={() => setShowCurrentPass((value) => !value)}
+                style={s.passwordEyeButton}
+              >
+                <Ionicons name={showCurrentPass ? "eye-off-outline" : "eye-outline"} size={20} color="#64748B" />
+              </Pressable>
+            </View>
 
             <Text style={s.inputLabel}>New Password (6-100 characters)</Text>
-            <TextInput
-              style={s.modalInput}
-              value={newPass}
-              onChangeText={setNewPass}
-              secureTextEntry
-              placeholder="Enter new secure password"
-            />
+            <View style={s.passwordInputWrap}>
+              <TextInput
+                style={[s.modalInput, s.passwordInput]}
+                value={newPass}
+                onChangeText={setNewPass}
+                secureTextEntry={!showNewPass}
+                placeholder="Enter new secure password"
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={showNewPass ? "Hide new password" : "Show new password"}
+                onPress={() => setShowNewPass((value) => !value)}
+                style={s.passwordEyeButton}
+              >
+                <Ionicons name={showNewPass ? "eye-off-outline" : "eye-outline"} size={20} color="#64748B" />
+              </Pressable>
+            </View>
 
             <Text style={s.inputLabel}>Confirm New Password</Text>
-            <TextInput
-              style={s.modalInput}
-              value={confirmPass}
-              onChangeText={setConfirmPass}
-              secureTextEntry
-              placeholder="Re-enter new password"
-            />
+            <View style={s.passwordInputWrap}>
+              <TextInput
+                style={[s.modalInput, s.passwordInput]}
+                value={confirmPass}
+                onChangeText={setConfirmPass}
+                secureTextEntry={!showConfirmPass}
+                placeholder="Re-enter new password"
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={showConfirmPass ? "Hide confirmed password" : "Show confirmed password"}
+                onPress={() => setShowConfirmPass((value) => !value)}
+                style={s.passwordEyeButton}
+              >
+                <Ionicons name={showConfirmPass ? "eye-off-outline" : "eye-outline"} size={20} color="#64748B" />
+              </Pressable>
+            </View>
 
             {passError ? <Text style={s.errorText}>{passError}</Text> : null}
             {passSuccess ? <Text style={s.successText}>{passSuccess}</Text> : null}
@@ -537,6 +588,21 @@ const s = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 14,
     color: theme.color.ink,
+  },
+  passwordInputWrap: {
+    position: "relative",
+  },
+  passwordInput: {
+    paddingRight: 48,
+  },
+  passwordEyeButton: {
+    position: "absolute",
+    right: 2,
+    top: 0,
+    bottom: 0,
+    width: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalFooter: {
     marginTop: 16,

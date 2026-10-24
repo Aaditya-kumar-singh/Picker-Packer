@@ -26,18 +26,21 @@ export function DashboardScreen() {
   const compact = width < 380;
   const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
   const [stats, setStats] = useState<PickerStatsDto | null>(null);
+  const [historyCount, setHistoryCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [fetchedStats, fetchedOrders] = await Promise.all([
+      const [fetchedStats, fetchedOrders, fetchedHistoryCount] = await Promise.all([
         pickerAppApi.getStats(),
         pickerAppApi.getAssignedOrders(),
+        pickerAppApi.getHistoryOrderCount().catch(() => null),
       ]);
       setStats(fetchedStats);
       setOrders(fetchedOrders || []);
+      setHistoryCount(fetchedHistoryCount);
       setError(null);
     } catch (err: any) {
       setError(err?.message || "Failed to load assigned work.");
@@ -52,11 +55,13 @@ export function DashboardScreen() {
     }, [load])
   );
 
-  const wh = getWarehouseDisplay(picker?.warehouseId, picker?.warehouseName);
+  const warehouseId = orders[0]?.warehouseId ?? picker?.warehouseId;
+  const warehouseName = orders[0]?.warehouseName ?? picker?.warehouseName;
+  const wh = getWarehouseDisplay(warehouseId, warehouseName);
   const assignedList = orders;
-  const assignedTotal = stats?.assignedOrdersCount ?? assignedList.length;
+  // The stats count also includes PACKING; this card links to the PICKING queue.
+  const assignedTotal = assignedList.length;
   const inProgressCount = assignedList.filter((o) => o.totalItemsScanned > 0).length;
-  const completedCount = stats?.completedOrdersCount ?? 0;
   const itemsToPickCount = assignedList.reduce(
     (sum, o) =>
       sum +
@@ -90,7 +95,7 @@ export function DashboardScreen() {
         ) : (
           <>
             {/* Warehouse Location Banner Card */}
-            <Pressable
+            {warehouseId != null || warehouseName ? <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Assigned warehouse ${wh.name}`}
               onPress={() => router.push("/profile" as never)}
@@ -121,7 +126,7 @@ export function DashboardScreen() {
               <View style={ds.warehousePinBtn}>
                 <Ionicons name="location-sharp" size={17} color="#0F172A" />
               </View>
-            </Pressable>
+            </Pressable> : null}
 
             {/* 4 KPI Summary Cards Row */}
             <View style={[ds.kpiGrid, compact && { gap: 6 }]}>
@@ -218,7 +223,7 @@ export function DashboardScreen() {
                   pressed && ds.metricPressed,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Completed orders, ${completedCount}`}
+                accessibilityLabel={`History, ${historyCount ?? "unavailable"} orders`}
                 onPress={() => router.push("/completed-orders" as never)}
               >
                 <View style={[ds.kpiIconCircle, { backgroundColor: "#DCFCE7" }]}>
@@ -228,7 +233,7 @@ export function DashboardScreen() {
                   style={[ds.kpiValue, compact && { fontSize: 19 }]}
                   maxFontSizeMultiplier={1.1}
                 >
-                  {completedCount}
+                  {historyCount ?? "–"}
                 </Text>
                 <View style={ds.kpiLabelRow}>
                   <View style={ds.kpiTextCol}>
@@ -238,14 +243,14 @@ export function DashboardScreen() {
                       adjustsFontSizeToFit
                       maxFontSizeMultiplier={1.1}
                     >
-                      Completed
+                      History
                     </Text>
                     <Text
                       style={ds.kpiSubLabel}
                       numberOfLines={1}
                       maxFontSizeMultiplier={1.1}
                     >
-                      Today
+                      Orders
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={12} color="#64748B" />
@@ -369,14 +374,14 @@ export function DashboardScreen() {
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.15}
                       >
-                        {wh.name}
+                        {getWarehouseDisplay(heroOrder.warehouseId, heroOrder.warehouseName).name}
                       </Text>
                       <Text
                         style={ds.activeWhAddr}
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.15}
                       >
-                        {wh.shortAddress}
+                        {getWarehouseDisplay(heroOrder.warehouseId, heroOrder.warehouseName).shortAddress}
                       </Text>
                     </View>
                   </View>
@@ -498,7 +503,7 @@ export function DashboardScreen() {
                           numberOfLines={1}
                           maxFontSizeMultiplier={1.15}
                         >
-                          {wh.name}
+                          {getWarehouseDisplay(order.warehouseId, order.warehouseName).name}
                         </Text>
                       </View>
                     </View>
