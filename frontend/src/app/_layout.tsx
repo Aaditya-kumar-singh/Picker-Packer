@@ -79,7 +79,7 @@ export default function RootLayout() {
 
             <Stack.Screen name="order/[id]" options={{ title: "Picking Order", headerShown: false }} />
             <Stack.Screen name="pick/[orderId]/sku" options={{ title: "SKU Scan", headerShown: false }} />
-            <Stack.Screen name="pick/[orderId]/complete" options={{ title: "Assign Packer" }} />
+            <Stack.Screen name="pick/[orderId]/complete" options={{ title: "Assign Packer", headerShown: false }} />
 
             <Stack.Screen name="pack/order/[id]" options={{ title: "Packing Order", headerShown: false }} />
           </Stack>

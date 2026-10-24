@@ -90,7 +90,7 @@ Returned by `GET /orders/assigned` (array) and `GET /orders/{id}` (single).
 |---|---|---|
 | `orderId` | number | Use as `{id}` path param |
 | `orderNumber` | string | Human-readable order ref |
-| `orderStatus` | string | `"PACKING"` (in progress) or `"PACKED"` (ready for rider) |
+| `orderStatus` | string | Work list: `"PACKING"` (in progress) or `"PACKED"` (ready for rider). `GET /orders/{id}` can return any status, including `"RIDER_ASSIGNED"` after you assign a rider |
 | `orderDate` | string | ISO-8601 local datetime |
 | `grandTotal` | number | Order total |
 | `paymentMethod` | string | e.g. `COD`, `PREPAID` |
@@ -161,7 +161,7 @@ Nested in every order (and in the scan response). Packer responses have
 |---|---|---|
 | `success` | boolean | Duplicates the envelope `success` |
 | `message` | string | Success: `Item packed successfully.` / `All items packed! Order is ready for rider assignment.` |
-| `barcode` | string | Echo of the scanned value (`null` on empty-barcode error) |
+| `barcode` | string | Echo of the scanned value |
 | `scannedItemName` | string | `productName - variantLabel` |
 | `scannedQty` | number | Item's `packedQty` **after** this scan |
 | `orderedQty` | number | Item's ordered qty |
@@ -189,7 +189,7 @@ all other fields `null`/absent.
 | Field | Type | Notes |
 |---|---|---|
 | `assignedOrders` | number | My orders still in `PACKING` |
-| `completedOrders` | number | My orders now `PACKED` (awaiting/with rider) |
+| `completedOrders` | number | My orders now `PACKED` (ready, awaiting a rider — assigning one moves the order to `RIDER_ASSIGNED` and out of this count) |
 | `todayOrdersPacked` | number | Distinct orders I scanned at least once **today** |
 | `todayItemsScanned` | number | My scan events today (one per successful scan) |
 
@@ -213,12 +213,9 @@ returned. App needs `id`, `name`, `phone`, `vehicleType`, `rating`.
   "staffId": 21, "name": "Ravi Kumar", "phone": "9876543210",
   "email": "ravi@example.com", "status": "active", "rating": 4.5,
   "idCardType": "AADHAAR", "idCardNumber": "XXXX-1234",
-  "address": "Warehouse 3", "photoFilePath": "staff/ravi.jpg",
-  "warehouseId": 3, "warehouseName": "Warehouse 3"
+  "address": "Warehouse 3", "photoFilePath": "staff/ravi.jpg"
 }
 ```
-
-The profile response must include the authenticated packer's actual `warehouseId` and `warehouseName`. Return explicit `null` values when unassigned; do not encode warehouse identity in `address` or infer it from the address.
 
 ### 1.7 Raw order item (`GET /orders/{id}/items`)
 
@@ -258,6 +255,33 @@ and pricing.
 }
 ```
 
+### 1.8 History entry (`FulfillmentHistoryDto`)
+
+One row per successful pack scan, inside the page envelope of
+`GET /orders/history` (§2.11):
+
+```json
+{
+  "taskId": 9045, "orderId": 501, "orderNumber": "SO-2026-00412",
+  "orderStatus": "PACKED", "itemId": 77, "productName": "Wireless Mouse",
+  "variantLabel": "Black", "sku": "WM-BLK-01", "barcode": "8901234567890",
+  "scannedQty": 2, "orderedQty": 3, "taskType": "PACK",
+  "scannedAt": "2026-10-14T12:40:10"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `taskId` | number | Fulfillment-task (scan event) id |
+| `orderId` / `orderNumber` / `orderStatus` | number / string / enum | Order the scan belongs to |
+| `itemId` | number | Sales-order line id |
+| `productName` / `variantLabel` / `sku` | string | Item identity (from the order line) |
+| `barcode` | string | Barcode scanned |
+| `scannedQty` | number | **Cumulative** packed quantity of that line after this scan (`2` in `2/3`) — not a per-scan delta |
+| `orderedQty` | number | Ordered quantity of the line |
+| `taskType` | enum | `PACK` (always, on this endpoint) |
+| `scannedAt` | ISO date-time | When the scan happened |
+
 ---
 
 ## 2. Endpoints
@@ -274,6 +298,9 @@ and pricing.
 | 2.8 | GET | `/api/packer-app/profile` | — | `Profile` |
 | 2.9 | PUT | `/api/packer-app/profile` | `Profile` (partial) | `Profile` |
 | 2.10 | POST | `/api/packer-app/change-password` | `{ currentPassword, newPassword }` | `"Password updated"` |
+| 2.11 | GET | `/api/packer-app/orders/history` | — | page of `HistoryEntry` |
+| 2.12 | PUT | `/api/packer-app/profile/status` | — | `Profile` |
+| 2.13 | GET | `/api/packer-app/orders/history/count` | — | `number` |
 
 ### 2.1 Get assigned orders
 
@@ -352,7 +379,9 @@ Response `data`:
 
 (message `Rider assigned successfully`.) Preconditions — 400
 `BUSINESS_ERROR`: order status must be `PACKED`, order assigned to you,
-and every line `packedQty >= orderedQty`.
+every line `packedQty >= orderedQty`, no active rider assignment yet, and
+the rider exists, is available, and belongs to the order's warehouse
+(exact messages in §3).
 
 ### 2.5 Get order items (raw)
 
@@ -386,8 +415,8 @@ GET /api/packer-app/profile
 ```
 
 Returns `Profile` (§1.6), message `Profile fetched successfully`.
-400 `BUSINESS_ERROR` `Staff not found` if no packer staff record matches
-the login mobile.
+400 `BUSINESS_ERROR` `Packer staff not found for this user` if no packer
+staff record matches the login mobile.
 
 ### 2.9 Update profile
 
@@ -423,12 +452,76 @@ Request:
 
 | Field | Rules |
 |---|---|
-| `currentPassword` | Required (`@NotBlank`); must match the stored password. Skipped only when the account is OTP-only. |
-| `newPassword` | Required, 6–100 chars. |
+| `currentPassword` | Required — a blank value → 400 `VALIDATION_ERROR` `Current password is required`. Must match the stored password; the match check is skipped only when the account is OTP-only. |
+| `newPassword` | Required — `New password is required`; 6–100 chars → `New password must be 6-100 characters` (both 400 `VALIDATION_ERROR`). |
 
 Response `data`: `"Password updated"` (message
-`Password updated successfully`). Errors: `Current password is required`,
-`Current password is incorrect` (400 `BUSINESS_ERROR`).
+`Password updated successfully`). Errors: `Current password is incorrect`
+(400 `BUSINESS_ERROR`; also `Login record not found` if the account has no
+active login row).
+
+### 2.11 Get packing history
+
+```
+GET /api/packer-app/orders/history?page=0&size=20[&orderId=501]
+```
+
+Paged list of everything the logged-in packer has scanned, newest first.
+Staff scope comes from the token — no packer id is sent.
+
+| Query param | Default | Notes |
+|---|---|---|
+| `page` | `0` | Zero-based page index (negatives clamped to `0`) |
+| `size` | `20` | Page size, capped at `100` |
+| `orderId` | — | Optional: only scans for one order |
+
+Response `data` is the standard page envelope with `content` (array of
+`HistoryEntry`, §1.8) plus `totalElements`, `totalPages`, `last`, `number`,
+`size`, … Message `Pack history fetched successfully`.
+
+```json
+{
+  "success": true,
+  "message": "Pack history fetched successfully",
+  "data": {
+    "content": [ { "taskId": 9045, "orderNumber": "SO-2026-00412", "...": "..." } ],
+    "totalElements": 41, "totalPages": 3, "last": false, "number": 0, "size": 20
+  }
+}
+```
+
+> Rows with `taskType: null` (scans recorded before the `taskType` column
+> existed and whose order's packer changed afterwards) are excluded.
+
+### 2.12 Toggle status (active / inactive)
+
+```
+PUT /api/packer-app/profile/status
+```
+
+No payload. Toggles the logged-in packer's staff status between `active` and
+`inactive`. This flips **only the staff record** — the account's login stays
+enabled, so `GET /available-packers` still returns this packer; the picker
+app renders them **disabled** as `Off Duty`, and they disappear from that
+list only when an admin disables the login. Returns the full updated
+`Profile` (§1.6), message
+`Status updated to active` / `Status updated to inactive`.
+
+### 2.13 Get packing history order count
+
+```
+GET /api/packer-app/orders/history/count
+```
+
+Distinct number of **orders** the logged-in packer has scan history for (NOT
+the scan-row count). This is the value the dashboard History tab badge shows —
+the history list groups scan rows by order, so `totalElements` from §2.11 can
+be larger than the number of cards rendered. Response `data` is a plain
+integer, message `Pack history order count fetched successfully`.
+
+```json
+{ "success": true, "message": "Pack history order count fetched successfully", "data": 2 }
+```
 
 ---
 
@@ -439,7 +532,6 @@ Response `data`: `"Password updated"` (message
 
 | `data.message` | Meaning |
 |---|---|
-| `Empty barcode. Please scan again.` | Blank/whitespace barcode |
 | `Barcode not found. Please register this barcode first.` | Unknown barcode |
 | `This barcode is not a product barcode.` | Barcode points at a non-variant entity |
 | `Product variant not found for this barcode.` | Dangling barcode reference |
@@ -456,11 +548,20 @@ Response `data`: `"Password updated"` (message
 | 400 | `BUSINESS_ERROR` | `This order is not assigned to you` |
 | 400 | `BUSINESS_ERROR` | `Order must be fully packed before assigning a rider` |
 | 400 | `BUSINESS_ERROR` | `Not all items have been fully packed` |
-| 400 | `BUSINESS_ERROR` | `Current password is required` / `Current password is incorrect` |
-| 400 | `VALIDATION_ERROR` | blank `barcode`, missing `riderId`, short `newPassword` (see `fieldErrors`) |
+| 400 | `BUSINESS_ERROR` | `This order already has an active rider assignment` |
+| 400 | `BUSINESS_ERROR` | `Rider not found with id: {id}` |
+| 400 | `BUSINESS_ERROR` | `Rider is not available (status: {status})` |
+| 400 | `BUSINESS_ERROR` | `Rider does not belong to the order's warehouse` |
+| 400 | `BUSINESS_ERROR` | `Current password is incorrect` |
+| 400 | `BUSINESS_ERROR` | `Login record not found` (change-password; account has no active login row) |
+| 400 | `VALIDATION_ERROR` | `Barcode is required`, `Rider ID is required`, `Current password is required`, `New password is required`, `New password must be 6-100 characters` (see `fieldErrors`) |
 | 404 | `NOT_FOUND` | `Order not found` |
 | 401 | `UNAUTHORIZED` | missing/expired token |
 | 400 | `BUSINESS_ERROR` | `Packer staff not found for this user` (token's mobile has no packer record) |
+
+> A blank/whitespace `barcode` never reaches the scan logic — it is rejected
+> by validation (`Barcode is required`, `VALIDATION_ERROR`) before any
+> soft-failure can occur.
 
 ---
 

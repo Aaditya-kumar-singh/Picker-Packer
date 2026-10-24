@@ -106,9 +106,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="completed-orders"
         options={{
-          title: "Completed",
-          tabBarLabel: "Completed",
-          tabBarIcon: tabIcon("checkmark-done", "checkmark-done-outline"),
+          title: "History",
+          tabBarLabel: "History",
+          tabBarIcon: tabIcon("time", "time-outline"),
           href: isPicker || isPacker ? "/completed-orders" : null,
         }}
       />

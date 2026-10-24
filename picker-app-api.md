@@ -45,7 +45,7 @@ Error:
 ```
 
 Validation errors use `"error": "VALIDATION_ERROR"` with
-`fieldErrors: [{ "field": "newPassword", "message": "size must be between 6 and 100" }]`.
+`fieldErrors: [{ "field": "newPassword", "message": "New password must be 6-100 characters" }]`.
 
 > **Exception — scan soft-failures:** `POST /orders/{id}/scan` returns
 > **HTTP 400 with the success envelope** (`"success": false`, `data` =
@@ -116,7 +116,7 @@ Picker responses include **pick-location fields**.
   "variantLabel": "Size: M, Color: Navy",
   "orderedQty": 2,
   "pickedQty": 1,
-  "packedQty": 0,
+  "packedQty": null,
   "fullyScanned": false,
   "zone": "A",
   "aisle": "03",
@@ -135,7 +135,7 @@ Picker responses include **pick-location fields**.
 | `productName` / `variantLabel` | string | Display |
 | `orderedQty` | number | Qty ordered |
 | `pickedQty` | number | Qty picked so far (+1 per successful scan) |
-| `packedQty` | number | Always `0` in picker responses (packer fills it) |
+| `packedQty` | number \| null | Always `null` in picker responses (the packer fills it) |
 | `fullyScanned` | boolean | `pickedQty >= orderedQty` |
 | `zone`, `aisle`, `rack`, `bin`, `shelf`, `locationCode` | string \| null | Pick location from warehouse inventory; `null` if no inventory row/location |
 
@@ -162,7 +162,7 @@ Picker responses include **pick-location fields**.
 |---|---|---|
 | `success` | boolean | Duplicates the envelope `success` |
 | `message` | string | Success: `Item scanned successfully.` / `All items picked! Order is ready for packing.` |
-| `barcode` | string | Echo of the scanned value (`null` on empty-barcode error) |
+| `barcode` | string | Echo of the scanned value |
 | `scannedItemName` | string | `productName - variantLabel` |
 | `scannedQty` | number | Item's `pickedQty` **after** this scan |
 | `orderedQty` | number | Item's ordered qty |
@@ -213,12 +213,36 @@ returned. App needs only `id`, `name`, `phone`, `rating`, `photoFilePath`.
   "staffId": 12, "name": "Amit Verma", "phone": "9876501234",
   "email": "amit@example.com", "status": "active", "rating": 4.8,
   "idCardType": "AADHAAR", "idCardNumber": "XXXX-5678",
-  "address": "Delhi", "photoFilePath": "staff/amit.jpg",
-  "warehouseId": 3, "warehouseName": "Warehouse 3"
+  "address": "Delhi", "photoFilePath": "staff/amit.jpg"
 }
 ```
 
-The profile response must include the authenticated picker's actual `warehouseId` and `warehouseName`. Return explicit `null` values when unassigned; do not encode warehouse identity in `address` or infer it from the address.
+### 1.7 History entry (`FulfillmentHistoryDto`)
+
+One row per successful pick scan, inside the page envelope of
+`GET /orders/history` (§2.10):
+
+```json
+{
+  "taskId": 9012, "orderId": 501, "orderNumber": "SO-2026-00412",
+  "orderStatus": "PACKED", "itemId": 77, "productName": "Wireless Mouse",
+  "variantLabel": "Black", "sku": "WM-BLK-01", "barcode": "8901234567890",
+  "scannedQty": 2, "orderedQty": 3, "taskType": "PICK",
+  "scannedAt": "2026-10-14T11:05:32"
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `taskId` | number | Fulfillment-task (scan event) id |
+| `orderId` / `orderNumber` / `orderStatus` | number / string / enum | Order the scan belongs to |
+| `itemId` | number | Sales-order line id |
+| `productName` / `variantLabel` / `sku` | string | Item identity (from the order line) |
+| `barcode` | string | Barcode scanned |
+| `scannedQty` | number | **Cumulative** quantity of that line after this scan (`2` in `2/3`) — not a per-scan delta |
+| `orderedQty` | number | Ordered quantity of the line |
+| `taskType` | enum | `PICK` (always, on this endpoint) |
+| `scannedAt` | ISO date-time | When the scan happened |
 
 ---
 
@@ -227,15 +251,17 @@ The profile response must include the authenticated picker's actual `warehouseId
 | # | Method | Path | Payload | Response `data` |
 |---|---|---|---|---|
 | 2.1 | GET | `/api/picker-app/orders/assigned` | — | `Order[]` |
-| 2.2 | GET | `/api/picker-app/orders/completed` | - | `Order[]` |
-| 2.3 | POST | `/api/picker-app/orders/{id}/scan` | `{ "barcode" }` | `ScanResponse` |
-| 2.4 | POST | `/api/picker-app/orders/{id}/assign-packer` | `{ "packerId" }` | `"Packer assigned"` |
-| 2.5 | GET | `/api/picker-app/orders/{id}/items` | — | `OrderItem[]` |
-| 2.6 | GET | `/api/picker-app/stats` | — | `Stats` |
-| 2.7 | GET | `/api/picker-app/available-packers` | — | `PackerStaff[]` |
-| 2.8 | GET | `/api/picker-app/profile` | — | `Profile` |
-| 2.9 | PUT | `/api/picker-app/profile` | `Profile` (partial) | `Profile` |
-| 2.10 | POST | `/api/picker-app/change-password` | `{ currentPassword, newPassword }` | `"Password updated"` |
+| 2.2 | POST | `/api/picker-app/orders/{id}/scan` | `{ "barcode" }` | `ScanResponse` |
+| 2.3 | POST | `/api/picker-app/orders/{id}/assign-packer` | `{ "packerId" }` | `"Packer assigned"` |
+| 2.4 | GET | `/api/picker-app/orders/{id}/items` | — | `OrderItem[]` |
+| 2.5 | GET | `/api/picker-app/stats` | — | `Stats` |
+| 2.6 | GET | `/api/picker-app/available-packers` | — | `PackerStaff[]` |
+| 2.7 | GET | `/api/picker-app/profile` | — | `Profile` |
+| 2.8 | PUT | `/api/picker-app/profile` | `Profile` (partial) | `Profile` |
+| 2.9 | POST | `/api/picker-app/change-password` | `{ currentPassword, newPassword }` | `"Password updated"` |
+| 2.10 | GET | `/api/picker-app/orders/history` | — | page of `HistoryEntry` |
+| 2.11 | PUT | `/api/picker-app/profile/status` | — | `Profile` |
+| 2.12 | GET | `/api/picker-app/orders/history/count` | — | `number` |
 
 ### 2.1 Get assigned orders
 
@@ -253,15 +279,7 @@ No payload. Orders assigned to the logged-in picker with status `PICKING`.
 }
 ```
 
-### 2.2 Get completed picking orders
-
-```http
-GET /api/picker-app/orders/completed
-```
-
-No payload. Returns orders assigned to the authenticated picker that have moved beyond `PICKING` (`PACKING`, `PACKED`, or `RIDER_ASSIGNED`). This list is server-authoritative and remains available after app restarts or login on another device. Only picker-role sessions may call this endpoint.
-
-### 2.3 Scan an item (pick one unit)
+### 2.2 Scan an item (pick one unit)
 
 ```
 POST /api/picker-app/orders/{id}/scan
@@ -342,8 +360,8 @@ GET /api/picker-app/profile
 ```
 
 Returns `Profile` (§1.6), message `Profile fetched successfully`.
-400 `BUSINESS_ERROR` `Staff not found` if no picker staff record matches
-the login mobile.
+400 `BUSINESS_ERROR` `Picker staff not found for this user` if no picker
+staff record matches the login mobile.
 
 ### 2.8 Update profile
 
@@ -376,12 +394,76 @@ Request:
 
 | Field | Rules |
 |---|---|
-| `currentPassword` | Required (`@NotBlank`); must match the stored password. Skipped only when the account is OTP-only. |
-| `newPassword` | Required, 6–100 chars. |
+| `currentPassword` | Required — a blank value → 400 `VALIDATION_ERROR` `Current password is required`. Must match the stored password; the match check is skipped only when the account is OTP-only. |
+| `newPassword` | Required — `New password is required`; 6–100 chars → `New password must be 6-100 characters` (both 400 `VALIDATION_ERROR`). |
 
 Response `data`: `"Password updated"` (message
-`Password updated successfully`). Errors: `Current password is required`,
-`Current password is incorrect` (400 `BUSINESS_ERROR`).
+`Password updated successfully`). Errors: `Current password is incorrect`
+(400 `BUSINESS_ERROR`; also `Login record not found` if the account has no
+active login row).
+
+### 2.10 Get picking history
+
+```
+GET /api/picker-app/orders/history?page=0&size=20[&orderId=501]
+```
+
+Paged list of everything the logged-in picker has scanned, newest first.
+Staff scope comes from the token — no picker id is sent.
+
+| Query param | Default | Notes |
+|---|---|---|
+| `page` | `0` | Zero-based page index (negatives clamped to `0`) |
+| `size` | `20` | Page size, capped at `100` |
+| `orderId` | — | Optional: only scans for one order |
+
+Response `data` is the standard page envelope with `content` (array of
+`HistoryEntry`, §1.7) plus `totalElements`, `totalPages`, `last`, `number`,
+`size`, … Message `Pick history fetched successfully`.
+
+```json
+{
+  "success": true,
+  "message": "Pick history fetched successfully",
+  "data": {
+    "content": [ { "taskId": 9012, "orderNumber": "SO-2026-00412", "...": "..." } ],
+    "totalElements": 57, "totalPages": 3, "last": false, "number": 0, "size": 20
+  }
+}
+```
+
+> Rows with `taskType: null` (scans recorded before the `taskType` column
+> existed and whose order's picker changed afterwards) are excluded.
+
+### 2.11 Toggle status (active / inactive)
+
+```
+PUT /api/picker-app/profile/status
+```
+
+No payload. Toggles the logged-in picker's staff status between `active` and
+`inactive`. This flips **only the staff record** — the account's login stays
+enabled, so API lists are unchanged: the admin's picker lists still return
+this picker but render them **disabled** as `Off Duty`, and they disappear
+from those lists only when an admin disables the login. Returns the full
+updated `Profile` (§1.6), message
+`Status updated to active` / `Status updated to inactive`.
+
+### 2.12 Get picking history order count
+
+```
+GET /api/picker-app/orders/history/count
+```
+
+Distinct number of **orders** the logged-in picker has scan history for (NOT
+the scan-row count). This is the value the dashboard History tab badge shows —
+the history list groups scan rows by order, so `totalElements` from §2.10 can
+be larger than the number of cards rendered. Response `data` is a plain
+integer, message `Pick history order count fetched successfully`.
+
+```json
+{ "success": true, "message": "Pick history order count fetched successfully", "data": 2 }
+```
 
 ---
 
@@ -392,7 +474,6 @@ Response `data`: `"Password updated"` (message
 
 | `data.message` | Meaning |
 |---|---|
-| `Empty barcode. Please scan again.` | Blank/whitespace barcode |
 | `Barcode not found. Please register this barcode first.` | Unknown barcode |
 | `This barcode is not a product barcode.` | Barcode points at a non-variant entity |
 | `Product variant not found for this barcode.` | Dangling barcode reference |
@@ -409,11 +490,16 @@ Response `data`: `"Password updated"` (message
 | 400 | `BUSINESS_ERROR` | `Packer not found with id: {id}` |
 | 400 | `BUSINESS_ERROR` | `Packer does not belong to the order's warehouse` |
 | 400 | `BUSINESS_ERROR` | `Not all items have been picked yet` |
-| 400 | `BUSINESS_ERROR` | `Current password is required` / `Current password is incorrect` |
-| 400 | `VALIDATION_ERROR` | blank `barcode`, short `newPassword` (see `fieldErrors`) |
+| 400 | `BUSINESS_ERROR` | `Current password is incorrect` |
+| 400 | `BUSINESS_ERROR` | `Login record not found` (change-password; account has no active login row) |
+| 400 | `VALIDATION_ERROR` | `Barcode is required`, `Current password is required`, `New password is required`, `New password must be 6-100 characters` (see `fieldErrors`) |
 | 400/404 | `NOT_FOUND` | `Order not found` |
 | 401 | `UNAUTHORIZED` | missing/expired token |
 | 400 | `BUSINESS_ERROR` | `Picker staff not found for this user` (token's mobile has no picker record) |
+
+> A blank/whitespace `barcode` never reaches the scan logic — it is rejected
+> by validation (`Barcode is required`, `VALIDATION_ERROR`) before any
+> soft-failure can occur.
 
 ---
 

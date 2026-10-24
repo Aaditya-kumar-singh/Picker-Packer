@@ -27,7 +27,7 @@ export function nextPendingLine(o: FulfillmentOrderDto): FulfillmentOrderItemDto
 /** Returns the next item pending packing */
 export function nextPendingPackLine(o: FulfillmentOrderDto): FulfillmentOrderItemDto | null {
   if (!o.items || o.items.length === 0) return null;
-  return o.items.find((i) => !i.fullyScanned && i.packedQty < i.orderedQty) ?? null;
+  return o.items.find((i) => !i.fullyScanned && (i.packedQty ?? 0) < i.orderedQty) ?? null;
 }
 
 /** True when all lines have reached pickedQty >= orderedQty */
@@ -40,7 +40,7 @@ export function isOrderFullyPicked(o: FulfillmentOrderDto): boolean {
 export function isOrderFullyPacked(o: FulfillmentOrderDto): boolean {
   if (o.orderStatus === "PACKED") return true;
   if (!o.items || o.items.length === 0) return false;
-  return o.items.every((i) => i.fullyScanned || i.packedQty >= i.orderedQty);
+  return o.items.every((i) => i.fullyScanned || (i.packedQty ?? 0) >= i.orderedQty);
 }
 
 export type PickStep = "sku" | "complete";

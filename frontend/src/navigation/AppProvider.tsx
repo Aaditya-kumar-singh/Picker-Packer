@@ -46,6 +46,7 @@ interface AuthState {
   verifyOtp: (identifier: string, otp: string) => Promise<boolean>;
   refreshProfile: () => Promise<void>;
   updateProfile: (patch: Partial<FulfillmentStaffProfileDto>) => Promise<{ ok: boolean; error?: string }>;
+  toggleStatus: () => Promise<{ ok: boolean; error?: string }>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
@@ -234,6 +235,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [picker]
   );
 
+  const toggleStatus = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!picker) return { ok: false, error: "No active session." };
+    try {
+      const updated = picker.role === "PACKER"
+        ? await packerAppApi.toggleStatus()
+        : await pickerAppApi.toggleStatus();
+      setPicker((previous) => previous ? { ...previous, profile: updated } : null);
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || "Could not update duty status." };
+    }
+  }, [picker]);
+
   const logout = useCallback(async () => {
     await authApi.logout();
     pickerAppApi.clearSession();
@@ -254,6 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyOtp,
       refreshProfile,
       updateProfile,
+      toggleStatus,
       changePassword,
       logout,
     }),
@@ -267,6 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyOtp,
       refreshProfile,
       updateProfile,
+      toggleStatus,
       changePassword,
       logout,
     ]

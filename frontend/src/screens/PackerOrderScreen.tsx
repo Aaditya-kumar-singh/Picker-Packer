@@ -81,8 +81,8 @@ export function PackerOrderScreen() {
   const displayItems = useMemo(() => {
     if (!order?.items) return [];
     return [...order.items].sort((a, b) => {
-      const aDone = a.packedQty >= a.orderedQty ? 1 : 0;
-      const bDone = b.packedQty >= b.orderedQty ? 1 : 0;
+      const aDone = (a.packedQty ?? 0) >= a.orderedQty ? 1 : 0;
+      const bDone = (b.packedQty ?? 0) >= b.orderedQty ? 1 : 0;
       return aDone - bDone;
     });
   }, [order?.items]);
@@ -91,10 +91,10 @@ export function PackerOrderScreen() {
     if (!order?.items) return null;
     if (selectedItemId) {
       const found = order.items.find((i) => i.itemId === selectedItemId);
-      if (found && found.packedQty < found.orderedQty) return found;
+      if (found && (found.packedQty ?? 0) < found.orderedQty) return found;
     }
     return (
-      displayItems.find((i) => i.packedQty < i.orderedQty) ??
+      displayItems.find((i) => (i.packedQty ?? 0) < i.orderedQty) ??
       displayItems[0] ??
       null
     );
@@ -225,15 +225,15 @@ export function PackerOrderScreen() {
     order.orderStatus === "PACKED" ||
     (order.items &&
       order.items.length > 0 &&
-      order.items.every((i) => i.packedQty >= i.orderedQty));
+      order.items.every((i) => (i.packedQty ?? 0) >= i.orderedQty));
 
   const totalLines = order.items?.length || order.totalItems || 0;
   const packedLines =
-    order.items?.filter((i) => i.fullyScanned || i.packedQty >= i.orderedQty).length ||
+    order.items?.filter((i) => i.fullyScanned || (i.packedQty ?? 0) >= i.orderedQty).length ||
     order.totalItemsScanned ||
     0;
   const totalUnits = order.items?.reduce((sum, i) => sum + i.orderedQty, 0) || totalLines;
-  const packedUnits = order.items?.reduce((sum, i) => sum + i.packedQty, 0) || packedLines;
+  const packedUnits = order.items?.reduce((sum, i) => sum + (i.packedQty ?? 0), 0) || packedLines;
   const pct = totalUnits > 0 ? Math.round((packedUnits / totalUnits) * 100) : 0;
 
   return (
@@ -336,7 +336,7 @@ export function PackerOrderScreen() {
                 {activeItem.variantLabel ? <Text style={s.activeItemVar}>{activeItem.variantLabel}</Text> : null}
                 <Text style={s.activeItemSku}>Expected SKU: {activeItem.sku}</Text>
                 <Text style={s.activeItemRemaining}>
-                  Packed: {activeItem.packedQty} of {activeItem.orderedQty} (Picked: {activeItem.pickedQty})
+                  Packed: {activeItem.packedQty ?? 0} of {activeItem.orderedQty} (Picked: {activeItem.pickedQty})
                 </Text>
               </View>
             ) : null}
@@ -384,7 +384,7 @@ export function PackerOrderScreen() {
         <Text style={s.sectionTitle}>Order Lines ({displayItems.length})</Text>
 
         {displayItems.map((item) => {
-          const isDone = item.packedQty >= item.orderedQty;
+          const isDone = (item.packedQty ?? 0) >= item.orderedQty;
           const isSelected = selectedItemId === item.itemId;
 
           return (
@@ -415,7 +415,7 @@ export function PackerOrderScreen() {
 
               <View style={s.lineRight}>
                 <Text style={s.lineQty}>
-                  {item.packedQty} / {item.orderedQty}
+                  {item.packedQty ?? 0} / {item.orderedQty}
                 </Text>
                 <Text style={[s.lineStatusText, isDone && { color: "#16A34A" }]}>
                   {isDone ? "Packed" : "To Pack"}
@@ -461,7 +461,7 @@ export function PackerOrderScreen() {
             </View>
 
             <Text style={s.modalSub}>
-              Select an active delivery partner at Warehouse #{order.warehouseId || 3}:
+              Select an active delivery partner at Warehouse #{order.warehouseId}:
             </Text>
 
             {riders.length === 0 ? (
