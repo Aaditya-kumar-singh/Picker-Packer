@@ -16,8 +16,7 @@
         }
       ],
       "expo-router",
-      "expo-font",
-      "@react-native-community/datetimepicker"
+      "expo-font"
     ],
     "ios": {
       "supportsTablet": true

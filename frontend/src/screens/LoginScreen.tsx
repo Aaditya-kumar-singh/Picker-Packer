@@ -1,5 +1,5 @@
 import { Text, TextInput } from "@/components/Typography";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,7 +26,7 @@ export function LoginScreen() {
   const tiny = availableHeight < 620;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [measuredViewportHeight, setMeasuredViewportHeight] = useState(availableHeight);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const cardTop = useRef(0);
   const cardHeight = useRef(0);
   const viewportHeight = useRef(availableHeight);
