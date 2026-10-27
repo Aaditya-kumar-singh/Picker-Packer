@@ -36,6 +36,11 @@ export function isOrderFullyPicked(o: FulfillmentOrderDto): boolean {
   return o.items.every((i) => i.fullyScanned || i.pickedQty >= i.orderedQty);
 }
 
+/** True after picking has started, including a partially picked line. */
+export function isPickingInProgress(o: FulfillmentOrderDto): boolean {
+  return o.totalItemsScanned > 0 || (o.items ?? []).some((i) => i.pickedQty > 0);
+}
+
 /** True when all lines have reached packedQty >= orderedQty or order is PACKED */
 export function isOrderFullyPacked(o: FulfillmentOrderDto): boolean {
   if (o.orderStatus === "PACKED") return true;

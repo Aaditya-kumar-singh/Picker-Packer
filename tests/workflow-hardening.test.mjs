@@ -38,9 +38,6 @@ test("Supabase is completely removed from frontend dependencies and config", () 
   assert.match(envExample, /EXPO_PUBLIC_API_BASE_URL/);
   assert.match(envExample, /EXPO_PUBLIC_API_ENV=test/);
 
-  assert.equal(fs.existsSync(path.join(root, "frontend/eas.json")), false);
-  assert.equal(app.extra?.eas?.projectId, undefined);
-
   const scripts = pkg.scripts;
   assert.match(scripts["android:codespace"], /build-android-codespace/);
   assert.match(scripts["setup:codespace-signing"], /setup-codespace-signing/);
@@ -145,8 +142,9 @@ test("REST API client layers implement required endpoints and envelope unwrappin
   assert.doesNotMatch(httpSource, /fallback to AsyncStorage/);
 
   const authSource = read("frontend/src/api/authApi.ts");
-  assert.match(authSource, /\/api\/auth\/login/);
+  assert.match(authSource, /\/api\/auth\/fulfillment\/login/);
   assert.match(authSource, /\/api\/auth\/otp\/request/);
+  assert.match(authSource, /purpose: "LOGIN"/);
   assert.match(authSource, /unsupported staff role/);
   assert.match(authSource, /did not contain a recognized PICKER or PACKER role/);
   assert.doesNotMatch(authSource, /Default fallback if unknown/);

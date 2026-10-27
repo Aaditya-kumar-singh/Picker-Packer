@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 import { pickerAppApi } from "@/api/pickerAppApi";
+import { isPickingInProgress } from "@/domain/order";
 import type { FulfillmentOrderDto, PickerStatsDto } from "@/types";
 import {
   formatOrderDate,
@@ -61,13 +62,7 @@ export function DashboardScreen() {
   const assignedList = orders;
   // The stats count also includes PACKING; this card links to the PICKING queue.
   const assignedTotal = assignedList.length;
-  const inProgressCount = assignedList.filter((o) => o.totalItemsScanned > 0).length;
-  const itemsToPickCount = assignedList.reduce(
-    (sum, o) =>
-      sum +
-      (o.items || []).reduce((lineSum, l) => lineSum + Math.max(0, l.orderedQty - l.pickedQty), 0),
-    0
-  );
+  const inProgressCount = assignedList.filter(isPickingInProgress).length;
 
   const heroOrder = assignedList[0] ?? null;
   const heroProgress = heroOrder ? getOrderProgress(heroOrder) : null;
@@ -128,7 +123,7 @@ export function DashboardScreen() {
               </View>
             </Pressable> : null}
 
-            {/* 4 KPI Summary Cards Row */}
+            {/* Picker KPI Summary Cards Row */}
             <View style={[ds.kpiGrid, compact && { gap: 6 }]}>
               <Pressable
                 style={({ pressed }) => [
@@ -138,7 +133,7 @@ export function DashboardScreen() {
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={`Assigned orders, ${assignedTotal}`}
-                onPress={() => router.push("/orders" as never)}
+                onPress={() => router.push("/orders?filter=all" as never)}
               >
                 <View style={[ds.kpiIconCircle, { backgroundColor: "#E0F2FE" }]}>
                   <Ionicons name="clipboard-outline" size={17} color="#0284C7" />
@@ -179,11 +174,7 @@ export function DashboardScreen() {
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={`In Progress orders, ${inProgressCount}`}
-                onPress={() =>
-                  router.push(
-                    (heroOrder ? `/order/${heroOrder.orderId}` : "/orders") as never
-                  )
-                }
+                onPress={() => router.push("/orders?filter=in-progress" as never)}
               >
                 <View style={[ds.kpiIconCircle, { backgroundColor: "#FFEDD5" }]}>
                   <Ionicons name="cube" size={17} color="#EA580C" />
@@ -256,47 +247,6 @@ export function DashboardScreen() {
                   <Ionicons name="chevron-forward" size={12} color="#64748B" />
                 </View>
               </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  ds.kpiCard,
-                  compact && ds.kpiCardCompact,
-                  pressed && ds.metricPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Items to pick, ${itemsToPickCount}`}
-                onPress={() => router.push("/orders" as never)}
-              >
-                <View style={[ds.kpiIconCircle, { backgroundColor: "#F3E8FF" }]}>
-                  <Ionicons name="list" size={17} color="#9333EA" />
-                </View>
-                <Text
-                  style={[ds.kpiValue, compact && { fontSize: 19 }]}
-                  maxFontSizeMultiplier={1.1}
-                >
-                  {itemsToPickCount}
-                </Text>
-                <View style={ds.kpiLabelRow}>
-                  <View style={ds.kpiTextCol}>
-                    <Text
-                      style={ds.kpiLabel}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      Items to Pick
-                    </Text>
-                    <Text
-                      style={ds.kpiSubLabel}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      Units
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={12} color="#64748B" />
-                </View>
-              </Pressable>
             </View>
 
             {/* Active Order Hero Card */}
@@ -311,7 +261,7 @@ export function DashboardScreen() {
                   <View style={ds.inProgressPill}>
                     <Ionicons name="time" size={13} color="#C2410C" />
                     <Text style={ds.inProgressPillText} maxFontSizeMultiplier={1.1}>
-                      {heroOrder.totalItemsScanned > 0 ? "IN PROGRESS" : "ASSIGNED"}
+                      {isPickingInProgress(heroOrder) ? "IN PROGRESS" : "ASSIGNED"}
                     </Text>
                   </View>
                 </View>
@@ -330,7 +280,7 @@ export function DashboardScreen() {
                       numberOfLines={1}
                       maxFontSizeMultiplier={1.15}
                     >
-                      {heroProgress.totalLines} item line(s) • ₹{heroOrder.grandTotal.toFixed(2)} ({heroOrder.paymentMethod})
+                      {heroProgress.totalLines} item line(s), ₹{heroOrder.grandTotal.toFixed(2)} ({heroOrder.paymentMethod})
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#334155" />
@@ -344,7 +294,7 @@ export function DashboardScreen() {
                         {
                           width: `${Math.max(
                             heroProgress.pct,
-                            heroOrder.totalItemsScanned > 0 ? 8 : 0
+                            isPickingInProgress(heroOrder) ? 8 : 0
                           )}%`,
                         },
                       ]}
@@ -414,7 +364,7 @@ export function DashboardScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="View all assigned orders"
-                onPress={() => router.push("/orders" as never)}
+                onPress={() => router.push("/orders?filter=all" as never)}
                 style={({ pressed }) => [ds.viewAllBtn, pressed && { opacity: 0.75 }]}
               >
                 <Text style={ds.viewAllText} maxFontSizeMultiplier={1.1}>
@@ -482,11 +432,11 @@ export function DashboardScreen() {
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.15}
                       >
-                        {prog.totalLines} lines • ₹{order.grandTotal.toFixed(2)}
+                        {prog.totalLines} lines, ₹{order.grandTotal.toFixed(2)}
                       </Text>
                       {order.items && order.items.length > 0 ? (
                         <Text style={ds.orderProductPreview} numberOfLines={2} maxFontSizeMultiplier={1.1}>
-                          {order.items.slice(0, 2).map((item) => item.productName).join(" • ")}
+                          {order.items.slice(0, 2).map((item) => item.productName).join(", ")}
                           {order.items.length > 2 ? ` +${order.items.length - 2} more` : ""}
                         </Text>
                       ) : null}

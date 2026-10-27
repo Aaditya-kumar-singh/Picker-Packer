@@ -3,7 +3,7 @@ import { Text, TextInput } from "@/components/Typography";
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   EmptyState,
   ErrorState,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 import { pickerAppApi } from "@/api/pickerAppApi";
+import { isPickingInProgress } from "@/domain/order";
 import type { FulfillmentOrderDto } from "@/types";
 import {
   formatOrderDate,
@@ -24,6 +25,8 @@ type SortMode = "order" | "date" | "items";
 
 export function OrdersScreen() {
   const { picker } = useAuth();
+  const { filter } = useLocalSearchParams<{ filter?: string }>();
+  const inProgressOnly = filter === "in-progress";
   const { width } = useWindowDimensions();
   const compact = width < 360;
   const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
@@ -47,15 +50,17 @@ export function OrdersScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setSearch("");
       void load();
     }, [load])
   );
 
 
   const visibleOrders = useMemo(() => {
+    const filtered = inProgressOnly ? orders.filter(isPickingInProgress) : orders;
     const q = search.trim().toLowerCase();
     const searched = q
-      ? orders.filter((o) =>
+      ? filtered.filter((o) =>
           [
             o.orderNumber,
             String(o.orderId),
@@ -72,7 +77,7 @@ export function OrdersScreen() {
             .toLowerCase()
             .includes(q)
         )
-      : orders;
+      : filtered;
 
     return [...searched].sort((a, b) => {
       if (sortMode === "date") {
@@ -83,7 +88,7 @@ export function OrdersScreen() {
       }
       return a.orderNumber.localeCompare(b.orderNumber);
     });
-  }, [orders, search, sortMode]);
+  }, [orders, inProgressOnly, search, sortMode]);
 
   function cycleSort() {
     setSortMode((prev) =>
@@ -117,8 +122,13 @@ export function OrdersScreen() {
         {/* Title Row + Count Badge + Sort Button */}
         <View style={os.topHeaderRow}>
           <View style={os.titleLeft}>
-            <Text style={[os.pageTitle, compact && { fontSize: 19 }]} maxFontSizeMultiplier={1.15}>
-              Assigned Orders
+            <Text
+              style={[os.pageTitle, compact && { fontSize: 19 }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              maxFontSizeMultiplier={1.15}
+            >
+              {inProgressOnly ? "In Progress Orders" : "Assigned Orders"}
             </Text>
             <View style={os.countPill}>
               <Text style={os.countPillText} maxFontSizeMultiplier={1.1}>
@@ -166,6 +176,18 @@ export function OrdersScreen() {
           ) : null}
         </View>
 
+        {inProgressOnly ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Show all assigned orders"
+            onPress={() => router.setParams({ filter: "all" })}
+            style={os.activeFilter}
+          >
+            <Text style={os.activeFilterText}>In Progress</Text>
+            <Ionicons name="close-circle" size={17} color="#0D6EFD" />
+          </Pressable>
+        ) : null}
+
         {loading && orders.length === 0 ? (
           <LoadingState label="Loading orders…" />
         ) : error && orders.length === 0 ? (
@@ -175,15 +197,25 @@ export function OrdersScreen() {
             title={
               search
                 ? "No matching orders"
-                : "No Assigned Orders"
+                : inProgressOnly
+                  ? "No In Progress Orders"
+                  : "No Assigned Orders"
             }
             body={
               search
                 ? `No orders matched "${search}". Clear search to see all.`
-                : "Your picking queue is clear. New orders assigned by the administrator will appear here."
+                : inProgressOnly
+                  ? "Orders will appear here after picking starts."
+                  : "Your picking queue is clear. New orders assigned by the administrator will appear here."
             }
-            actionLabel={search ? "Clear Search" : "Refresh"}
-            onAction={search ? () => setSearch("") : () => void load()}
+            actionLabel={search ? "Clear Search" : inProgressOnly ? "Show All Orders" : "Refresh"}
+            onAction={
+              search
+                ? () => setSearch("")
+                : inProgressOnly
+                  ? () => router.setParams({ filter: "all" })
+                  : () => void load()
+            }
           />
         ) : (
           visibleOrders.map((order, idx) => {
@@ -219,7 +251,7 @@ export function OrdersScreen() {
                       </View>
                     </View>
                     <Text style={os.orderMetaText}>
-                      {prog.totalLines} lines • ₹{order.grandTotal.toFixed(2)} • {formatOrderDate(order.orderDate)}
+                      {prog.totalLines} lines, ₹{order.grandTotal.toFixed(2)}, {formatOrderDate(order.orderDate)}
                     </Text>
                   </View>
 
@@ -315,11 +347,14 @@ const os = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
   pageTitle: { fontFamily: "OpenSans",
     fontSize: 20,
     fontWeight: "900",
     color: "#0F172A",
+    flexShrink: 1,
   },
   countPill: {
     backgroundColor: "#E0F2FE",
@@ -342,6 +377,7 @@ const os = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    marginLeft: 8,
   },
   sortBtnText: {
     fontSize: 12,
@@ -363,6 +399,22 @@ const os = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: "#0F172A",
+  },
+  activeFilter: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#EAF3FF",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  activeFilterText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0D6EFD",
   },
   card: {
     backgroundColor: "#FFFFFF",

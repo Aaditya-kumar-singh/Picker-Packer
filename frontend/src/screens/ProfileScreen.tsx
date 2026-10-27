@@ -271,7 +271,7 @@ export function ProfileScreen() {
           resizeMode="contain"
           accessibilityLabel="YourBuildMart"
         />
-        <Text style={s.footerAppVersion}>YourBuildMart Warehouse Operations • v1.0.2</Text>
+        <Text style={s.footerAppVersion}>YourBuildMart Warehouse Operations, v1.0.2</Text>
       </View>
 
       {/* Edit Profile Modal */}

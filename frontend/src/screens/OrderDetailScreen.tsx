@@ -295,7 +295,7 @@ export function OrderDetailScreen() {
                 {order.orderNumber}
               </Text>
               <Text style={od.summaryWhName} numberOfLines={1}>
-                {wh.name} • {order.paymentMethod}
+                {wh.name}, {order.paymentMethod}
               </Text>
               <Text style={od.summaryWhAddr} numberOfLines={1}>
                 Total: ₹{order.grandTotal.toFixed(2)}
@@ -487,7 +487,7 @@ export function OrderDetailScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={od.modalTitle}>{activeScanLine.productName}</Text>
                   <Text style={od.modalSub}>
-                    Location: {formatItemLocation(activeScanLine)} • Picked: {activeScanLine.pickedQty}/{activeScanLine.orderedQty}
+                    Location: {formatItemLocation(activeScanLine)}, Picked: {activeScanLine.pickedQty}/{activeScanLine.orderedQty}
                   </Text>
                 </View>
                 <Pressable onPress={() => setScanSheetVisible(false)} hitSlop={10} style={od.closeCircle}>
