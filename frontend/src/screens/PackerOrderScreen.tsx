@@ -1,6 +1,6 @@
 import { Text, TextInput } from "@/components/Typography";
 // Packer Order Processing per packer-app-api.md
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -17,6 +17,7 @@ import { beepSuccess } from "@/services/scanner";
 import { BarcodeErrorModal, useBarcodeAlert } from "@/components/modals/BarcodeErrorModal";
 import BarcodeScannerModal from "@/scanner/BarcodeScannerModal";
 import { packerAppApi } from "@/api/packerAppApi";
+import { PackageLabelModal } from "@/components/PackageLabelModal";
 import type {
   FulfillmentOrderDto,
   FulfillmentOrderItemDto,
@@ -41,6 +42,9 @@ export function PackerOrderScreen() {
   const [barcode, setBarcode] = useState("");
   const [busy, setBusy] = useState(false);
   const [riderModal, setRiderModal] = useState(false);
+  const [packageLabelModal, setPackageLabelModal] = useState(false);
+  const [attachedPackageId, setAttachedPackageId] = useState<string | null>(null);
+  const [packageLabelBackendError, setPackageLabelBackendError] = useState<string | null>(null);
   const [orderInfoModal, setOrderInfoModal] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [assigning, setAssigning] = useState(false);
@@ -102,6 +106,12 @@ export function PackerOrderScreen() {
 
   const cameraQueueRef = useRef<Promise<void>>(Promise.resolve());
 
+  useEffect(() => {
+    setAttachedPackageId(null);
+    setPackageLabelBackendError(null);
+    setPackageLabelModal(false);
+  }, [numOrderId]);
+
   async function scan(value?: string): Promise<boolean> {
     if (busy || !order) return false;
     const code = (value ?? barcode).trim();
@@ -142,7 +152,8 @@ export function PackerOrderScreen() {
         if (res.orderFullyPacked || res.orderStatus === "PACKED") {
           setSuccess("All items packed! Order is ready for rider assignment.");
           setScannerVisible(false);
-          setRiderModal(true);
+          setPackageLabelBackendError(null);
+          setPackageLabelModal(true);
           return true;
         }
 
@@ -198,7 +209,13 @@ export function PackerOrderScreen() {
         router.replace("/orders" as never);
       }, 1500);
     } catch (e: any) {
-      setError(e?.message || "Rider assignment failed.");
+      const message = e?.message || "Rider assignment failed.";
+      if (/qr|package/i.test(message)) {
+        setPackageLabelBackendError(message);
+        setRiderModal(false);
+        setPackageLabelModal(true);
+      }
+      setError(message);
     } finally {
       setAssigning(false);
     }
@@ -259,7 +276,7 @@ export function PackerOrderScreen() {
 
       <ScrollView
         style={s.scroll}
-        contentContainerStyle={[s.scrollContent, { paddingBottom: 110 + Math.max(insets.bottom, 12) }]}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: (allPacked ? 160 : 110) + Math.max(insets.bottom, 12) }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -279,7 +296,7 @@ export function PackerOrderScreen() {
 
           <Text style={s.orderNumberText}>{order.orderNumber}</Text>
           <Text style={s.orderSubText}>
-            Total: ₹{order.grandTotal.toFixed(2)} ({order.paymentMethod}) • {formatOrderDate(order.orderDate)}
+            Total: ₹{order.grandTotal.toFixed(2)} ({order.paymentMethod}), {formatOrderDate(order.orderDate)}
           </Text>
 
           <View style={s.progressRow}>
@@ -429,14 +446,29 @@ export function PackerOrderScreen() {
       {/* Floating Bottom Bar: ASSIGN RIDER */}
       <View style={[s.floatingBottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         {allPacked ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setRiderModal(true)}
-            style={s.assignRiderBtn}
-          >
-            <Ionicons name="bicycle" size={20} color="#FFFFFF" />
-            <Text style={s.assignRiderBtnText}>Assign Delivery Rider</Text>
-          </Pressable>
+          <View style={s.packedActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setPackageLabelBackendError(null);
+                setPackageLabelModal(true);
+              }}
+              style={s.printPackageBtn}
+            >
+              <Ionicons name="barcode-outline" size={19} color="#FFFFFF" />
+              <Text style={s.assignRiderBtnText}>{attachedPackageId ? "Reprint Package Barcode" : "Print Package Barcode"}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !attachedPackageId }}
+              disabled={!attachedPackageId}
+              onPress={() => setRiderModal(true)}
+              style={[s.assignRiderBtn, !attachedPackageId && { opacity: 0.55 }]}
+            >
+              <Ionicons name="bicycle" size={20} color="#FFFFFF" />
+              <Text style={s.assignRiderBtnText}>Assign Delivery Rider</Text>
+            </Pressable>
+          </View>
         ) : (
           <Pressable
             accessibilityRole="button"
@@ -448,6 +480,19 @@ export function PackerOrderScreen() {
           </Pressable>
         )}
       </View>
+
+      <PackageLabelModal
+        visible={packageLabelModal}
+        orderNumber={order.orderNumber}
+        backendMessage={packageLabelBackendError}
+        onClose={() => setPackageLabelModal(false)}
+        onLabelAttached={(packageId) => {
+          setAttachedPackageId(packageId);
+          setPackageLabelBackendError(null);
+          setPackageLabelModal(false);
+          setRiderModal(true);
+        }}
+      />
 
       {/* Assign Rider Modal */}
       <Modal visible={riderModal} transparent animationType="slide" onRequestClose={() => setRiderModal(false)}>
@@ -481,7 +526,7 @@ export function PackerOrderScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={s.riderName}>{r.name}</Text>
                       <Text style={s.riderPhone}>
-                        {r.phone} • {r.vehicleType || "BIKE"}
+                        {r.phone}, {r.vehicleType || "BIKE"}
                       </Text>
                     </View>
                     {r.rating ? (
@@ -524,7 +569,7 @@ export function PackerOrderScreen() {
                     <View key={ri.id} style={s.rawItemRow}>
                       <Text style={s.rawItemTitle}>{ri.productName} ({ri.sku})</Text>
                       <Text style={s.rawItemDetail}>
-                        Ordered: {ri.orderedQty} • Unit: ₹{ri.unitPrice} • Tax: {ri.taxPercentage}% (₹{ri.taxAmount}) • Total: ₹{ri.lineTotal}
+                        Ordered: {ri.orderedQty}, Unit: ₹{ri.unitPrice}, Tax: {ri.taxPercentage}% (₹{ri.taxAmount}), Total: ₹{ri.lineTotal}
                       </Text>
                     </View>
                   ))}
@@ -866,6 +911,18 @@ const s = StyleSheet.create({
   assignRiderBtn: {
     height: 48,
     backgroundColor: "#16A34A",
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  packedActions: {
+    gap: 8,
+  },
+  printPackageBtn: {
+    height: 44,
+    backgroundColor: "#D95D00",
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",

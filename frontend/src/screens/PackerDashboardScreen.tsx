@@ -3,7 +3,7 @@ import { Text, TextInput } from "@/components/Typography";
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   EmptyState,
   ErrorBanner,
@@ -12,11 +12,10 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 import { packerAppApi } from "@/api/packerAppApi";
-import type { FulfillmentOrderDto, PackerStatsDto } from "@/types";
+import type { FulfillmentOrderDto } from "@/types";
 import {
   CUBE_PALETTES,
   formatOrderDate,
-  getOrderProgress,
   getWarehouseDisplay,
 } from "@/utils/warehouse";
 
@@ -43,11 +42,12 @@ export function PackerDashboardScreen({
   mode?: "home" | "orders";
 }) {
   const { picker } = useAuth();
+  const { filter } = useLocalSearchParams<{ filter?: string }>();
+  const packedOnly = mode === "orders" && filter === "packed";
   const { width } = useWindowDimensions();
   const compact = width < 360;
 
   const [orders, setOrders] = useState<FulfillmentOrderDto[]>([]);
-  const [stats, setStats] = useState<PackerStatsDto | null>(null);
   const [historyCount, setHistoryCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,13 +57,11 @@ export function PackerDashboardScreen({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [fetchedStats, fetchedOrders, fetchedHistoryCount] = await Promise.all([
-        packerAppApi.getStats(),
+      const [fetchedOrders, fetchedHistoryCount] = await Promise.all([
         packerAppApi.getAssignedOrders(),
         packerAppApi.getHistoryOrderCount().catch(() => null),
       ]);
       setOrders(fetchedOrders || []);
-      setStats(fetchedStats);
       setHistoryCount(fetchedHistoryCount);
       setError(null);
     } catch (e: any) {
@@ -75,6 +73,7 @@ export function PackerDashboardScreen({
 
   useFocusEffect(
     useCallback(() => {
+      setSearch("");
       void load();
     }, [load])
   );
@@ -82,11 +81,15 @@ export function PackerDashboardScreen({
   const warehouseId = orders[0]?.warehouseId ?? picker?.warehouseId;
   const warehouseName = orders[0]?.warehouseName ?? picker?.warehouseName;
   const wh = getWarehouseDisplay(warehouseId, warehouseName);
+  const packedOrders = orders.filter((o) => o.orderStatus === "PACKED");
 
   const filteredOrders = useMemo(() => {
+    const statusFiltered = packedOnly
+      ? orders.filter((o) => o.orderStatus === "PACKED")
+      : orders;
     const q = search.trim().toLowerCase();
     const base = q
-      ? orders.filter((o) =>
+      ? statusFiltered.filter((o) =>
           [
             o.orderNumber,
             String(o.orderId),
@@ -101,7 +104,7 @@ export function PackerDashboardScreen({
             .toLowerCase()
             .includes(q)
         )
-      : orders;
+      : statusFiltered;
 
     return [...base].sort((a, b) => {
       if (sortMode === "date") {
@@ -112,7 +115,7 @@ export function PackerDashboardScreen({
       }
       return b.orderNumber.localeCompare(a.orderNumber);
     });
-  }, [orders, search, sortMode]);
+  }, [orders, packedOnly, search, sortMode]);
 
   function cycleSort() {
     setSortMode((prev) =>
@@ -149,9 +152,11 @@ export function PackerDashboardScreen({
             <View style={s.ordersTitleLeft}>
               <Text
                 style={[s.ordersPageTitle, compact && { fontSize: 18 }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
                 maxFontSizeMultiplier={1.15}
               >
-                Assigned Packing Orders
+                {packedOnly ? "Packed Orders" : "Assigned Packing Orders"}
               </Text>
               <View style={s.countPill}>
                 <Text style={s.countPillText} maxFontSizeMultiplier={1.1}>
@@ -199,20 +204,40 @@ export function PackerDashboardScreen({
             ) : null}
           </View>
 
+          {packedOnly ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Show all assigned packing orders"
+              onPress={() => router.setParams({ filter: "all" })}
+              style={s.activeFilter}
+            >
+              <Text style={s.activeFilterText}>Packed</Text>
+              <Ionicons name="close-circle" size={17} color="#D95D00" />
+            </Pressable>
+          ) : null}
+
           <ErrorBanner message={error} />
 
           {loading && orders.length === 0 ? (
             <LoadingState label="Loading packing orders…" />
           ) : filteredOrders.length === 0 ? (
             <EmptyState
-              title={search ? "No Matching Orders" : "No Packing Orders"}
+              title={search ? "No Matching Orders" : packedOnly ? "No Packed Orders" : "No Packing Orders"}
               body={
                 search
                   ? "Try a different search term."
-                  : "Orders ready for packing will appear here when picked."
+                  : packedOnly
+                    ? "Packed orders waiting for rider assignment will appear here."
+                    : "Orders ready for packing will appear here when picked."
               }
-              actionLabel="Refresh Queue"
-              onAction={() => void load()}
+              actionLabel={search ? "Clear Search" : packedOnly ? "Show All Orders" : "Refresh Queue"}
+              onAction={
+                search
+                  ? () => setSearch("")
+                  : packedOnly
+                    ? () => router.setParams({ filter: "all" })
+                    : () => void load()
+              }
             />
           ) : (
             filteredOrders.map((o, idx) => {
@@ -255,11 +280,11 @@ export function PackerDashboardScreen({
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.15}
                       >
-                        ₹{o.grandTotal.toFixed(2)} • {o.paymentMethod}
+                        ₹{o.grandTotal.toFixed(2)}, {o.paymentMethod}
                       </Text>
                       {(o.items?.length ?? 0) > 0 ? (
                         <Text style={s.productPreview} numberOfLines={2} maxFontSizeMultiplier={1.1}>
-                          {o.items!.slice(0, 2).map((item) => item.productName).join(" • ")}
+                          {o.items!.slice(0, 2).map((item) => item.productName).join(", ")}
                           {o.items!.length > 2 ? ` +${o.items!.length - 2} more` : ""}
                         </Text>
                       ) : null}
@@ -318,7 +343,7 @@ export function PackerDashboardScreen({
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.15}
                       >
-                        {getWarehouseDisplay(o.warehouseId, o.warehouseName).shortAddress} • {formatOrderDate(o.orderDate)}
+                        {getWarehouseDisplay(o.warehouseId, o.warehouseName).shortAddress}, {formatOrderDate(o.orderDate)}
                       </Text>
                     </View>
 
@@ -393,28 +418,28 @@ export function PackerDashboardScreen({
           <Ionicons name="chevron-forward" size={16} color="#64748B" />
         </Pressable> : null}
 
-        {/* 4 Metric KPI Cards */}
+        {/* Packer Metric KPI Cards */}
         <View style={s.metricsGrid}>
           <Pressable
             style={({ pressed }) => [s.metricCard, pressed && s.cardPressed]}
-            onPress={() => router.push("/orders" as never)}
+            onPress={() => router.push("/orders?filter=all" as never)}
           >
             <View style={[s.metricIconCircle, { backgroundColor: "#FFF2E6" }]}>
               <Ionicons name="cube" size={16} color="#D95D00" />
             </View>
-            <Text style={s.metricVal}>{stats?.assignedOrders ?? orders.length}</Text>
+            <Text style={s.metricVal}>{orders.length}</Text>
             <Text style={s.metricLabel}>Assigned</Text>
             <Text style={s.metricSub}>Orders</Text>
           </Pressable>
 
           <Pressable
             style={({ pressed }) => [s.metricCard, pressed && s.cardPressed]}
-            onPress={() => router.push("/orders" as never)}
+            onPress={() => router.push("/orders?filter=packed" as never)}
           >
             <View style={[s.metricIconCircle, { backgroundColor: "#DCFCE7" }]}>
               <Ionicons name="checkmark-done" size={16} color="#16A34A" />
             </View>
-            <Text style={s.metricVal}>{stats?.completedOrders ?? 0}</Text>
+            <Text style={s.metricVal}>{packedOrders.length}</Text>
             <Text style={s.metricLabel}>Packed</Text>
             <Text style={s.metricSub}>Ready for Rider</Text>
           </Pressable>
@@ -429,18 +454,6 @@ export function PackerDashboardScreen({
             <Text style={s.metricVal}>{historyCount ?? "–"}</Text>
             <Text style={s.metricLabel}>History</Text>
             <Text style={s.metricSub}>Orders</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [s.metricCard, pressed && s.cardPressed]}
-            onPress={() => router.push("/orders" as never)}
-          >
-            <View style={[s.metricIconCircle, { backgroundColor: "#F3E8FF" }]}>
-              <Ionicons name="barcode" size={16} color="#9333EA" />
-            </View>
-            <Text style={s.metricVal}>{stats?.todayItemsScanned ?? 0}</Text>
-            <Text style={s.metricLabel}>Items Scanned</Text>
-            <Text style={s.metricSub}>Today</Text>
           </Pressable>
         </View>
 
@@ -460,7 +473,7 @@ export function PackerDashboardScreen({
 
             <Text style={s.heroOrderId}>{heroOrder.orderNumber}</Text>
             <Text style={s.heroMeta}>
-              {heroStats.itemCount} items • ₹{heroOrder.grandTotal.toFixed(2)} ({heroOrder.paymentMethod})
+              {heroStats.itemCount} items, ₹{heroOrder.grandTotal.toFixed(2)} ({heroOrder.paymentMethod})
             </Text>
 
             <View style={s.heroProgressTrack}>
@@ -486,7 +499,7 @@ export function PackerDashboardScreen({
         {/* Packing Queue Section */}
         <View style={s.sectionHeader}>
           <Text style={s.sectionTitle}>Packing Queue ({orders.length})</Text>
-          <Pressable onPress={() => router.push("/orders" as never)}>
+          <Pressable onPress={() => router.push("/orders?filter=all" as never)}>
             <Text style={s.viewAllLink}>View All</Text>
           </Pressable>
         </View>
@@ -526,7 +539,7 @@ export function PackerDashboardScreen({
                 <View style={s.queueInfo}>
                   <Text style={s.queueTitle}>{o.orderNumber}</Text>
                   <Text style={s.queueSub}>
-                    {u.itemCount} items • ₹{o.grandTotal.toFixed(2)}
+                    {u.itemCount} items, ₹{o.grandTotal.toFixed(2)}
                   </Text>
                   <Text style={s.queueDate}>{formatOrderDate(o.orderDate)}</Text>
                 </View>
@@ -803,11 +816,14 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
   ordersPageTitle: { fontFamily: "OpenSans",
     fontSize: 19,
     fontWeight: "900",
     color: "#0F172A",
+    flexShrink: 1,
   },
   countPill: {
     backgroundColor: "#FFF2E6",
@@ -830,6 +846,7 @@ const s = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    marginLeft: 8,
   },
   sortBtnText: {
     fontSize: 12,
@@ -851,6 +868,22 @@ const s = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: "#0F172A",
+  },
+  activeFilter: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFF2E6",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  activeFilterText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#D95D00",
   },
   assignedCard: {
     backgroundColor: "#FFFFFF",
