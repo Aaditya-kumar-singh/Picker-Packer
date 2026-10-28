@@ -483,6 +483,7 @@ export function PackerOrderScreen() {
 
       <PackageLabelModal
         visible={packageLabelModal}
+        orderId={order.orderId}
         orderNumber={order.orderNumber}
         backendMessage={packageLabelBackendError}
         onClose={() => setPackageLabelModal(false)}

@@ -10,6 +10,8 @@ import { useAuth } from "@/navigation/AppProvider";
 import type { FulfillmentHistoryDto, HistoryPageDto } from "@/types";
 
 const PAGE_SIZE = 20;
+const PACKER_HISTORY_FETCH_SIZE = 100;
+const HISTORY_PAGE_BATCH_SIZE = 4;
 
 function newestFirst(scans: FulfillmentHistoryDto[]) {
   return [...scans].sort((left, right) => new Date(right.scannedAt).getTime() - new Date(left.scannedAt).getTime());
@@ -31,7 +33,8 @@ function variantDetails(label: string | null) {
 
 export function HistoryScreen() {
   const { picker } = useAuth();
-  const isPacker = picker?.role === "PACKER";
+  const isPacker = picker?.role === "PACKER";  
+  const [packerHistorySection, setPackerHistorySection] = useState<"ALL" | "PACKED" | "RIDER_ASSIGNED">("ALL");
   const [entries, setEntries] = useState<FulfillmentHistoryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,18 +43,37 @@ export function HistoryScreen() {
   const [totalPages, setTotalPages] = useState(0);
   const [pageLoading, setPageLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [historyOrderCount, setHistoryOrderCount] = useState<number | null>(null);
 
   const fetchPage = useCallback(async (pageNumber: number): Promise<HistoryPageDto> =>
     isPacker ? packerAppApi.getHistory(pageNumber, PAGE_SIZE) : pickerAppApi.getHistory(pageNumber, PAGE_SIZE), [isPacker]);
+
+  const fetchAllPackerHistory = useCallback(async (): Promise<HistoryPageDto> => {
+    const firstPage = await packerAppApi.getHistory(0, PACKER_HISTORY_FETCH_SIZE);
+    const content = [...firstPage.content];
+    for (let start = 1; start < firstPage.totalPages; start += HISTORY_PAGE_BATCH_SIZE) {
+      const pageNumbers = Array.from(
+        { length: Math.min(HISTORY_PAGE_BATCH_SIZE, firstPage.totalPages - start) },
+        (_, index) => start + index,
+      );
+      const pages = await Promise.all(pageNumbers.map((pageNumber) => packerAppApi.getHistory(pageNumber, PACKER_HISTORY_FETCH_SIZE)));
+      for (const page of pages) content.push(...page.content);
+    }
+    return { ...firstPage, content, totalPages: 1, number: 0, last: true };
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchPage(0);
+      const [result, orderCount] = await Promise.all([
+        isPacker ? fetchAllPackerHistory() : fetchPage(0),
+        (isPacker ? packerAppApi.getHistoryOrderCount() : pickerAppApi.getHistoryOrderCount()).catch(() => null),
+      ]);
       setEntries(newestFirst(result.content));
       setPage(0);
       setTotalPages(result.totalPages);
+      setHistoryOrderCount(orderCount);
       setExpandedId(null);
     } catch (e: any) {
       setEntries([]);
@@ -59,16 +81,24 @@ export function HistoryScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fetchPage, isPacker]);
+  }, [fetchAllPackerHistory, fetchPage, isPacker]);
 
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
 
-  const filteredEntries = useMemo(() => newestFirst(entries.filter((entry) => {
+  const sectionEntries = useMemo(() => {
+    if (!isPacker || packerHistorySection === "ALL") return entries;
+    if (packerHistorySection === "RIDER_ASSIGNED") {
+      return entries.filter((entry) => entry.orderStatus === "RIDER_ASSIGNED");
+    }
+    return entries.filter((entry) => entry.orderStatus !== "RIDER_ASSIGNED");
+  }, [entries, isPacker, packerHistorySection]);
+
+  const filteredEntries = useMemo(() => newestFirst(sectionEntries.filter((entry) => {
     const query = search.trim().toLowerCase();
     const matchesSearch = !query || [entry.orderNumber, entry.productName, entry.sku, entry.barcode]
       .some((value) => value?.toLowerCase().includes(query));
     return matchesSearch;
-  })), [entries, search]);
+  })), [sectionEntries, search]);
 
   const groups = useMemo(() => {
     const byOrder = new Map<number, FulfillmentHistoryDto[]>();
@@ -79,6 +109,22 @@ export function HistoryScreen() {
     }
     return Array.from(byOrder.entries());
   }, [filteredEntries]);
+
+  const packedOrderCount = useMemo(() => new Set(
+    entries.filter((entry) => entry.orderStatus !== "RIDER_ASSIGNED").map((entry) => entry.orderId),
+  ).size, [entries]);
+  const riderOrderCount = useMemo(() => new Set(
+    entries.filter((entry) => entry.orderStatus === "RIDER_ASSIGNED").map((entry) => entry.orderId),
+  ).size, [entries]);
+  const totalPackerHistoryCount = useMemo(() => new Set(entries.map((entry) => entry.orderId)).size, [entries]);
+  const displayedOrderCount = search.trim()
+    ? groups.length
+    : isPacker ? totalPackerHistoryCount : historyOrderCount ?? groups.length;
+
+  function selectPackerHistorySection(section: "ALL" | "PACKED" | "RIDER_ASSIGNED") {
+    setPackerHistorySection(section);
+    setExpandedId(null);
+  }
 
   async function goToPage(nextPage: number) {
     if (pageLoading || loading || nextPage < 0 || nextPage >= totalPages || nextPage === page) return;
@@ -102,10 +148,41 @@ export function HistoryScreen() {
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={loading && entries.length > 0} onRefresh={() => void refresh()} />}>
         <View style={s.heading}>
           <Text style={s.title}>History</Text>
-          <Text style={s.count}>{groups.length} orders</Text>
+          <Text style={s.count}>{displayedOrderCount} {isPacker && !search.trim() ? "total orders" : "orders"}</Text>
         </View>
+        {isPacker ? (
+          <View style={s.sectionTabs}>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: packerHistorySection === "ALL" }}
+              onPress={() => selectPackerHistorySection("ALL")}
+              style={[s.sectionTab, packerHistorySection === "ALL" && s.sectionTabActive]}
+            >
+              <Ionicons name="time-outline" size={16} color={packerHistorySection === "ALL" ? "#C2410C" : "#64748B"} />
+              <Text style={[s.sectionTabText, packerHistorySection === "ALL" && s.sectionTabTextActive]}>All ({totalPackerHistoryCount})</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: packerHistorySection === "PACKED" }}
+              onPress={() => selectPackerHistorySection("PACKED")}
+              style={[s.sectionTab, packerHistorySection === "PACKED" && s.sectionTabActive]}
+            >
+              <Ionicons name="cube-outline" size={16} color={packerHistorySection === "PACKED" ? "#C2410C" : "#64748B"} />
+              <Text style={[s.sectionTabText, packerHistorySection === "PACKED" && s.sectionTabTextActive]}>Packed ({packedOrderCount})</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: packerHistorySection === "RIDER_ASSIGNED" }}
+              onPress={() => selectPackerHistorySection("RIDER_ASSIGNED")}
+              style={[s.sectionTab, packerHistorySection === "RIDER_ASSIGNED" && s.sectionTabActive]}
+            >
+              <Ionicons name="bicycle-outline" size={17} color={packerHistorySection === "RIDER_ASSIGNED" ? "#C2410C" : "#64748B"} />
+              <Text style={[s.sectionTabText, packerHistorySection === "RIDER_ASSIGNED" && s.sectionTabTextActive]}>Rider ({riderOrderCount})</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={s.subtitleRow}>
-          <Text style={s.subtitle}>{isPacker ? "Your packing scans" : "Your picking scans"} · Newest first</Text>
+          <Text style={s.subtitle}>{isPacker ? packerHistorySection === "ALL" ? "All order history" : packerHistorySection === "PACKED" ? "Packing history not assigned to a rider" : "Orders assigned to riders" : "Your picking scans"} · Newest first</Text>
           {totalPages > 1 ? (
             <View style={s.pageNav}>
               <Pressable
@@ -153,10 +230,10 @@ export function HistoryScreen() {
         {!loading && !error && entries.length === 0 ? <EmptyState title="No History Yet" body="Your successful scans will appear here." actionLabel="Refresh" onAction={() => void refresh()} /> : null}
         {!loading && !error && entries.length > 0 && groups.length === 0 ? (
           <EmptyState
-            title={search ? "No matching scans" : "No History Yet"}
-            body={`No scans match “${search}”. Try another order or item name.`}
-            actionLabel="Clear Search"
-            onAction={() => setSearch("")}
+            title={search ? "No matching history" : packerHistorySection === "RIDER_ASSIGNED" && isPacker ? "No Rider Records on This Page" : packerHistorySection === "PACKED" && isPacker ? "No Packed Records on This Page" : "No History Yet"}
+            body={search ? `No records match “${search}” in this section. Try another order or item name.` : packerHistorySection === "ALL" ? "No history records are available." : "Try another history page or refresh the list."}
+            actionLabel={search ? "Clear Search" : "Refresh"}
+            onAction={() => search ? setSearch("") : void refresh()}
           />
         ) : null}
         {groups.map(([orderId, scans]) => {
@@ -226,6 +303,11 @@ const s = StyleSheet.create({
   heading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { fontSize: 24, fontWeight: "800", color: "#0F172A" },
   count: { fontSize: 13, fontWeight: "700", color: "#2563EB" },
+  sectionTabs: { flexDirection: "row", gap: 8, padding: 4, marginTop: 12, marginBottom: 8, backgroundColor: "#E9EEF5", borderRadius: 12 },
+  sectionTab: { flex: 1, minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: 9 },
+  sectionTabActive: { backgroundColor: "#FFFFFF", shadowColor: "#0F172A", shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  sectionTabText: { fontSize: 13, fontWeight: "700", color: "#64748B" },
+  sectionTabTextActive: { color: "#C2410C" },
   subtitleRow: { flexDirection: "row", alignItems: "center", marginBottom: 10, minHeight: 26 },
   subtitle: { flex: 1, fontSize: 12, color: "#64748B", marginRight: 6 },
   searchWrap: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 10 },
