@@ -315,38 +315,7 @@ export function PackerDashboardScreen({
                     </View>
                   </View>
 
-                  <View
-                    style={[
-                      s.assignedBottomRow,
-                      !compact && { paddingLeft: 56 },
-                    ]}
-                  >
-                    <View style={s.assignedMetaLeft}>
-                      <View style={s.iconLine}>
-                        <Ionicons
-                          name="location-sharp"
-                          size={14}
-                          color="#334155"
-                          style={s.lineIcon}
-                        />
-                        <Text
-                          style={s.whNameText}
-                          numberOfLines={1}
-                          maxFontSizeMultiplier={1.15}
-                        >
-                          {getWarehouseDisplay(o.warehouseId, o.warehouseName).name}
-                        </Text>
-                      </View>
-
-                      <Text
-                        style={s.whAddrText}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={1.15}
-                      >
-                        {getWarehouseDisplay(o.warehouseId, o.warehouseName).shortAddress}, {formatOrderDate(o.orderDate)}
-                      </Text>
-                    </View>
-
+                  <View style={s.assignedBottomRow}>
                     <View
                       style={[
                         s.compactOrangeBtn,
@@ -962,31 +931,9 @@ const s = StyleSheet.create({
   },
   assignedBottomRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     alignItems: "center",
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-  },
-  assignedMetaLeft: {
-    flex: 1,
-  },
-  iconLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  lineIcon: {
-    marginRight: 2,
-  },
-  whNameText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#0F172A",
-  },
-  whAddrText: {
-    fontSize: 10,
-    color: "#64748B",
+    paddingTop: 8,
   },
   itemsUnitsText: {
     fontSize: 11,

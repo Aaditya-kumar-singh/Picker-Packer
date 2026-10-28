@@ -78,6 +78,16 @@ export const packerAppApi = {
     return typeof res === "string" ? res : "Rider assigned";
   },
 
+  /** POST /api/packer-app/orders/{id}/packing-barcode */
+  async generatePackingBarcode(orderId: number): Promise<string> {
+    const response = await apiRequest<unknown>(`/api/packer-app/orders/${orderId}/packing-barcode`, {
+      method: "POST",
+    });
+    const value = extractPackingBarcode(response);
+    if (!value) throw new Error("The server did not return a packing barcode image.");
+    return value;
+  },
+
   /** 2.5 GET /api/packer-app/orders/{id}/items */
   async getOrderRawItems(orderId: number): Promise<RawSalesOrderItemDto[]> {
     return apiRequest<RawSalesOrderItemDto[]>(`/api/packer-app/orders/${orderId}/items`);
@@ -139,3 +149,31 @@ export const packerAppApi = {
     cachedAssignedOrders = [];
   },
 };
+
+function extractPackingBarcode(response: unknown): string | null {
+  if (typeof response === "string" && response.trim()) return response.trim();
+  if (!response || typeof response !== "object") return null;
+  const payload = response as Record<string, unknown>;
+  for (const key of ["barcodeImage", "qrCodeImage", "packingQrImage", "qrCode", "packingBarcode", "barcode", "code", "value", "content"]) {
+    const candidate = payload[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  for (const key of ["data", "result"]) {
+    const nested = extractPackingBarcode(payload[key]);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+/** POST /api/rider-app/orders/{assignmentId}/verify-packing-barcode */
+export async function verifyPackingBarcode(assignmentId: number, barcode: string): Promise<unknown> {
+  if (!Number.isSafeInteger(assignmentId) || assignmentId <= 0) {
+    throw new Error("A valid rider assignment is required to verify the packing barcode.");
+  }
+  const value = barcode.trim();
+  if (!value) throw new Error("Scan or enter the packing barcode.");
+  return apiRequest<unknown>(`/api/rider-app/orders/${assignmentId}/verify-packing-barcode`, {
+    method: "POST",
+    body: JSON.stringify({ barcode: value }),
+  });
+}
