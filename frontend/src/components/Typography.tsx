@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useContext } from "react";
+import { createContext, forwardRef, useContext, type ComponentRef } from "react";
 import {
   StyleSheet,
   Text as NativeText,
@@ -29,7 +29,7 @@ function fontStyle(style: TextStyle, inherited: { family: string; weight: string
 }
 
 /** All application text shares the same body/heading fonts, including nested text. */
-export const Text = forwardRef<NativeText, TextProps>(function Text({ style, ...props }, ref) {
+export const Text = forwardRef<ComponentRef<typeof NativeText>, TextProps>(function Text({ style, ...props }, ref) {
   const inherited = useContext(FontContext);
   const font = fontStyle(StyleSheet.flatten(style) ?? {}, inherited);
   return (
@@ -40,8 +40,8 @@ export const Text = forwardRef<NativeText, TextProps>(function Text({ style, ...
 });
 
 // Preserve the native input instance type for focus() and measureInWindow().
-export type TextInput = NativeTextInput;
-export const TextInput = forwardRef<NativeTextInput, TextInputProps>(function TextInput({ style, ...props }, ref) {
+export type TextInput = ComponentRef<typeof NativeTextInput>;
+export const TextInput = forwardRef<TextInput, TextInputProps>(function TextInput({ style, ...props }, ref) {
   const font = fontStyle(StyleSheet.flatten(style) ?? {}, { family: "Poppins", weight: "400" });
   return <NativeTextInput {...props} ref={ref} style={[style, font.resolved]} />;
 });

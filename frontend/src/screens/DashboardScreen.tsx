@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 import { pickerAppApi } from "@/api/pickerAppApi";
+import { isPickingInProgress } from "@/domain/order";
 import type { FulfillmentOrderDto, PickerStatsDto } from "@/types";
 import {
   formatOrderDate,
@@ -61,13 +62,7 @@ export function DashboardScreen() {
   const assignedList = orders;
   // The stats count also includes PACKING; this card links to the PICKING queue.
   const assignedTotal = assignedList.length;
-  const inProgressCount = assignedList.filter((o) => o.totalItemsScanned > 0).length;
-  const itemsToPickCount = assignedList.reduce(
-    (sum, o) =>
-      sum +
-      (o.items || []).reduce((lineSum, l) => lineSum + Math.max(0, l.orderedQty - l.pickedQty), 0),
-    0
-  );
+  const inProgressCount = assignedList.filter(isPickingInProgress).length;
 
   const heroOrder = assignedList[0] ?? null;
   const heroProgress = heroOrder ? getOrderProgress(heroOrder) : null;
@@ -128,7 +123,7 @@ export function DashboardScreen() {
               </View>
             </Pressable> : null}
 
-            {/* 4 KPI Summary Cards Row */}
+            {/* Picker KPI Summary Cards Row */}
             <View style={[ds.kpiGrid, compact && { gap: 6 }]}>
               <Pressable
                 style={({ pressed }) => [
@@ -138,7 +133,7 @@ export function DashboardScreen() {
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={`Assigned orders, ${assignedTotal}`}
-                onPress={() => router.push("/orders" as never)}
+                onPress={() => router.push("/orders?filter=all" as never)}
               >
                 <View style={[ds.kpiIconCircle, { backgroundColor: "#E0F2FE" }]}>
                   <Ionicons name="clipboard-outline" size={17} color="#0284C7" />
@@ -179,11 +174,7 @@ export function DashboardScreen() {
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel={`In Progress orders, ${inProgressCount}`}
-                onPress={() =>
-                  router.push(
-                    (heroOrder ? `/order/${heroOrder.orderId}` : "/orders") as never
-                  )
-                }
+                onPress={() => router.push("/orders?filter=in-progress" as never)}
               >
                 <View style={[ds.kpiIconCircle, { backgroundColor: "#FFEDD5" }]}>
                   <Ionicons name="cube" size={17} color="#EA580C" />
@@ -256,47 +247,6 @@ export function DashboardScreen() {
                   <Ionicons name="chevron-forward" size={12} color="#64748B" />
                 </View>
               </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  ds.kpiCard,
-                  compact && ds.kpiCardCompact,
-                  pressed && ds.metricPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Items to pick, ${itemsToPickCount}`}
-                onPress={() => router.push("/orders" as never)}
-              >
-                <View style={[ds.kpiIconCircle, { backgroundColor: "#F3E8FF" }]}>
-                  <Ionicons name="list" size={17} color="#9333EA" />
-                </View>
-                <Text
-                  style={[ds.kpiValue, compact && { fontSize: 19 }]}
-                  maxFontSizeMultiplier={1.1}
-                >
-                  {itemsToPickCount}
-                </Text>
-                <View style={ds.kpiLabelRow}>
-                  <View style={ds.kpiTextCol}>
-                    <Text
-                      style={ds.kpiLabel}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      Items to Pick
-                    </Text>
-                    <Text
-                      style={ds.kpiSubLabel}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      Units
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={12} color="#64748B" />
-                </View>
-              </Pressable>
             </View>
 
             {/* Active Order Hero Card */}
@@ -311,7 +261,7 @@ export function DashboardScreen() {
                   <View style={ds.inProgressPill}>
                     <Ionicons name="time" size={13} color="#C2410C" />
                     <Text style={ds.inProgressPillText} maxFontSizeMultiplier={1.1}>
-                      {heroOrder.totalItemsScanned > 0 ? "IN PROGRESS" : "ASSIGNED"}
+                      {isPickingInProgress(heroOrder) ? "IN PROGRESS" : "ASSIGNED"}
                     </Text>
                   </View>
                 </View>
@@ -330,7 +280,7 @@ export function DashboardScreen() {
                       numberOfLines={1}
                       maxFontSizeMultiplier={1.15}
                     >
-                      {heroProgress.totalLines} item line(s) • ₹{heroOrder.grandTotal.toFixed(2)} ({heroOrder.paymentMethod})
+                      {heroProgress.totalLines} item line(s), ₹{heroOrder.grandTotal.toFixed(2)} ({heroOrder.paymentMethod})
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#334155" />
@@ -344,7 +294,7 @@ export function DashboardScreen() {
                         {
                           width: `${Math.max(
                             heroProgress.pct,
-                            heroOrder.totalItemsScanned > 0 ? 8 : 0
+                            isPickingInProgress(heroOrder) ? 8 : 0
                           )}%`,
                         },
                       ]}
@@ -414,7 +364,7 @@ export function DashboardScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="View all assigned orders"
-                onPress={() => router.push("/orders" as never)}
+                onPress={() => router.push("/orders?filter=all" as never)}
                 style={({ pressed }) => [ds.viewAllBtn, pressed && { opacity: 0.75 }]}
               >
                 <Text style={ds.viewAllText} maxFontSizeMultiplier={1.1}>
@@ -482,11 +432,11 @@ export function DashboardScreen() {
                         numberOfLines={1}
                         maxFontSizeMultiplier={1.15}
                       >
-                        {prog.totalLines} lines • ₹{order.grandTotal.toFixed(2)}
+                        {prog.totalLines} lines, ₹{order.grandTotal.toFixed(2)}
                       </Text>
                       {order.items && order.items.length > 0 ? (
                         <Text style={ds.orderProductPreview} numberOfLines={2} maxFontSizeMultiplier={1.1}>
-                          {order.items.slice(0, 2).map((item) => item.productName).join(" • ")}
+                          {order.items.slice(0, 2).map((item) => item.productName).join(", ")}
                           {order.items.length > 2 ? ` +${order.items.length - 2} more` : ""}
                         </Text>
                       ) : null}
@@ -563,27 +513,32 @@ const ds = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 28,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 30,
   },
   warehouseCard: {
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ECF4FF",
-    borderRadius: 16,
+    backgroundColor: "#EEF6FF",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#D4E4FF",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    marginBottom: 12,
+    borderColor: "#CFE3FF",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 14,
+    shadowColor: "#5B83B5",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   warehouseIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#D0E3FF",
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#D9EBFF",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -616,7 +571,7 @@ const ds = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#D4E4FF",
+    borderColor: "#CFE3FF",
   },
   cardPressed: {
     opacity: 0.85,
@@ -624,39 +579,41 @@ const ds = StyleSheet.create({
   },
   kpiGrid: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 14,
+    gap: 9,
+    marginBottom: 16,
   },
   kpiCard: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 20,
+    padding: 12,
+    minHeight: 118,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#E4ECF6",
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.03,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    shadowOpacity: 0.07,
+    shadowRadius: 9,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   kpiCardCompact: {
-    padding: 8,
+    padding: 9,
+    minHeight: 108,
   },
   metricPressed: {
     opacity: 0.85,
     transform: [{ scale: 0.98 }],
   },
   kpiIconCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+    marginBottom: 7,
   },
   kpiValue: {
-    fontSize: 22,
+    fontSize: 25,
     fontWeight: "900",
     color: "#0F172A",
   },
@@ -670,26 +627,28 @@ const ds = StyleSheet.create({
     flex: 1,
   },
   kpiLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
     color: "#334155",
   },
   kpiSubLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: "#64748B",
   },
   activeCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 24,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 16,
+    borderColor: "#E8EEF6",
+    borderLeftWidth: 5,
+    borderLeftColor: "#FF841A",
+    marginBottom: 19,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: 0.09,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
   },
   activeTopRow: {
     flexDirection: "row",
@@ -698,15 +657,15 @@ const ds = StyleSheet.create({
     marginBottom: 8,
   },
   activeOrderBadge: {
-    backgroundColor: "#EFF6FF",
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 6,
+    backgroundColor: "#FF861B",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
   },
   activeOrderBadgeText: {
     fontSize: 10,
     fontWeight: "800",
-    color: "#1D4ED8",
+    color: "#FFFFFF",
     letterSpacing: 0.5,
   },
   inProgressPill: {
@@ -714,9 +673,9 @@ const ds = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     backgroundColor: "#FFF7ED",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   inProgressPillText: {
     fontSize: 10,
@@ -733,12 +692,12 @@ const ds = StyleSheet.create({
     flex: 1,
   },
   activeOrderId: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "900",
     color: "#0F172A",
   },
   activeMeta: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#475569",
     marginTop: 2,
   },
@@ -746,7 +705,7 @@ const ds = StyleSheet.create({
     marginBottom: 12,
   },
   activeProgressTrack: {
-    height: 8,
+    height: 9,
     backgroundColor: "#E2E8F0",
     borderRadius: 4,
     overflow: "hidden",
@@ -762,12 +721,12 @@ const ds = StyleSheet.create({
     justifyContent: "space-between",
   },
   activeFractionText: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#64748B",
     fontWeight: "600",
   },
   activePctText: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#0D6EFD",
     fontWeight: "800",
   },
@@ -775,7 +734,7 @@ const ds = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 10,
+    paddingTop: 13,
     borderTopWidth: 1,
     borderTopColor: "#F1F5F9",
   },
@@ -786,9 +745,9 @@ const ds = StyleSheet.create({
     flex: 1,
   },
   activeWhPinCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
@@ -815,12 +774,17 @@ const ds = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     backgroundColor: "#0D6EFD",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 15,
+    shadowColor: "#0D6EFD",
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   continueBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
     color: "#FFFFFF",
   },
@@ -831,7 +795,7 @@ const ds = StyleSheet.create({
     marginBottom: 10,
   },
   sectionTitle: { fontFamily: "OpenSans",
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "800",
     color: "#0F172A",
   },
@@ -849,25 +813,25 @@ const ds = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 21,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 8,
+    borderColor: "#E7EDF5",
+    marginBottom: 10,
     shadowColor: theme.color.ink,
-    shadowOpacity: 0.03,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    shadowOpacity: 0.06,
+    shadowRadius: 9,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   orderCardHighlighted: {
-    borderColor: "#BFDBFE",
-    backgroundColor: "#F8FAFF",
+    borderColor: "#D4E8FC",
+    backgroundColor: "#FFFFFF",
   },
   orderCubeCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
@@ -882,7 +846,7 @@ const ds = StyleSheet.create({
     gap: 6,
   },
   orderNumber: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
     color: "#0F172A",
   },

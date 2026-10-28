@@ -74,11 +74,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           items.push({
             id: `packer-order-${o.orderId}-${o.orderStatus}`,
             title: isPacked
-              ? `${o.orderNumber} • Ready for Rider`
-              : `${o.orderNumber} • Packing in Progress`,
+              ? `${o.orderNumber}, Ready for Rider`
+              : `${o.orderNumber}, Packing in Progress`,
             body: isPacked
               ? `All items packed! Assign a delivery rider to dispatch.`
-              : `${o.totalItemsScanned}/${o.totalItems} lines completed • Order date: ${formatOrderDate(o.orderDate)}`,
+              : `${o.totalItemsScanned}/${o.totalItems} lines completed, Order date: ${formatOrderDate(o.orderDate)}`,
             timeLabel: isPacked ? "Packed" : "In Queue",
             tone: isPacked ? "ok" : "progress",
             targetRoute: `/pack/order/${o.orderId}`,
@@ -91,11 +91,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           items.push({
             id: `picker-order-${o.orderId}-${o.orderStatus}-${o.totalItemsScanned}`,
             title: allPicked
-              ? `${o.orderNumber} • Ready for Packer`
-              : `${o.orderNumber} • Picking Queue`,
+              ? `${o.orderNumber}, Ready for Packer`
+              : `${o.orderNumber}, Picking Queue`,
             body: allPicked
               ? `All items scanned. Tap to select and hand off to an available packer.`
-              : `${o.totalItemsScanned}/${o.totalItems} lines picked • Total: ₹${o.grandTotal.toFixed(2)} (${o.paymentMethod})`,
+              : `${o.totalItemsScanned}/${o.totalItems} lines picked, Total: ₹${o.grandTotal.toFixed(2)} (${o.paymentMethod})`,
             timeLabel: allPicked ? "Ready" : "Picking",
             tone: allPicked ? "ok" : "progress",
             targetRoute: `/order/${o.orderId}`,

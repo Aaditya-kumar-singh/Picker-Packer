@@ -1,11 +1,10 @@
 import { Text } from "@/components/Typography";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Image, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import NetInfo from "@react-native-community/netinfo";
 import {
   NotificationCenterModal,
   type AppNotification,
@@ -20,6 +19,7 @@ export function BrandHeader() {
   const { width } = useWindowDimensions();
   const narrowHeader = width < 400;
   const isPacker = picker?.role === "PACKER";
+  const roleLabel = isPacker ? "PACKER" : "PICKER";
 
   const {
     notifications,
@@ -32,19 +32,6 @@ export function BrandHeader() {
   } = useNotifications();
 
   const [notifVisible, setNotifVisible] = useState(false);
-  const [isOnline, setIsOnline] = useState<boolean>(true);
-
-  useEffect(() => {
-    const unsub = NetInfo.addEventListener((state) => {
-      setIsOnline(Boolean(state.isConnected && state.isInternetReachable !== false));
-    });
-    return () => unsub();
-  }, []);
-
-  const syncLabel = isOnline ? "Online" : "Offline";
-  const syncDotColor = isOnline ? "#16A34A" : "#DC2626";
-  const syncPillBg = isOnline ? "#E6F8EE" : "#FEE2E2";
-  const syncTextColor = isOnline ? "#15803D" : "#B91C1C";
 
   function openNotifications() {
     setNotifVisible(true);
@@ -105,14 +92,6 @@ export function BrandHeader() {
                   >
                     YourBuildMart
                   </Text>
-                  <View style={[s.pickerRolePill, narrowHeader && s.pickerRolePillNarrow]}>
-                    <Text
-                      style={[s.pickerRolePillText, narrowHeader && s.pickerRolePillTextNarrow]}
-                      maxFontSizeMultiplier={1.1}
-                    >
-                      PICKER
-                    </Text>
-                  </View>
                 </View>
                 <Text
                   style={s.pickerSubtitle}
@@ -125,27 +104,14 @@ export function BrandHeader() {
             </View>
 
             <View style={[s.pickerRight, narrowHeader && s.actionsNarrow]}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Connection status: ${syncLabel}`}
-                onPress={() => void loadNotifications()}
-                style={({ pressed }) => [
-                  s.livePill,
-                  narrowHeader && s.livePillNarrow,
-                  { backgroundColor: syncPillBg },
-                  pressed && { opacity: 0.85 },
-                ]}
+              <View
+                accessibilityLabel={`Role: ${roleLabel}`}
+                style={[s.roleActionPill, narrowHeader && s.roleActionPillNarrow, { backgroundColor: isPacker ? "#D95D00" : "#2563EB" }]}
               >
-                <View
-                  style={[s.liveDot, narrowHeader && s.liveDotNarrow, { backgroundColor: syncDotColor }]}
-                />
-                <Text
-                  style={[s.liveText, narrowHeader && s.liveTextNarrow, { color: syncTextColor }]}
-                  maxFontSizeMultiplier={1.1}
-                >
-                  {syncLabel}
+                <Text style={[s.roleActionText, narrowHeader && s.roleActionTextNarrow]} maxFontSizeMultiplier={1.1}>
+                  {roleLabel}
                 </Text>
-              </Pressable>
+              </View>
 
               <Pressable
                 accessibilityRole="button"
@@ -214,11 +180,6 @@ export function BrandHeader() {
                 <Text style={[s.name, narrowHeader && s.nameNarrow]} numberOfLines={1} maxFontSizeMultiplier={1.1}>
                   YourBuildMart
                 </Text>
-                <View style={[s.badgeWms, narrowHeader && s.badgeWmsNarrow]}>
-                  <Text style={[s.badgeWmsText, narrowHeader && s.badgeWmsTextNarrow]} maxFontSizeMultiplier={1.1}>
-                    WMS
-                  </Text>
-                </View>
               </View>
               <Text
                 style={s.tagline}
@@ -227,36 +188,18 @@ export function BrandHeader() {
               >
                 Warehouse Operations
               </Text>
-              <Text
-                style={s.subTagline}
-                numberOfLines={1}
-                maxFontSizeMultiplier={1.1}
-              >
-                Pick • Pack • Dispatch
-              </Text>
             </View>
           </View>
 
           <View style={[s.actions, narrowHeader && s.actionsNarrow]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Connection status: ${syncLabel}`}
-              onPress={() => void loadNotifications()}
-              style={({ pressed }) => [
-                s.livePill,
-                narrowHeader && s.livePillNarrow,
-                { backgroundColor: syncPillBg },
-                pressed && { opacity: 0.85 },
-              ]}
+            <View
+              accessibilityLabel={`Role: ${roleLabel}`}
+              style={[s.roleActionPill, narrowHeader && s.roleActionPillNarrow, { backgroundColor: isPacker ? "#D95D00" : "#2563EB" }]}
             >
-              <View style={[s.liveDot, narrowHeader && s.liveDotNarrow, { backgroundColor: syncDotColor }]} />
-              <Text
-                style={[s.liveText, narrowHeader && s.liveTextNarrow, { color: syncTextColor }]}
-                maxFontSizeMultiplier={1.1}
-              >
-                {syncLabel}
+              <Text style={[s.roleActionText, narrowHeader && s.roleActionTextNarrow]} maxFontSizeMultiplier={1.1}>
+                {roleLabel}
               </Text>
-            </Pressable>
+            </View>
 
             <Pressable
               accessibilityRole="button"
@@ -361,27 +304,6 @@ const s = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0,
   },
-  pickerRolePill: {
-    backgroundColor: "#2563EB",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    flexShrink: 0,
-  },
-  pickerRolePillNarrow: {
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-  },
-  pickerRolePillText: {
-    color: "#FFFFFF",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  pickerRolePillTextNarrow: {
-    fontSize: 8,
-    letterSpacing: 0,
-  },
   pickerSubtitle: {
     color: "rgba(255,255,255,0.78)",
     fontSize: 11,
@@ -394,22 +316,29 @@ const s = StyleSheet.create({
     gap: 8,
     flexShrink: 0,
   },
-  livePill: {
-    flexDirection: "row",
+  roleActionPill: {
+    minWidth: 52,
+    height: 28,
+    paddingHorizontal: 8,
+    borderRadius: 7,
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
+    justifyContent: "center",
+    flexShrink: 0,
   },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  roleActionPillNarrow: {
+    minWidth: 42,
+    height: 24,
+    paddingHorizontal: 5,
   },
-  liveText: {
-    fontSize: 12,
-    fontWeight: "800",
+  roleActionText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
+  roleActionTextNarrow: {
+    fontSize: 8,
+    letterSpacing: 0,
   },
   pickerProfileBtn: {
     width: 34,
@@ -505,36 +434,10 @@ const s = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0,
   },
-  badgeWms: {
-    backgroundColor: "#F59E0B",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 5,
-    flexShrink: 0,
-  },
-  badgeWmsNarrow: {
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-  },
-  badgeWmsText: {
-    color: "#091E3A",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.4,
-  },
-  badgeWmsTextNarrow: {
-    fontSize: 7,
-    letterSpacing: 0,
-  },
   tagline: {
     color: "#E2E8F0",
     fontSize: 11,
     fontWeight: "600",
-  },
-  subTagline: {
-    color: "#94A3B8",
-    fontSize: 10,
-    fontWeight: "500",
   },
   actions: {
     flexDirection: "row",
@@ -544,19 +447,6 @@ const s = StyleSheet.create({
   },
   actionsNarrow: {
     gap: 4,
-  },
-  livePillNarrow: {
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-  },
-  liveDotNarrow: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  liveTextNarrow: {
-    fontSize: 10,
   },
   actionButtonNarrow: {
     width: 28,

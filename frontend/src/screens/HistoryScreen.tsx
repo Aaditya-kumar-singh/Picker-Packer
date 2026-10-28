@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { Text } from "@/components/Typography";
+import { Ionicons } from "@expo/vector-icons";
+import { Text, TextInput } from "@/components/Typography";
 import { EmptyState, ErrorBanner, ErrorState, LoadingState } from "@/components/ui";
 import { pickerAppApi } from "@/api/pickerAppApi";
 import { packerAppApi } from "@/api/packerAppApi";
@@ -9,6 +10,12 @@ import { useAuth } from "@/navigation/AppProvider";
 import type { FulfillmentHistoryDto, HistoryPageDto } from "@/types";
 
 const PAGE_SIZE = 20;
+const PACKER_HISTORY_FETCH_SIZE = 100;
+const HISTORY_PAGE_BATCH_SIZE = 4;
+
+function newestFirst(scans: FulfillmentHistoryDto[]) {
+  return [...scans].sort((left, right) => new Date(right.scannedAt).getTime() - new Date(left.scannedAt).getTime());
+}
 
 function groupScansByItem(scans: FulfillmentHistoryDto[]) {
   const items = new Map<number, FulfillmentHistoryDto[]>();
@@ -26,31 +33,47 @@ function variantDetails(label: string | null) {
 
 export function HistoryScreen() {
   const { picker } = useAuth();
-  const isPacker = picker?.role === "PACKER";
+  const isPacker = picker?.role === "PACKER";  
+  const [packerHistorySection, setPackerHistorySection] = useState<"ALL" | "PACKED" | "RIDER_ASSIGNED">("ALL");
   const [entries, setEntries] = useState<FulfillmentHistoryDto[]>([]);
-  const [orderCount, setOrderCount] = useState<number | null>(null);
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [historyOrderCount, setHistoryOrderCount] = useState<number | null>(null);
 
   const fetchPage = useCallback(async (pageNumber: number): Promise<HistoryPageDto> =>
     isPacker ? packerAppApi.getHistory(pageNumber, PAGE_SIZE) : pickerAppApi.getHistory(pageNumber, PAGE_SIZE), [isPacker]);
+
+  const fetchAllPackerHistory = useCallback(async (): Promise<HistoryPageDto> => {
+    const firstPage = await packerAppApi.getHistory(0, PACKER_HISTORY_FETCH_SIZE);
+    const content = [...firstPage.content];
+    for (let start = 1; start < firstPage.totalPages; start += HISTORY_PAGE_BATCH_SIZE) {
+      const pageNumbers = Array.from(
+        { length: Math.min(HISTORY_PAGE_BATCH_SIZE, firstPage.totalPages - start) },
+        (_, index) => start + index,
+      );
+      const pages = await Promise.all(pageNumbers.map((pageNumber) => packerAppApi.getHistory(pageNumber, PACKER_HISTORY_FETCH_SIZE)));
+      for (const page of pages) content.push(...page.content);
+    }
+    return { ...firstPage, content, totalPages: 1, number: 0, last: true };
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [result, count] = await Promise.all([
-        fetchPage(0),
+      const [result, orderCount] = await Promise.all([
+        isPacker ? fetchAllPackerHistory() : fetchPage(0),
         (isPacker ? packerAppApi.getHistoryOrderCount() : pickerAppApi.getHistoryOrderCount()).catch(() => null),
       ]);
-      setEntries(result.content);
-      setOrderCount(count);
+      setEntries(newestFirst(result.content));
       setPage(0);
-      setHasMore(!result.last);
+      setTotalPages(result.totalPages);
+      setHistoryOrderCount(orderCount);
       setExpandedId(null);
     } catch (e: any) {
       setEntries([]);
@@ -58,51 +81,161 @@ export function HistoryScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fetchPage, isPacker]);
+  }, [fetchAllPackerHistory, fetchPage, isPacker]);
 
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
 
-  const loadMore = async () => {
-    if (loadingMore || loading || !hasMore) return;
-    setLoadingMore(true);
-    setError(null);
-    try {
-      const nextPage = page + 1;
-      const result = await fetchPage(nextPage);
-      setEntries((previous) => {
-        const seen = new Set(previous.map((entry) => entry.taskId));
-        return [...previous, ...result.content.filter((entry) => !seen.has(entry.taskId))];
-      });
-      setPage(nextPage);
-      setHasMore(!result.last);
-    } catch (e: any) {
-      setError(e?.message || "Could not load more history.");
-    } finally {
-      setLoadingMore(false);
+  const sectionEntries = useMemo(() => {
+    if (!isPacker || packerHistorySection === "ALL") return entries;
+    if (packerHistorySection === "RIDER_ASSIGNED") {
+      return entries.filter((entry) => entry.orderStatus === "RIDER_ASSIGNED");
     }
-  };
+    return entries.filter((entry) => entry.orderStatus !== "RIDER_ASSIGNED");
+  }, [entries, isPacker, packerHistorySection]);
+
+  const filteredEntries = useMemo(() => newestFirst(sectionEntries.filter((entry) => {
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || [entry.orderNumber, entry.productName, entry.sku, entry.barcode]
+      .some((value) => value?.toLowerCase().includes(query));
+    return matchesSearch;
+  })), [sectionEntries, search]);
 
   const groups = useMemo(() => {
     const byOrder = new Map<number, FulfillmentHistoryDto[]>();
-    for (const entry of entries) {
+    for (const entry of filteredEntries) {
       const current = byOrder.get(entry.orderId) ?? [];
       current.push(entry);
       byOrder.set(entry.orderId, current);
     }
     return Array.from(byOrder.entries());
-  }, [entries]);
+  }, [filteredEntries]);
+
+  const packedOrderCount = useMemo(() => new Set(
+    entries.filter((entry) => entry.orderStatus !== "RIDER_ASSIGNED").map((entry) => entry.orderId),
+  ).size, [entries]);
+  const riderOrderCount = useMemo(() => new Set(
+    entries.filter((entry) => entry.orderStatus === "RIDER_ASSIGNED").map((entry) => entry.orderId),
+  ).size, [entries]);
+  const totalPackerHistoryCount = useMemo(() => new Set(entries.map((entry) => entry.orderId)).size, [entries]);
+  const displayedOrderCount = search.trim()
+    ? groups.length
+    : isPacker ? totalPackerHistoryCount : historyOrderCount ?? groups.length;
+
+  function selectPackerHistorySection(section: "ALL" | "PACKED" | "RIDER_ASSIGNED") {
+    setPackerHistorySection(section);
+    setExpandedId(null);
+  }
+
+  async function goToPage(nextPage: number) {
+    if (pageLoading || loading || nextPage < 0 || nextPage >= totalPages || nextPage === page) return;
+    setPageLoading(true);
+    setError(null);
+    try {
+      const result = await fetchPage(nextPage);
+      setEntries(newestFirst(result.content));
+      setPage(nextPage);
+      setTotalPages(result.totalPages);
+      setExpandedId(null);
+    } catch (e: any) {
+      setError(e?.message || "Could not load this history page.");
+    } finally {
+      setPageLoading(false);
+    }
+  }
 
   return (
     <View style={s.screen}>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={loading && entries.length > 0} onRefresh={() => void refresh()} />}>
         <View style={s.heading}>
           <Text style={s.title}>History</Text>
-          <Text style={s.count}>{orderCount ?? "–"} orders</Text>
+          <Text style={s.count}>{displayedOrderCount} {isPacker && !search.trim() ? "total orders" : "orders"}</Text>
         </View>
-        <Text style={s.subtitle}>{isPacker ? "Your packing scans" : "Your picking scans"}</Text>
+        {isPacker ? (
+          <View style={s.sectionTabs}>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: packerHistorySection === "ALL" }}
+              onPress={() => selectPackerHistorySection("ALL")}
+              style={[s.sectionTab, packerHistorySection === "ALL" && s.sectionTabActive]}
+            >
+              <Ionicons name="time-outline" size={16} color={packerHistorySection === "ALL" ? "#C2410C" : "#64748B"} />
+              <Text style={[s.sectionTabText, packerHistorySection === "ALL" && s.sectionTabTextActive]}>All ({totalPackerHistoryCount})</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: packerHistorySection === "PACKED" }}
+              onPress={() => selectPackerHistorySection("PACKED")}
+              style={[s.sectionTab, packerHistorySection === "PACKED" && s.sectionTabActive]}
+            >
+              <Ionicons name="cube-outline" size={16} color={packerHistorySection === "PACKED" ? "#C2410C" : "#64748B"} />
+              <Text style={[s.sectionTabText, packerHistorySection === "PACKED" && s.sectionTabTextActive]}>Packed ({packedOrderCount})</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: packerHistorySection === "RIDER_ASSIGNED" }}
+              onPress={() => selectPackerHistorySection("RIDER_ASSIGNED")}
+              style={[s.sectionTab, packerHistorySection === "RIDER_ASSIGNED" && s.sectionTabActive]}
+            >
+              <Ionicons name="bicycle-outline" size={17} color={packerHistorySection === "RIDER_ASSIGNED" ? "#C2410C" : "#64748B"} />
+              <Text style={[s.sectionTabText, packerHistorySection === "RIDER_ASSIGNED" && s.sectionTabTextActive]}>Rider ({riderOrderCount})</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <View style={s.subtitleRow}>
+          <Text style={s.subtitle}>{isPacker ? packerHistorySection === "ALL" ? "All order history" : packerHistorySection === "PACKED" ? "Packing history not assigned to a rider" : "Orders assigned to riders" : "Your picking scans"} · Newest first</Text>
+          {totalPages > 1 ? (
+            <View style={s.pageNav}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Previous history page"
+                disabled={pageLoading || page === 0}
+                onPress={() => void goToPage(page - 1)}
+                style={[s.pageArrow, (pageLoading || page === 0) && s.pageArrowDisabled]}
+              >
+                <Ionicons name="chevron-back" size={15} color="#1D4ED8" />
+              </Pressable>
+              <Text style={s.pageLabel}>{pageLoading ? "…" : `${page + 1}/${totalPages}`}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Next history page"
+                disabled={pageLoading || page >= totalPages - 1}
+                onPress={() => void goToPage(page + 1)}
+                style={[s.pageArrow, (pageLoading || page >= totalPages - 1) && s.pageArrowDisabled]}
+              >
+                <Ionicons name="chevron-forward" size={15} color="#1D4ED8" />
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+        <View style={s.searchWrap}>
+          <Ionicons name="search-outline" size={19} color="#64748B" style={s.searchIcon} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Order number or item..."
+            placeholderTextColor="#94A3B8"
+            style={s.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {search.length > 0 ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear search" onPress={() => setSearch("")} hitSlop={10}>
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            </Pressable>
+          ) : null}
+        </View>
         {error && entries.length === 0 ? <ErrorState message={error} onRetry={() => void refresh()} /> : null}
         {loading && entries.length === 0 && !error ? <LoadingState label="Loading history…" /> : null}
         {!loading && !error && entries.length === 0 ? <EmptyState title="No History Yet" body="Your successful scans will appear here." actionLabel="Refresh" onAction={() => void refresh()} /> : null}
+        {!loading && !error && entries.length > 0 && groups.length === 0 ? (
+          <EmptyState
+            title={search ? "No matching history" : packerHistorySection === "RIDER_ASSIGNED" && isPacker ? "No Rider Records on This Page" : packerHistorySection === "PACKED" && isPacker ? "No Packed Records on This Page" : "No History Yet"}
+            body={search ? `No records match “${search}” in this section. Try another order or item name.` : packerHistorySection === "ALL" ? "No history records are available." : "Try another history page or refresh the list."}
+            actionLabel={search ? "Clear Search" : "Refresh"}
+            onAction={() => search ? setSearch("") : void refresh()}
+          />
+        ) : null}
         {groups.map(([orderId, scans]) => {
           const expanded = expandedId === orderId;
           const latest = scans[0];
@@ -111,7 +244,7 @@ export function HistoryScreen() {
               <Pressable accessibilityRole="button" accessibilityLabel={`${latest.orderNumber}, ${scans.length} loaded scans`} onPress={() => setExpandedId(expanded ? null : orderId)} style={s.cardHeader}>
                 <View style={s.cardTitleArea}>
                   <Text style={s.orderNumber}>{latest.orderNumber}</Text>
-                  <Text style={s.meta}>{latest.orderStatus} · {scans.length} loaded scan{scans.length === 1 ? "" : "s"}</Text>
+                  <Text style={s.meta}>{latest.orderStatus}, {scans.length} loaded scan{scans.length === 1 ? "" : "s"}</Text>
                   <Text style={s.meta}>Latest: {new Date(latest.scannedAt).toLocaleString()}</Text>
                 </View>
                 <Text style={s.expand}>{expanded ? "−" : "+"}</Text>
@@ -159,7 +292,6 @@ export function HistoryScreen() {
           );
         })}
         {entries.length > 0 ? <ErrorBanner message={error} /> : null}
-        {hasMore && entries.length > 0 ? <Pressable accessibilityRole="button" disabled={loadingMore} onPress={() => void loadMore()} style={s.more}><Text style={s.moreText}>{loadingMore ? "Loading…" : "Load more scans"}</Text></Pressable> : null}
       </ScrollView>
     </View>
   );
@@ -171,7 +303,20 @@ const s = StyleSheet.create({
   heading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { fontSize: 24, fontWeight: "800", color: "#0F172A" },
   count: { fontSize: 13, fontWeight: "700", color: "#2563EB" },
-  subtitle: { fontSize: 13, color: "#64748B", marginBottom: 16 },
+  sectionTabs: { flexDirection: "row", gap: 8, padding: 4, marginTop: 12, marginBottom: 8, backgroundColor: "#E9EEF5", borderRadius: 12 },
+  sectionTab: { flex: 1, minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: 9 },
+  sectionTabActive: { backgroundColor: "#FFFFFF", shadowColor: "#0F172A", shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  sectionTabText: { fontSize: 13, fontWeight: "700", color: "#64748B" },
+  sectionTabTextActive: { color: "#C2410C" },
+  subtitleRow: { flexDirection: "row", alignItems: "center", marginBottom: 10, minHeight: 26 },
+  subtitle: { flex: 1, fontSize: 12, color: "#64748B", marginRight: 6 },
+  searchWrap: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 10 },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: "#0F172A" },
+  pageNav: { flexDirection: "row", alignItems: "center", gap: 4 },
+  pageArrow: { width: 24, height: 24, alignItems: "center", justifyContent: "center", backgroundColor: "#EFF6FF", borderRadius: 12 },
+  pageArrowDisabled: { opacity: 0.4 },
+  pageLabel: { minWidth: 28, textAlign: "center", color: "#64748B", fontSize: 10, fontWeight: "700" },
   card: { backgroundColor: "white", borderColor: "#E2E8F0", borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: "hidden" },
   cardHeader: { padding: 14, flexDirection: "row", alignItems: "center" },
   cardTitleArea: { flex: 1 },
@@ -202,6 +347,4 @@ const s = StyleSheet.create({
   timelineRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, paddingVertical: 1 },
   timelineTime: { flex: 1, fontSize: 10, color: "#64748B" },
   timelineQty: { fontSize: 10, color: "#334155", fontWeight: "600" },
-  more: { backgroundColor: "#0D6EFD", alignItems: "center", padding: 14, borderRadius: 12, marginTop: 8 },
-  moreText: { color: "white", fontWeight: "800" },
 });

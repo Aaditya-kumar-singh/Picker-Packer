@@ -1,10 +1,11 @@
 import { Text, TextInput } from "@/components/Typography";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Image, Keyboard, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth } from "@/navigation/AppProvider";
+import { FULFILLMENT_OTP_LOGIN_ENABLED } from "@/config/auth";
 
 const features: { icon: keyof typeof Ionicons.glyphMap; label: string; color: string; bg: string }[] = [
   { icon: "cube", label: "Pick\nOrders", color: "#f58012", bg: "#ffead7" },
@@ -25,7 +26,7 @@ export function LoginScreen() {
   const tiny = availableHeight < 620;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [measuredViewportHeight, setMeasuredViewportHeight] = useState(availableHeight);
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ComponentRef<typeof ScrollView> | null>(null);
   const cardTop = useRef(0);
   const cardHeight = useRef(0);
   const viewportHeight = useRef(availableHeight);
@@ -80,7 +81,7 @@ export function LoginScreen() {
 
   async function onContinue() {
     if (!identifier.trim() || !password.trim()) {
-      setLocalError("Enter your identifier and password.");
+      setLocalError("Enter your mobile number and password.");
       return;
     }
     Keyboard.dismiss();
@@ -90,6 +91,7 @@ export function LoginScreen() {
   }
 
   async function onOtpLogin() {
+    if (!FULFILLMENT_OTP_LOGIN_ENABLED) return;
     if (!identifier.trim()) {
       setLocalError("Enter your mobile number or identifier to request an OTP.");
       return;
@@ -141,15 +143,15 @@ export function LoginScreen() {
               <Image source={require("../../assets/images/ybm-app-mark.png")} resizeMode="contain" style={[s.logo, compact && s.logoCompact]} accessibilityLabel="YourBuildMart logo" />
               <Text style={[s.brandTitle, compact && s.brandTitleCompact]} numberOfLines={1} adjustsFontSizeToFit>WAREHOUSE</Text>
               <Text style={[s.brandSubtitle, compact && s.brandSubtitleCompact]}>Warehouse Execution System</Text>
-              {!tiny ? <Text style={[s.tagline, compact && s.taglineCompact]}>Pick <Text style={s.dot}>•</Text> Pack <Text style={s.dot}>•</Text> Dispatch</Text> : null}
+              {!tiny ? <Text style={[s.tagline, compact && s.taglineCompact]}>Pick <Text style={s.dot}>,</Text> Pack <Text style={s.dot}>,</Text> Dispatch</Text> : null}
             </View>
           ) : null}
 
           <View onLayout={(event) => { cardTop.current = event.nativeEvent.layout.y; cardHeight.current = event.nativeEvent.layout.height; if (keyboardVisible) revealForm(); }} style={[s.card, compact && s.cardCompact, { marginTop: cardDrop }]}>
             <Text style={[s.headingTitle, compact && s.headingTitleCompact]}>Sign In</Text>
-            <Text style={[s.headingDesc, compact && s.headingDescCompact]}>Enter your mobile number or identifier to start your shift</Text>
+            <Text style={[s.headingDesc, compact && s.headingDescCompact]}>Enter your mobile number and password to start your shift</Text>
 
-            <Text style={s.label}>Mobile Number / Identifier</Text>
+            <Text style={s.label}>Mobile Number</Text>
             <View style={s.inputWrap}>
               <Ionicons name="person-outline" size={19} color="#7d8ca0" />
               <TextInput
@@ -158,9 +160,9 @@ export function LoginScreen() {
                 onChangeText={(value) => { setIdentifier(value); setLocalError(null); }}
                 autoCapitalize="none"
                 autoCorrect={false}
-                keyboardType="default"
-                textContentType="username"
-                placeholder="Mobile number or staff identifier"
+                keyboardType="phone-pad"
+                textContentType="telephoneNumber"
+                placeholder="Enter your mobile number"
                 placeholderTextColor="#9ca8b7"
                 returnKeyType="next"
                 onSubmitEditing={() => passwordInput.current?.focus()}
@@ -205,11 +207,15 @@ export function LoginScreen() {
               <Ionicons name="log-in-outline" size={19} color="#fff" />
               <Text style={s.primaryText}>{loading ? "Signing in…" : "LOG IN WITH PASSWORD"}</Text>
             </Pressable>
-            <View style={s.divider}><View style={s.line} /><Text style={s.or}>OR</Text><View style={s.line} /></View>
-            <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} onPress={onOtpLogin} disabled={busy} style={({ pressed }) => [s.secondaryButton, (pressed || busy) && s.buttonFaded]}>
-              <Ionicons name="phone-portrait-outline" size={18} color="#0875b4" />
-              <Text style={s.secondaryText}>{requestingOtp ? "Sending OTP…" : "LOG IN WITH OTP"}</Text>
-            </Pressable>
+            {FULFILLMENT_OTP_LOGIN_ENABLED ? (
+              <>
+                <View style={s.divider}><View style={s.line} /><Text style={s.or}>OR</Text><View style={s.line} /></View>
+                <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} onPress={onOtpLogin} disabled={busy} style={({ pressed }) => [s.secondaryButton, (pressed || busy) && s.buttonFaded]}>
+                  <Ionicons name="phone-portrait-outline" size={18} color="#0875b4" />
+                  <Text style={s.secondaryText}>{requestingOtp ? "Sending OTP…" : "LOG IN WITH OTP"}</Text>
+                </Pressable>
+              </>
+            ) : null}
             <View style={s.security}><Ionicons name="shield-checkmark-outline" size={13} color="#748399" /><Text style={s.securityText}>Protected by YBM Enterprise Security</Text></View>
           </View>
 

@@ -6,6 +6,7 @@ import {
   getStoredRole,
 } from "./http";
 import type { UserRole } from "@/types";
+import { FULFILLMENT_OTP_LOGIN_ENABLED } from "@/config/auth";
 
 export interface PasswordLoginPayload {
   identifier: string;
@@ -26,6 +27,8 @@ export interface AuthSession {
   role: UserRole;
   user?: any;
 }
+
+const FULFILLMENT_LOGIN_PATH = "/api/auth/fulfillment/login";
 
 function normalizeRole(roleClaim: unknown): UserRole | null {
   if (typeof roleClaim !== "string") return null;
@@ -91,7 +94,7 @@ function extractToken(res: any): string {
 }
 
 export async function loginWithPassword(payload: PasswordLoginPayload): Promise<AuthSession> {
-  const res = await apiRequest<any>("/api/auth/login", {
+  const res = await apiRequest<any>(FULFILLMENT_LOGIN_PATH, {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify({
@@ -111,12 +114,15 @@ export async function loginWithPassword(payload: PasswordLoginPayload): Promise<
 }
 
 export async function requestOtp(payload: OtpRequestPayload): Promise<{ success: boolean; message: string }> {
+  if (!FULFILLMENT_OTP_LOGIN_ENABLED) {
+    throw new Error("OTP login is unavailable. Sign in with your password.");
+  }
   await apiRequest<any>("/api/auth/otp/request", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify({
       identifier: payload.identifier.trim(),
-      phone: payload.identifier.trim(),
+      purpose: "LOGIN",
     }),
   });
   return {
@@ -126,7 +132,10 @@ export async function requestOtp(payload: OtpRequestPayload): Promise<{ success:
 }
 
 export async function loginWithOtp(payload: OtpLoginPayload): Promise<AuthSession> {
-  const res = await apiRequest<any>("/api/auth/login", {
+  if (!FULFILLMENT_OTP_LOGIN_ENABLED) {
+    throw new Error("OTP login is unavailable. Sign in with your password.");
+  }
+  const res = await apiRequest<any>(FULFILLMENT_LOGIN_PATH, {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify({

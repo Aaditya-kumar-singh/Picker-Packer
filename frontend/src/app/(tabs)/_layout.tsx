@@ -76,6 +76,7 @@ export default function TabLayout() {
         tabBarActiveBackgroundColor: roleActiveBg,
       }}
     >
+      <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen
         name="dashboard"
         options={{

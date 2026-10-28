@@ -100,7 +100,7 @@ export function DispatchScreen() {
                 </View>
 
                 <Text style={s.meta}>
-                  {o.totalItems} lines • ₹{o.grandTotal.toFixed(2)} ({o.paymentMethod})
+                  {o.totalItems} lines, ₹{o.grandTotal.toFixed(2)} ({o.paymentMethod})
                 </Text>
 
                 <View style={s.riderList}>
