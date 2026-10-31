@@ -70,7 +70,7 @@ export const CUBE_PALETTES = [
   { bg: "#F1F5F9", icon: "#475569", border: "#E2E8F0" }, // Slate
 ] as const;
 
-export function getCubePalette(order?: FulfillmentOrderDto | any, index = 0) {
+export function getCubePalette(_order?: FulfillmentOrderDto | any, index = 0) {
   return CUBE_PALETTES[(index + 1) % CUBE_PALETTES.length];
 }
 

@@ -3,7 +3,6 @@ import {
   setStoredToken,
   setStoredRole,
   clearStoredAuth,
-  getStoredRole,
 } from "./http";
 import type { UserRole } from "@/types";
 import { FULFILLMENT_OTP_LOGIN_ENABLED } from "@/config/auth";

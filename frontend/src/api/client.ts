@@ -8,7 +8,6 @@ export * from "./packerAppApi";
 
 import { pickerAppApi } from "./pickerAppApi";
 import { packerAppApi } from "./packerAppApi";
-import * as authApi from "./authApi";
 import type {
   FulfillmentOrderDto,
   FulfillmentOrderItemDto,
@@ -18,7 +17,6 @@ import type {
   PackerStatsDto,
   PackerCandidateDto,
   RiderCandidateDto,
-  FulfillmentStaffProfileDto,
 } from "@/types";
 
 // ==========================================

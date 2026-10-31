@@ -13,8 +13,6 @@ import {
   getStoredToken,
   getStoredRole,
   onUnauthorized,
-  setStoredToken,
-  setStoredRole,
   clearStoredAuth,
 } from "@/api/http";
 import * as authApi from "@/api/authApi";
@@ -151,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await authApi.requestOtp({ identifier });
+      await authApi.requestOtp({ identifier });
       // Never expose a server-returned development OTP to navigation or UI state.
       return { expiresIn: 300, masked: identifier };
     } catch (e: any) {

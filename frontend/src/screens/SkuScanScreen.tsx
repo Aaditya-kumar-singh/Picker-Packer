@@ -17,7 +17,7 @@ import { formatItemLocation, isOrderFullyPicked, nextPendingLine } from "@/domai
 import { pickerAppApi } from "@/api/pickerAppApi";
 import { beepSuccess } from "@/services/scanner";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
-import type { FulfillmentOrderDto, FulfillmentOrderItemDto } from "@/types";
+import type { FulfillmentOrderDto } from "@/types";
 
 export function SkuScanScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
