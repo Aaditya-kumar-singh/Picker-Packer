@@ -10,7 +10,6 @@ import {
   LoadingState,
   theme,
 } from "@/components/ui";
-import { useAuth } from "@/navigation/AppProvider";
 import { pickerAppApi } from "@/api/pickerAppApi";
 import { isPickingInProgress } from "@/domain/order";
 import type { FulfillmentOrderDto } from "@/types";
@@ -24,7 +23,6 @@ import {
 type SortMode = "order" | "date" | "items";
 
 export function OrdersScreen() {
-  const { picker } = useAuth();
   const { filter } = useLocalSearchParams<{ filter?: string }>();
   const inProgressOnly = filter === "in-progress";
   const { width } = useWindowDimensions();

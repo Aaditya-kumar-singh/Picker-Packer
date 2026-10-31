@@ -13,8 +13,8 @@ export function getPackageLabelLayout(settings: PackagePrinterSettings, orderNum
   const textWidthEm = Array.from(orderText).reduce((sum, char) => sum + (/[MW@#%]/.test(char) ? 1 : 0.62), 0);
   const orderFontMm = Math.min(2.65, orderWidth / Math.max(1, textWidthEm), contentHeight * 0.16 / 1.3);
   const orderHeight = orderFontMm * 1.3;
-  const logoWidth = Math.min(30, contentWidth * 0.75);
   const logoHeight = Math.min(5, contentHeight * 0.22);
+  const logoWidth = Math.min(30, contentWidth * 0.75, logoHeight * 6);
   const gap = Math.min(1, contentHeight * 0.04);
   const barcodeHeight = Math.min(settings.barcodeHeightMm, contentHeight - logoHeight - orderHeight - 2 * gap);
   const barcodeWidth = Math.min(settings.barcodeWidthMm, contentWidth);

@@ -8,7 +8,6 @@ import {
   EmptyState,
   ErrorBanner,
   LoadingState,
-  theme,
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 import { packerAppApi } from "@/api/packerAppApi";
@@ -242,7 +241,7 @@ export function PackerDashboardScreen({
           ) : (
             filteredOrders.map((o, idx) => {
               const palette = CUBE_PALETTES[idx % CUBE_PALETTES.length];
-              const { itemCount, totalUnits, packedUnits, pct } =
+              const { totalUnits, packedUnits, pct } =
                 getPackerStatsSummary(o);
               const complete = o.orderStatus === "PACKED";
 

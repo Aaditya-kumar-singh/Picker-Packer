@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ApiErrorEnvelope, ApiResponseEnvelope } from "@/types";
+import type { ApiErrorEnvelope } from "@/types";
 
 const TOKEN_KEY = "ybm.auth.jwt";
 const ROLE_KEY = "ybm.auth.role";

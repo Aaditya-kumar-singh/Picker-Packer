@@ -1,7 +1,7 @@
 import { Text, TextInput } from "@/components/Typography";
 // Packer Order Processing per packer-app-api.md
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -9,8 +9,6 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import {
   ErrorBanner,
   LoadingState,
-  PrimaryButton,
-  theme,
 } from "@/components/ui";
 import { useAuth } from "@/navigation/AppProvider";
 import { beepSuccess } from "@/services/scanner";
@@ -20,7 +18,6 @@ import { packerAppApi } from "@/api/packerAppApi";
 import { PackageLabelModal } from "@/components/PackageLabelModal";
 import type {
   FulfillmentOrderDto,
-  FulfillmentOrderItemDto,
   RawSalesOrderItemDto,
   RiderCandidateDto,
 } from "@/types";
@@ -31,8 +28,6 @@ export function PackerOrderScreen() {
   const numOrderId = parseInt(String(id), 10);
   const { picker } = useAuth();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const compact = width < 360;
 
   const [order, setOrder] = useState<FulfillmentOrderDto | null>(null);
   const [rawItems, setRawItems] = useState<RawSalesOrderItemDto[]>([]);
