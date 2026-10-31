@@ -3,7 +3,6 @@ import { Text } from "@/components/Typography";
 import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import {
   AppHeader,
   EmptyState,

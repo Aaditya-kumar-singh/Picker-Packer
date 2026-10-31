@@ -1,18 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
+import { getPrintLogoSource } from "@/utils/printLogoAsset";
 import { Text } from "@/components/Typography";
 import { packerAppApi } from "@/api/packerAppApi";
-import { packageLabelHtml } from "@/utils/packageLabel";
+import { getPackageLabelLayout, packageLabelHtml, type LabelBox } from "@/utils/packageLabel";
+import { printPackageLabel } from "@/utils/printPackageLabel";
 import {
   DEFAULT_PACKAGE_PRINTER_SETTINGS,
+  PAPER_SIZE_PRESETS,
   loadPackagePrinterSettings,
+  loadDefaultPaperSize,
   loadSavedPrinter,
   normalizePackagePrinterSettings,
   savePackagePrinterSettings,
+  saveDefaultPaperSize,
   saveSelectedPrinter,
   type PackagePrinterSettings,
+  type PaperSize,
 } from "@/utils/packagePrinterSettings";
 
 type Props = {
@@ -25,14 +31,20 @@ type Props = {
 };
 
 export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLabelAttached, backendMessage }: Props) {
+  const { width: windowWidth } = useWindowDimensions();
   const [barcodeImage, setBarcodeImage] = useState("");
+  const [barcodeDimensions, setBarcodeDimensions] = useState<{ uri: string; ratio: number } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [printWindowOpened, setPrintWindowOpened] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
   const [settings, setSettings] = useState<PackagePrinterSettings>(DEFAULT_PACKAGE_PRINTER_SETTINGS);
   const settingsRef = useRef(settings);
+  const [defaultPaperSize, setDefaultPaperSize] = useState<PaperSize | null>(null);
+  const defaultPaperRef = useRef<PaperSize | null>(null);
+  const [savingDefault, setSavingDefault] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"paper" | "margins" | "layout" | "barcode">("paper");
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [selectedPrinter, setSelectedPrinter] = useState<{ name: string; url: string } | null>(null);
@@ -40,15 +52,21 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
 
   useEffect(() => {
     let active = true;
-    void Promise.all([loadPackagePrinterSettings(), loadSavedPrinter()]).then(([savedSettings, printer]) => {
+    if (!visible) return;
+    void loadPackagePrinterSettings().then(async (savedSettings) => {
+      const [printer, savedDefault] = await Promise.all([loadSavedPrinter(), loadDefaultPaperSize()]);
       if (!active) return;
       setSettings(savedSettings);
       settingsRef.current = savedSettings;
+      defaultPaperRef.current = savedDefault;
+      setDefaultPaperSize(savedDefault);
       setSelectedPrinter(printer);
       setSettingsLoaded(true);
+    }).catch(() => {
+      if (active) setSettingsError("Could not load saved printer settings.");
     });
     return () => { active = false; };
-  }, []);
+  }, [visible]);
   useEffect(() => {
     setBarcodeImage("");
     setPrintWindowOpened(false);
@@ -78,20 +96,76 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
       .finally(() => setGenerating(false));
   }
 
-  const barcodePreview = barcodeImage || null;
-  const previewScale = Math.min(240 / settings.paperWidthMm, 158 / settings.paperHeightMm);
-  const horizontalJustify = settings.horizontalAlign === "left" ? "flex-start" : settings.horizontalAlign === "right" ? "flex-end" : "center";
-  const verticalJustify = settings.verticalAlign === "top" ? "flex-start" : settings.verticalAlign === "bottom" ? "flex-end" : "center";
+  useEffect(() => {
+    if (!barcodeImage) return;
+    let active = true;
+    Image.getSize(barcodeImage,
+      (width, height) => { if (active && height > 0) setBarcodeDimensions({ uri: barcodeImage, ratio: width / height }); },
+      () => { /* Fall back to the saved aspect ratio if metadata is unavailable. */ });
+    return () => { active = false; };
+  }, [barcodeImage]);
 
+  const barcodePreview = barcodeImage || null;
+  const barcodeAspectRatio = barcodeDimensions?.uri === barcodeImage ? barcodeDimensions.ratio : undefined;
+  const previewMaxWidth = Math.min(320, Math.max(200, windowWidth - 96));
+  const previewScale = Math.min(previewMaxWidth / settings.paperWidthMm, 320 / settings.paperHeightMm);
+  const labelWidthPx = settings.paperWidthMm * previewScale;
+  const labelHeightPx = settings.paperHeightMm * previewScale;
+  const labelLayout = getPackageLabelLayout(settings, orderNumber, barcodeAspectRatio);
+  const portrait = settings.paperHeightMm >= settings.paperWidthMm;
+  const currentSizeIsDefault = defaultPaperSize?.paperWidthMm === settings.paperWidthMm
+    && defaultPaperSize?.paperHeightMm === settings.paperHeightMm;
+
+  function changeOrientation(next: "portrait" | "landscape") {
+    if ((next === "portrait") !== portrait) {
+      void updateSettings({ paperWidthMm: settings.paperHeightMm, paperHeightMm: settings.paperWidthMm });
+    }
+  }
+  const previewBox = (box: LabelBox) => ({
+    position: "absolute" as const,
+    left: box.x * previewScale,
+    top: box.y * previewScale,
+    width: box.width * previewScale,
+    height: box.height * previewScale,
+  });
   async function updateSettings(patch: Partial<PackagePrinterSettings>) {
     const next = normalizePackagePrinterSettings({ ...settingsRef.current, ...patch });
     settingsRef.current = next;
     setSettings(next);
     setSettingsError(null);
     try {
-      await savePackagePrinterSettings(next);
+      const paperToPersist = defaultPaperRef.current ?? DEFAULT_PACKAGE_PRINTER_SETTINGS;
+      await savePackagePrinterSettings({
+        ...next,
+        paperWidthMm: paperToPersist.paperWidthMm,
+        paperHeightMm: paperToPersist.paperHeightMm,
+      });
     } catch {
       setSettingsError("Could not save these settings on this device.");
+    }
+  }
+
+  async function toggleDefaultPaper(checked: boolean) {
+    if (!settingsLoaded || savingDefault) return;
+    setSavingDefault(true);
+    setSettingsError(null);
+    const savedDefault = checked
+      ? { paperWidthMm: settingsRef.current.paperWidthMm, paperHeightMm: settingsRef.current.paperHeightMm }
+      : null;
+    try {
+      await saveDefaultPaperSize(savedDefault);
+      defaultPaperRef.current = savedDefault;
+      setDefaultPaperSize(savedDefault);
+      const paperToPersist = savedDefault ?? DEFAULT_PACKAGE_PRINTER_SETTINGS;
+      await savePackagePrinterSettings({
+        ...settingsRef.current,
+        paperWidthMm: paperToPersist.paperWidthMm,
+        paperHeightMm: paperToPersist.paperHeightMm,
+      });
+    } catch {
+      setSettingsError("Could not update the default paper size. Try again.");
+    } finally {
+      setSavingDefault(false);
     }
   }
 
@@ -112,15 +186,17 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
   }
 
   async function openPrintWindow() {
-    if (!barcodePreview || printing) return;
+    if (!barcodePreview || printing || !settingsLoaded || labelLayout.error) return;
     setPrinting(true);
     setPrintError(null);
     setPrintWindowOpened(false);
     try {
-      await Print.printAsync({
-        html: packageLabelHtml(barcodePreview, orderNumber, settings),
-        ...(Platform.OS === "ios" && selectedPrinter ? { printerUrl: selectedPrinter.url } : {}),
-      });
+      const logoImage = await getPrintLogoSource();
+      await printPackageLabel(
+        packageLabelHtml(barcodePreview, orderNumber, settings, logoImage, barcodeAspectRatio),
+        settings,
+        Platform.OS === "ios" ? selectedPrinter?.url : undefined,
+      );
       // Android resolves when the print window opens, before the printer finishes.
       setPrintWindowOpened(true);
     } catch (error: any) {
@@ -151,18 +227,31 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator
           >
-            <View style={s.preview}>
+            <View style={[s.preview, { minHeight: Math.max(226, labelHeightPx + 54) }]}>
               {barcodePreview ? (
-                <View style={[s.labelPreview, {
-                  width: settings.paperWidthMm * previewScale,
-                  height: settings.paperHeightMm * previewScale,
-                  padding: settings.marginMm * previewScale,
-                }]}>
-                  <Text style={s.previewCaption}>YOURBUILDMART, PACKING BARCODE</Text>
-                  <View style={{ flex: 1, width: "100%", flexDirection: "row", alignItems: verticalJustify, justifyContent: horizontalJustify, overflow: "hidden" }}>
-                    <Image source={{ uri: barcodePreview }} style={{ width: settings.barcodeWidthMm * previewScale, height: settings.barcodeHeightMm * previewScale }} resizeMode="contain" />
-                  </View>
-                  <Text style={s.previewOrder}>Order {orderNumber}</Text>
+                <View style={[s.labelPreview, { width: labelWidthPx, height: labelHeightPx }]}>
+                  <Image
+                    source={require("../../assets/images/yourbuildmart-wordmark.png")}
+                    style={[previewBox(labelLayout.logo), { tintColor: "#000000" }]}
+                    resizeMode="cover"
+                    accessibilityLabel="YourBuildMart logo in black and white"
+                  />
+                  <Image
+                    source={{ uri: barcodePreview }}
+                    style={previewBox(labelLayout.barcode)}
+                    resizeMode="contain"
+                    accessibilityLabel="Packing barcode"
+                  />
+                  <Text
+                    style={[s.previewOrder, previewBox(labelLayout.order), {
+                      textAlign: settings.horizontalAlign,
+                      fontFamily: Platform.OS === "android" ? "sans-serif" : "Arial",
+                      fontSize: labelLayout.orderFontMm * previewScale,
+                      lineHeight: labelLayout.order.height * previewScale,
+                    }]}
+                    allowFontScaling={false}
+                    numberOfLines={1}
+                  >{labelLayout.orderText}</Text>
                 </View>
               ) : (
                 <>
@@ -174,7 +263,7 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
 
             <View style={s.infoRow}>
               <Ionicons name="print-outline" size={18} color="#D95D00" />
-              <Text style={s.infoText}>{Platform.OS === "ios" && selectedPrinter ? `Saved printer: ${selectedPrinter.name}` : "Choose your connected Bluetooth or Wi-Fi printer in the system print screen."} Copies and printer-specific options are set there.</Text>
+              <Text style={s.infoText}>{settings.paperWidthMm} × {settings.paperHeightMm} mm label · {settings.autoFit ? "Auto fit" : "Manual fit"}. Match this page size with the printer settings in the system print screen.</Text>
             </View>
             <Pressable accessibilityRole="button" disabled={!settingsLoaded} onPress={() => setSettingsOpen((open) => !open)} style={[s.settingsToggle, !settingsLoaded && s.disabled]}>
               <Ionicons name="settings-outline" size={17} color="#C2410C" />
@@ -183,7 +272,18 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
             </Pressable>
             {settingsOpen ? (
               <View style={s.settingsPanel}>
-                <Text style={s.settingsHeading}>CONNECTED PRINTER</Text>
+                <View style={s.tabs}>
+                  {(["paper", "margins", "layout", "barcode"] as const).map((tab) => (
+                    <Pressable key={tab} accessibilityRole="tab" accessibilityState={{ selected: settingsTab === tab }}
+                      accessibilityLabel={`Page setup: ${tab}`} onPress={() => setSettingsTab(tab)}
+                      style={[s.tab, settingsTab === tab && s.tabActive]}>
+                      <Text style={[s.tabText, settingsTab === tab && s.tabTextActive]}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {settingsTab === "paper" ? (
+                  <>
+                    <Text style={[s.settingsHeading, s.settingsSectionHeading]}>CONNECTED PRINTER</Text>
                 {Platform.OS === "ios" ? (
                   <>
                     <Pressable accessibilityRole="button" disabled={selectingPrinter} onPress={() => void choosePrinter()} style={s.settingsAction}>
@@ -197,18 +297,80 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
 
                 <Text style={[s.settingsHeading, s.settingsSectionHeading]}>PAPER SIZE (MM)</Text>
                 <View style={s.presetRow}>
-                  <Pressable onPress={() => void updateSettings({ paperWidthMm: 75, paperHeightMm: 50 })} style={s.presetButton}><Text style={s.presetText}>75 × 50</Text></Pressable>
-                  <Pressable onPress={() => void updateSettings({ paperWidthMm: 100, paperHeightMm: 150 })} style={s.presetButton}><Text style={s.presetText}>100 × 150</Text></Pressable>
+                  {PAPER_SIZE_PRESETS.map((preset) => {
+                    const selected = (settings.paperWidthMm === preset.width && settings.paperHeightMm === preset.height)
+                      || (settings.paperWidthMm === preset.height && settings.paperHeightMm === preset.width);
+                    return (
+                      <Pressable key={preset.label} accessibilityRole="button"
+                        accessibilityState={{ selected }} accessibilityLabel={`Use ${preset.label} paper`}
+                        onPress={() => void updateSettings({ paperWidthMm: preset.width, paperHeightMm: preset.height })}
+                        style={[s.presetButton, selected && s.presetSelected]}>
+                        <Text style={[s.presetText, selected && s.presetSelectedText]}>{preset.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+
+
+
                 </View>
                 <SettingStepper label="Paper width" value={settings.paperWidthMm} onChange={(value) => void updateSettings({ paperWidthMm: value })} />
                 <SettingStepper label="Paper height" value={settings.paperHeightMm} onChange={(value) => void updateSettings({ paperHeightMm: value })} />
-                <SettingStepper label="Margins" value={settings.marginMm} onChange={(value) => void updateSettings({ marginMm: value })} />
-                <Text style={[s.settingsHeading, s.settingsSectionHeading]}>BARCODE SIZE (MM)</Text>
+                <AlignmentOptions label="Orientation" value={portrait ? "portrait" : "landscape"} options={["portrait", "landscape"]} onChange={changeOrientation} />
+                <View style={s.defaultPaperSection}>
+                  <ToggleSetting
+                    label="Use this paper size as default"
+                    value={currentSizeIsDefault}
+                    disabled={savingDefault || !settingsLoaded}
+                    onChange={(checked) => void toggleDefaultPaper(checked)}
+                  />
+                  {defaultPaperSize ? (
+                    <Text style={s.settingsHelp}>Saved default: {defaultPaperSize.paperWidthMm} × {defaultPaperSize.paperHeightMm} mm. {currentSizeIsDefault ? "Uncheck to remove it." : "Check this size to replace it, or remove the saved default below."}</Text>
+                  ) : (
+                    <Text style={s.settingsHelp}>No saved default. New labels start at 50 × 25 mm. Other sizes can be used once without saving.</Text>
+                  )}
+                  {defaultPaperSize && !currentSizeIsDefault ? (
+                    <Pressable accessibilityRole="button" disabled={savingDefault} accessibilityLabel="Remove saved default paper size"
+                      onPress={() => void toggleDefaultPaper(false)} style={s.removeDefaultAction}>
+                      <Text style={s.removeDefaultText}>Remove saved default</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                <Text style={s.settingsHelp}>Loaded paper size cannot be detected with the current print integration. Match the size here and in the system print dialog.</Text>
+                  </>
+                ) : null}
+                {settingsTab === "margins" ? (
+                  <>
+                    <Text style={[s.settingsHeading, s.settingsSectionHeading]}>PAGE MARGINS · MM</Text>
+                    <SettingStepper label="Top" value={settings.marginTopMm} onChange={(value) => void updateSettings({ marginTopMm: value })} />
+                    <SettingStepper label="Bottom" value={settings.marginBottomMm} onChange={(value) => void updateSettings({ marginBottomMm: value })} />
+                    <SettingStepper label="Left" value={settings.marginLeftMm} onChange={(value) => void updateSettings({ marginLeftMm: value })} />
+                    <SettingStepper label="Right" value={settings.marginRightMm} onChange={(value) => void updateSettings({ marginRightMm: value })} />
+                    <SettingStepper label="Gutter" value={settings.gutterMm} onChange={(value) => void updateSettings({ gutterMm: value })} />
+                    <AlignmentOptions label="Gutter side" value={settings.gutterPosition} options={["left", "right"]} onChange={(value) => void updateSettings({ gutterPosition: value })} />
+                    <Text style={s.settingsHelp}>Printable area: {labelLayout.printableWidthMm.toFixed(1)} × {labelLayout.printableHeightMm.toFixed(1)} mm.</Text>
+                  </>
+                ) : null}
+                {settingsTab === "barcode" ? (
+                  <>
+                    <Text style={[s.settingsHeading, s.settingsSectionHeading]}>BARCODE SIZE · MM</Text>
+                    <ToggleSetting label="Automatically fit barcode to paper" value={settings.autoFit} onChange={(value) => void updateSettings({ autoFit: value })} />
+                    {!settings.autoFit ? (
+                      <>
                 <SettingStepper label="Width" value={settings.barcodeWidthMm} onChange={(value) => void updateSettings({ barcodeWidthMm: value })} />
                 <SettingStepper label="Height" value={settings.barcodeHeightMm} onChange={(value) => void updateSettings({ barcodeHeightMm: value })} />
+                      </>
+                    ) : null}
+                    <Text style={s.settingsHelp}>Printed barcode: {labelLayout.barcode.width.toFixed(1)} × {labelLayout.barcode.height.toFixed(1)} mm. Image proportions are preserved.</Text>
+                  </>
+                ) : null}
+                {settingsTab === "layout" ? (
+                  <>
                 <Text style={[s.settingsHeading, s.settingsSectionHeading]}>ALIGNMENT</Text>
                 <AlignmentOptions label="Horizontal" value={settings.horizontalAlign} options={["left", "center", "right"]} onChange={(value) => void updateSettings({ horizontalAlign: value as PackagePrinterSettings["horizontalAlign"] })} />
                 <AlignmentOptions label="Vertical" value={settings.verticalAlign} options={["top", "center", "bottom"]} onChange={(value) => void updateSettings({ verticalAlign: value as PackagePrinterSettings["verticalAlign"] })} />
+                    <Text style={s.settingsHelp}>Each page contains the warehouse logo, barcode and order number. The layout adjusts to the selected paper size.</Text>
+                  </>
+                ) : null}
                 {!settingsLoaded ? <Text style={s.settingsHelp}>Loading saved settings…</Text> : <Text style={s.savedText}>Settings save automatically on this device.</Text>}
                 {settingsError ? <Text style={s.errorText}>{settingsError}</Text> : null}
               </View>
@@ -217,6 +379,8 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
               <Ionicons name="information-circle-outline" size={18} color="#92400E" />
               <Text style={s.warningText}>This barcode is generated by the warehouse server and is used to verify the packed order.</Text>
             </View>
+            {labelLayout.error ? <Text style={s.errorText}>{labelLayout.error}</Text> : null}
+            {labelLayout.warning ? <Text style={s.warningText}>{labelLayout.warning}</Text> : null}
             {printWindowOpened ? (
               <Text style={s.successText}>Print screen opened. Confirm printing there, then check and attach the sticker.</Text>
             ) : null}
@@ -236,10 +400,10 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Print package barcode"
-            accessibilityState={{ disabled: !barcodePreview || printing || generating }}
-            disabled={!barcodePreview || printing || generating}
+            accessibilityState={{ disabled: !barcodePreview || printing || generating || !settingsLoaded || !!labelLayout.error }}
+            disabled={!barcodePreview || printing || generating || !settingsLoaded || !!labelLayout.error}
             onPress={() => void openPrintWindow()}
-            style={({ pressed }) => [s.printButton, (!barcodePreview || printing || generating) && s.disabled, pressed && barcodePreview && !printing && !generating && { opacity: 0.85 }]}
+            style={({ pressed }) => [s.printButton, (!barcodePreview || printing || generating || !settingsLoaded || !!labelLayout.error) && s.disabled, pressed && barcodePreview && !printing && !generating && { opacity: 0.85 }]}
           >
             <Ionicons name={printWindowOpened ? "refresh" : "print-outline"} size={19} color="#FFFFFF" />
             <Text style={s.printButtonText}>{generating ? "Generating barcode…" : printing ? "Opening printer…" : printWindowOpened ? "Reprint Package Barcode" : "Choose Printer & Print"}</Text>
@@ -270,9 +434,8 @@ const s = StyleSheet.create({
   modalScroll: { flexShrink: 1 },
   modalScrollContent: { paddingBottom: 8 },
   preview: { minHeight: 226, alignItems: "center", justifyContent: "center", padding: 12, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 14 },
-  labelPreview: { alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1", overflow: "hidden" },
-  previewCaption: { fontSize: 10, fontWeight: "800", color: "#64748B", marginTop: 5 },
-  previewOrder: { fontSize: 8, color: "#475569", marginTop: 1 },
+  labelPreview: { position: "relative", backgroundColor: "#FFFFFF", overflow: "hidden" },
+  previewOrder: { color: "#000000", fontWeight: "400", includeFontPadding: false, textAlignVertical: "center" },
   placeholder: { fontSize: 12, color: "#64748B", textAlign: "center", marginTop: 9 },
   infoRow: { flexDirection: "row", gap: 8, alignItems: "flex-start", marginTop: 12 },
   infoText: { flex: 1, fontSize: 11, lineHeight: 16, color: "#475569" },
@@ -284,22 +447,34 @@ const s = StyleSheet.create({
   settingsHelp: { fontSize: 11, lineHeight: 16, color: "#64748B", marginTop: 6 },
   settingsAction: { minHeight: 38, justifyContent: "center", alignItems: "center", borderRadius: 9, backgroundColor: "#EFF6FF", marginTop: 7 },
   settingsActionText: { fontSize: 12, fontWeight: "800", color: "#1D4ED8" },
-  presetRow: { flexDirection: "row", gap: 8, marginTop: 6, marginBottom: 6 },
-  presetButton: { minHeight: 34, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#F1F5F9" },
+  tabs: { flexDirection: "row", gap: 4, padding: 4, borderRadius: 10, backgroundColor: "#F1F5F9" },
+  tab: { flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 8 },
+  tabActive: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1" },
+  tabText: { fontSize: 10, fontWeight: "700", color: "#475569" },
+  tabTextActive: { fontWeight: "800", color: "#C2410C" },
+  presetRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6, marginBottom: 6 },
+  presetButton: { minHeight: 44, flexGrow: 1, flexBasis: "28%", paddingHorizontal: 5, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#F1F5F9" },
+  presetSelected: { backgroundColor: "#FFEDD5", borderWidth: 1, borderColor: "#FDBA74" },
+  presetSelectedText: { color: "#9A3412" },
   presetText: { fontSize: 11, fontWeight: "800", color: "#334155" },
   stepperRow: { minHeight: 46, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
   stepperLabel: { flex: 1, flexShrink: 1, fontSize: 13, color: "#334155" },
-  stepperControls: { flexDirection: "row", alignItems: "center", gap: 7 },
-  stepperButton: { width: 34, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: "#F1F5F9" },
+  stepperControls: { flexDirection: "row", alignItems: "center", gap: 5, flexShrink: 0 },
+  stepperButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: "#F1F5F9" },
   stepperButtonText: { fontSize: 18, fontWeight: "700", color: "#334155" },
-  stepperInput: { width: 68, height: 36, paddingHorizontal: 4, textAlign: "center", textAlignVertical: "center", includeFontPadding: false, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, fontSize: 15, fontWeight: "700", color: "#0F172A", backgroundColor: "#FFFFFF" },
+  stepperInput: { width: 60, minWidth: 60, height: 44, paddingHorizontal: 4, paddingVertical: 2, textAlign: "center", textAlignVertical: "center", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, fontSize: 15, fontWeight: "700", color: "#0F172A", backgroundColor: "#FFFFFF" },
   alignRow: { minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   alignLabel: { fontSize: 12, color: "#334155" },
   alignOptions: { flexDirection: "row", gap: 4 },
-  alignOption: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 7, backgroundColor: "#F1F5F9" },
+  alignOption: { minHeight: 44, minWidth: 48, justifyContent: "center", alignItems: "center", paddingHorizontal: 6, borderRadius: 7, backgroundColor: "#F1F5F9" },
   alignOptionSelected: { backgroundColor: "#FFEDD5" },
   alignOptionText: { fontSize: 10, color: "#475569", textTransform: "capitalize" },
   alignOptionTextSelected: { color: "#C2410C", fontWeight: "800" },
+  defaultPaperSection: { marginTop: 12, paddingTop: 6, borderTopWidth: 1, borderTopColor: "#E2E8F0" },
+  removeDefaultAction: { alignSelf: "flex-start", minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
+  removeDefaultText: { fontSize: 12, fontWeight: "700", color: "#C2410C" },
+  toggleSetting: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  toggleText: { fontSize: 12, flex: 1, fontWeight: "600", color: "#334155" },
   savedText: { fontSize: 10, fontWeight: "700", color: "#15803D", marginTop: 8 },
   warningRow: { flexDirection: "row", gap: 8, alignItems: "flex-start", marginTop: 10, padding: 10, backgroundColor: "#FFFBEB", borderRadius: 9 },
   warningText: { flex: 1, fontSize: 11, lineHeight: 16, color: "#92400E" },
@@ -325,9 +500,9 @@ function SettingStepper({ label, value, onChange }: { label: string; value: numb
         <Pressable accessibilityRole="button" accessibilityLabel={`Decrease ${label}`} onPress={() => onChange(Math.max(0, value - 1))} style={s.stepperButton}><Text style={s.stepperButtonText}>−</Text></Pressable>
         <TextInput
           value={draft}
-          onChangeText={(text) => setDraft(text.replace(/[^0-9]/g, ""))}
-          onEndEditing={() => onChange(Number(draft) || value)}
-          keyboardType="number-pad"
+          onChangeText={(text) => setDraft(text.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
+          onEndEditing={() => onChange(draft.trim() && Number.isFinite(Number(draft)) ? Number(draft) : value)}
+          keyboardType="decimal-pad"
           style={s.stepperInput}
           accessibilityLabel={`${label} in millimeters`}
         />
@@ -337,13 +512,23 @@ function SettingStepper({ label, value, onChange }: { label: string; value: numb
   );
 }
 
+function ToggleSetting({ label, value, disabled, onChange }: { label: string; value: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <Pressable accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{ checked: value, disabled }} disabled={disabled}
+      onPress={() => onChange(!value)} style={[s.toggleSetting, disabled && s.disabled]}>
+      <Text style={s.toggleText}>{label}</Text>
+      <Ionicons name={value ? "checkbox" : "square-outline"} size={24} color={value ? "#C2410C" : "#64748B"} />
+    </Pressable>
+  );
+}
+
 function AlignmentOptions<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: T[]; onChange: (value: T) => void }) {
   return (
     <View style={s.alignRow}>
       <Text style={s.alignLabel}>{label}</Text>
       <View style={s.alignOptions}>
         {options.map((option) => (
-          <Pressable key={option} onPress={() => onChange(option)} style={[s.alignOption, value === option && s.alignOptionSelected]}>
+          <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: value === option }} accessibilityLabel={`${label}: ${option}`} onPress={() => onChange(option)} style={[s.alignOption, value === option && s.alignOptionSelected]}>
             <Text style={[s.alignOptionText, value === option && s.alignOptionTextSelected]}>{option}</Text>
           </Pressable>
         ))}

@@ -40,3 +40,4 @@ temp-WarehousePicker/**/*.log
 # Keep local product catalog photos out of Git
 /product-images/
 /product-images.zip
+

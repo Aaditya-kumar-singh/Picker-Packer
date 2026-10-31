@@ -1,6 +1,6 @@
 import { Text, TextInput } from "@/components/Typography";
 import { useState } from "react";
-import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { AppHeader, PrimaryButton, SecondaryButton, Screen, theme } from "@/components/ui";
@@ -22,7 +22,6 @@ export function ProfileScreen() {
   const [editIdNumber, setEditIdNumber] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  const [editSuccess, setEditSuccess] = useState(false);
   const [failedPhotoUri, setFailedPhotoUri] = useState<string | null>(null);
 
   // Change Password Modal State
@@ -54,7 +53,6 @@ export function ProfileScreen() {
     setEditIdType(p?.idCardType || "AADHAAR");
     setEditIdNumber(p?.idCardNumber || "");
     setEditError(null);
-    setEditSuccess(false);
     setEditVisible(true);
   }
 
@@ -72,7 +70,6 @@ export function ProfileScreen() {
       });
       if (result.ok) {
         await refreshProfile();
-        setEditSuccess(true);
       } else {
         setEditError(result.error || authError || "Failed to update profile. Please try again.");
       }
