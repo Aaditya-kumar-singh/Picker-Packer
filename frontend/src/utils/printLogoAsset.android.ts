@@ -1,7 +1,13 @@
-import { Image } from "react-native";
+import { Asset } from "expo-asset";
+import { File } from "expo-file-system";
+
+let cachedDataUri: string | null = null;
 
 export async function getPrintLogoSource(): Promise<string> {
-  const source = Image.resolveAssetSource(require("../../assets/images/yourbuildmart-wordmark.png"));
-  if (!source?.uri) throw new Error("Could not load the YourBuildMart logo for printing.");
-  return source.uri;
+  if (cachedDataUri) return cachedDataUri;
+  const logoAsset = Asset.fromModule(require("../../assets/images/yourbuildmart-wordmark.png"));
+  await logoAsset.downloadAsync();
+  if (!logoAsset.localUri) throw new Error("Could not load the YourBuildMart logo for printing.");
+  cachedDataUri = `data:image/png;base64,${await new File(logoAsset.localUri).base64()}`;
+  return cachedDataUri;
 }
