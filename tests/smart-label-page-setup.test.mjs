@@ -119,3 +119,94 @@ test("saves independent margins without overwriting the selected printer", async
   assert.equal(restored.gutterMm, 1.5);
   assert.equal((await settingsModule.loadSavedPrinter()).name, "Warehouse");
 });
+
+test("checking default saves exactly one paper size and restores it for new labels", async () => {
+  storage.clear();
+  const key = "ybm.package-printer-settings.v1";
+  storage.set(`${key}.50x25-logo-barcode-order.v2`, "1");
+  storage.set(`${key}.default-paper-migration.v1`, "1");
+  storage.set(`${key}.ios-printer`, JSON.stringify({ name: "Warehouse", url: "ipp://printer" }));
+  await settingsModule.savePackagePrinterSettings(normalize({
+    paperWidthMm: 100, paperHeightMm: 150, marginLeftMm: 3, autoFit: false,
+  }));
+
+  // Unsaved paper selections are for the current print only.
+  let loaded = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(loaded.paperWidthMm, 50);
+  assert.equal(loaded.paperHeightMm, 25);
+
+  await settingsModule.saveDefaultPaperSize({ paperWidthMm: 75, paperHeightMm: 50 });
+  assert.equal(storage.has(`${key}.default-paper-size.v1`), true);
+  loaded = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(loaded.paperWidthMm, 75);
+  assert.equal(loaded.paperHeightMm, 50);
+  assert.equal(loaded.marginLeftMm, 3);
+  assert.equal(loaded.autoFit, false);
+
+  // A one-off print at another size must not silently replace the default.
+  await settingsModule.savePackagePrinterSettings(normalize({ ...loaded, paperWidthMm: 100, paperHeightMm: 150 }));
+  const reopened = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(reopened.paperWidthMm, 75);
+  assert.equal(reopened.paperHeightMm, 50);
+  assert.equal((await settingsModule.loadSavedPrinter()).name, "Warehouse");
+});
+
+test("unchecking removes the saved default, restores built-in size, and preserves other settings", async () => {
+  const key = "ybm.package-printer-settings.v1";
+  await settingsModule.saveDefaultPaperSize(null);
+  assert.equal(storage.has(`${key}.default-paper-size.v1`), false);
+  assert.equal(await settingsModule.loadDefaultPaperSize(), null);
+  const reloaded = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(reloaded.paperWidthMm, 50);
+  assert.equal(reloaded.paperHeightMm, 25);
+  assert.equal(reloaded.marginLeftMm, 3);
+  assert.equal(reloaded.autoFit, false);
+  assert.equal((await settingsModule.loadSavedPrinter()).name, "Warehouse");
+});
+
+test("a different custom or landscape size can replace the saved default", async () => {
+  storage.clear();
+  storage.set("ybm.package-printer-settings.v1.50x25-logo-barcode-order.v2", "1");
+  await settingsModule.saveDefaultPaperSize({ paperWidthMm: 100, paperHeightMm: 150 });
+  await settingsModule.saveDefaultPaperSize({ paperWidthMm: 150, paperHeightMm: 100 });
+  const loaded = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(loaded.paperWidthMm, 150);
+  assert.equal(loaded.paperHeightMm, 100);
+  assert.equal((await settingsModule.loadDefaultPaperSize()).paperHeightMm, 100);
+});
+
+test("one-time migration preserves a previously saved paper size without restoring it after clearing", async () => {
+  storage.clear();
+  const key = "ybm.package-printer-settings.v1";
+  storage.set(`${key}.50x25-logo-barcode-order.v2`, "1");
+  storage.set(key, JSON.stringify({ ...defaults, paperWidthMm: 75, paperHeightMm: 50 }));
+  const upgraded = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(upgraded.paperWidthMm, 75);
+  assert.equal(upgraded.paperHeightMm, 50);
+  assert.equal((await settingsModule.loadDefaultPaperSize()).paperWidthMm, 75);
+  assert.equal(storage.get(`${key}.default-paper-migration.v1`), "1");
+
+  await settingsModule.saveDefaultPaperSize(null);
+  assert.equal(storage.has(`${key}.default-paper-size.v1`), false);
+  const withoutDefault = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(withoutDefault.paperWidthMm, 50);
+  assert.equal(withoutDefault.paperHeightMm, 25);
+  assert.equal(await settingsModule.loadDefaultPaperSize(), null);
+});
+
+test("corrupt or invalid saved defaults fall back safely, without becoming defaults", async () => {
+  const key = "ybm.package-printer-settings.v1.default-paper-size.v1";
+  await assert.rejects(
+    settingsModule.saveDefaultPaperSize({ paperWidthMm: 0, paperHeightMm: 50 }),
+    /valid paper size/,
+  );
+  storage.set(key, JSON.stringify({ paperWidthMm: 9999, paperHeightMm: 50 }));
+  assert.equal(await settingsModule.loadDefaultPaperSize(), null);
+  let restored = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(restored.paperWidthMm, 50);
+  storage.set(key, "{invalid");
+  assert.equal(await settingsModule.loadDefaultPaperSize(), null);
+  restored = await settingsModule.loadPackagePrinterSettings();
+  assert.equal(restored.paperWidthMm, 50);
+  storage.delete(key);
+});

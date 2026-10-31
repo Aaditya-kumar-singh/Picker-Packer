@@ -11,11 +11,14 @@ import {
   DEFAULT_PACKAGE_PRINTER_SETTINGS,
   PAPER_SIZE_PRESETS,
   loadPackagePrinterSettings,
+  loadDefaultPaperSize,
   loadSavedPrinter,
   normalizePackagePrinterSettings,
   savePackagePrinterSettings,
+  saveDefaultPaperSize,
   saveSelectedPrinter,
   type PackagePrinterSettings,
+  type PaperSize,
 } from "@/utils/packagePrinterSettings";
 
 type Props = {
@@ -37,6 +40,9 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
   const [printError, setPrintError] = useState<string | null>(null);
   const [settings, setSettings] = useState<PackagePrinterSettings>(DEFAULT_PACKAGE_PRINTER_SETTINGS);
   const settingsRef = useRef(settings);
+  const [defaultPaperSize, setDefaultPaperSize] = useState<PaperSize | null>(null);
+  const defaultPaperRef = useRef<PaperSize | null>(null);
+  const [savingDefault, setSavingDefault] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"paper" | "margins" | "layout" | "barcode">("paper");
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -46,15 +52,21 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
 
   useEffect(() => {
     let active = true;
-    void Promise.all([loadPackagePrinterSettings(), loadSavedPrinter()]).then(([savedSettings, printer]) => {
+    if (!visible) return;
+    void loadPackagePrinterSettings().then(async (savedSettings) => {
+      const [printer, savedDefault] = await Promise.all([loadSavedPrinter(), loadDefaultPaperSize()]);
       if (!active) return;
       setSettings(savedSettings);
       settingsRef.current = savedSettings;
+      defaultPaperRef.current = savedDefault;
+      setDefaultPaperSize(savedDefault);
       setSelectedPrinter(printer);
       setSettingsLoaded(true);
+    }).catch(() => {
+      if (active) setSettingsError("Could not load saved printer settings.");
     });
     return () => { active = false; };
-  }, []);
+  }, [visible]);
   useEffect(() => {
     setBarcodeImage("");
     setPrintWindowOpened(false);
@@ -101,6 +113,8 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
   const labelHeightPx = settings.paperHeightMm * previewScale;
   const labelLayout = getPackageLabelLayout(settings, orderNumber, barcodeAspectRatio);
   const portrait = settings.paperHeightMm >= settings.paperWidthMm;
+  const currentSizeIsDefault = defaultPaperSize?.paperWidthMm === settings.paperWidthMm
+    && defaultPaperSize?.paperHeightMm === settings.paperHeightMm;
 
   function changeOrientation(next: "portrait" | "landscape") {
     if ((next === "portrait") !== portrait) {
@@ -120,9 +134,38 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
     setSettings(next);
     setSettingsError(null);
     try {
-      await savePackagePrinterSettings(next);
+      const paperToPersist = defaultPaperRef.current ?? DEFAULT_PACKAGE_PRINTER_SETTINGS;
+      await savePackagePrinterSettings({
+        ...next,
+        paperWidthMm: paperToPersist.paperWidthMm,
+        paperHeightMm: paperToPersist.paperHeightMm,
+      });
     } catch {
       setSettingsError("Could not save these settings on this device.");
+    }
+  }
+
+  async function toggleDefaultPaper(checked: boolean) {
+    if (!settingsLoaded || savingDefault) return;
+    setSavingDefault(true);
+    setSettingsError(null);
+    const savedDefault = checked
+      ? { paperWidthMm: settingsRef.current.paperWidthMm, paperHeightMm: settingsRef.current.paperHeightMm }
+      : null;
+    try {
+      await saveDefaultPaperSize(savedDefault);
+      defaultPaperRef.current = savedDefault;
+      setDefaultPaperSize(savedDefault);
+      const paperToPersist = savedDefault ?? DEFAULT_PACKAGE_PRINTER_SETTINGS;
+      await savePackagePrinterSettings({
+        ...settingsRef.current,
+        paperWidthMm: paperToPersist.paperWidthMm,
+        paperHeightMm: paperToPersist.paperHeightMm,
+      });
+    } catch {
+      setSettingsError("Could not update the default paper size. Try again.");
+    } finally {
+      setSavingDefault(false);
     }
   }
 
@@ -273,6 +316,25 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
                 <SettingStepper label="Paper width" value={settings.paperWidthMm} onChange={(value) => void updateSettings({ paperWidthMm: value })} />
                 <SettingStepper label="Paper height" value={settings.paperHeightMm} onChange={(value) => void updateSettings({ paperHeightMm: value })} />
                 <AlignmentOptions label="Orientation" value={portrait ? "portrait" : "landscape"} options={["portrait", "landscape"]} onChange={changeOrientation} />
+                <View style={s.defaultPaperSection}>
+                  <ToggleSetting
+                    label="Use this paper size as default"
+                    value={currentSizeIsDefault}
+                    disabled={savingDefault || !settingsLoaded}
+                    onChange={(checked) => void toggleDefaultPaper(checked)}
+                  />
+                  {defaultPaperSize ? (
+                    <Text style={s.settingsHelp}>Saved default: {defaultPaperSize.paperWidthMm} × {defaultPaperSize.paperHeightMm} mm. {currentSizeIsDefault ? "Uncheck to remove it." : "Check this size to replace it, or remove the saved default below."}</Text>
+                  ) : (
+                    <Text style={s.settingsHelp}>No saved default. New labels start at 50 × 25 mm. Other sizes can be used once without saving.</Text>
+                  )}
+                  {defaultPaperSize && !currentSizeIsDefault ? (
+                    <Pressable accessibilityRole="button" disabled={savingDefault} accessibilityLabel="Remove saved default paper size"
+                      onPress={() => void toggleDefaultPaper(false)} style={s.removeDefaultAction}>
+                      <Text style={s.removeDefaultText}>Remove saved default</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
                 <Text style={s.settingsHelp}>Loaded paper size cannot be detected with the current print integration. Match the size here and in the system print dialog.</Text>
                   </>
                 ) : null}
@@ -408,6 +470,9 @@ const s = StyleSheet.create({
   alignOptionSelected: { backgroundColor: "#FFEDD5" },
   alignOptionText: { fontSize: 10, color: "#475569", textTransform: "capitalize" },
   alignOptionTextSelected: { color: "#C2410C", fontWeight: "800" },
+  defaultPaperSection: { marginTop: 12, paddingTop: 6, borderTopWidth: 1, borderTopColor: "#E2E8F0" },
+  removeDefaultAction: { alignSelf: "flex-start", minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
+  removeDefaultText: { fontSize: 12, fontWeight: "700", color: "#C2410C" },
   toggleSetting: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   toggleText: { fontSize: 12, flex: 1, fontWeight: "600", color: "#334155" },
   savedText: { fontSize: 10, fontWeight: "700", color: "#15803D", marginTop: 8 },
@@ -447,10 +512,10 @@ function SettingStepper({ label, value, onChange }: { label: string; value: numb
   );
 }
 
-function ToggleSetting({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
+function ToggleSetting({ label, value, disabled, onChange }: { label: string; value: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
   return (
-    <Pressable accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{ checked: value }}
-      onPress={() => onChange(!value)} style={s.toggleSetting}>
+    <Pressable accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{ checked: value, disabled }} disabled={disabled}
+      onPress={() => onChange(!value)} style={[s.toggleSetting, disabled && s.disabled]}>
       <Text style={s.toggleText}>{label}</Text>
       <Ionicons name={value ? "checkbox" : "square-outline"} size={24} color={value ? "#C2410C" : "#64748B"} />
     </Pressable>

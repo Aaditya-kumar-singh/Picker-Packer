@@ -2,6 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const STORAGE_KEY = "ybm.package-printer-settings.v1";
 const LABEL_SIZE_MIGRATION_KEY = `${STORAGE_KEY}.50x25-logo-barcode-order.v2`;
+const DEFAULT_PAPER_KEY = `${STORAGE_KEY}.default-paper-size.v1`;
+const DEFAULT_PAPER_MIGRATION_KEY = `${STORAGE_KEY}.default-paper-migration.v1`;
 let settingsWriteQueue: Promise<void> = Promise.resolve();
 
 export interface PackagePrinterSettings {
@@ -20,6 +22,8 @@ export interface PackagePrinterSettings {
   horizontalAlign: "left" | "center" | "right";
   verticalAlign: "top" | "center" | "bottom";
 }
+
+export type PaperSize = Pick<PackagePrinterSettings, "paperWidthMm" | "paperHeightMm">;
 
 export const PAPER_SIZE_PRESETS = [
   { label: "50 × 25", width: 50, height: 25 },
@@ -86,21 +90,63 @@ export function normalizePackagePrinterSettings(value: Partial<PackagePrinterSet
   };
 }
 
+export async function loadDefaultPaperSize(): Promise<PaperSize | null> {
+  try {
+    const raw = await AsyncStorage.getItem(DEFAULT_PAPER_KEY);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object") return null;
+    const { paperWidthMm, paperHeightMm } = value as Record<string, unknown>;
+    if (typeof paperWidthMm !== "number" || !Number.isFinite(paperWidthMm) || paperWidthMm < 30 || paperWidthMm > 500
+      || typeof paperHeightMm !== "number" || !Number.isFinite(paperHeightMm) || paperHeightMm < 15 || paperHeightMm > 500) {
+      return null;
+    }
+    return { paperWidthMm, paperHeightMm };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveDefaultPaperSize(paper: PaperSize | null): Promise<void> {
+  if (paper === null) {
+    await AsyncStorage.removeItem(DEFAULT_PAPER_KEY);
+    return;
+  }
+  if (!Number.isFinite(paper.paperWidthMm) || paper.paperWidthMm < 30 || paper.paperWidthMm > 500
+    || !Number.isFinite(paper.paperHeightMm) || paper.paperHeightMm < 15 || paper.paperHeightMm > 500) {
+    throw new Error("Choose a valid paper size before setting it as default.");
+  }
+  const { paperWidthMm, paperHeightMm } = normalizePackagePrinterSettings(paper);
+  await AsyncStorage.setItem(DEFAULT_PAPER_KEY, JSON.stringify({ paperWidthMm, paperHeightMm }));
+}
+
 export async function loadPackagePrinterSettings(): Promise<PackagePrinterSettings> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     const saved = normalizePackagePrinterSettings(raw ? JSON.parse(raw) : null);
     const migrated = await AsyncStorage.getItem(LABEL_SIZE_MIGRATION_KEY);
+    let current = saved;
     if (migrated !== "1") {
-      const labelSettings = normalizePackagePrinterSettings({
+      current = normalizePackagePrinterSettings({
         ...saved,
         ...DEFAULT_PACKAGE_PRINTER_SETTINGS,
       });
-      await savePackagePrinterSettings(labelSettings);
+      await savePackagePrinterSettings(current);
       await AsyncStorage.setItem(LABEL_SIZE_MIGRATION_KEY, "1");
-      return labelSettings;
     }
-    return saved;
+    let defaultPaper = await loadDefaultPaperSize();
+    // Preserve previously saved paper sizes when upgrading to explicit defaults.
+    if (await AsyncStorage.getItem(DEFAULT_PAPER_MIGRATION_KEY) !== "1") {
+      if (!defaultPaper && raw
+        && (current.paperWidthMm !== DEFAULT_PACKAGE_PRINTER_SETTINGS.paperWidthMm
+          || current.paperHeightMm !== DEFAULT_PACKAGE_PRINTER_SETTINGS.paperHeightMm)) {
+        defaultPaper = { paperWidthMm: current.paperWidthMm, paperHeightMm: current.paperHeightMm };
+        await saveDefaultPaperSize(defaultPaper);
+      }
+      await AsyncStorage.setItem(DEFAULT_PAPER_MIGRATION_KEY, "1");
+    }
+    const { paperWidthMm, paperHeightMm } = defaultPaper ?? DEFAULT_PACKAGE_PRINTER_SETTINGS;
+    return normalizePackagePrinterSettings({ ...current, paperWidthMm, paperHeightMm });
   } catch {
     return DEFAULT_PACKAGE_PRINTER_SETTINGS;
   }
