@@ -1,0 +1,14 @@
+{"kind":"deck","id":"pr/kt3rd5","name":"Deck"}
+{"kind":"layout","id":"ly/u94f2tsr","editable":false,"name":"Master","type":"master"}
+{"kind":"layout","id":"ly/25c3u1sr","editable":false,"name":"Title Slide","type":"title","placeholders":[{"name":"title","type":"title"},{"name":"subtitle","type":"subtitle"}]}
+{"kind":"layout","id":"ly/v6d4zudo","editable":false,"name":"Section Header","type":"sectionHeader","placeholders":[{"name":"title","type":"title"}]}
+{"kind":"layout","id":"ly/nmtkfqd8","editable":false,"name":"Title and Body","type":"tx","placeholders":[{"name":"title","type":"title"},{"name":"body","type":"body"}]}
+{"kind":"layout","id":"ly/ju1w7yx0","editable":false,"name":"Title and Two Column","type":"twoColTx","placeholders":[{"name":"title","type":"title"},{"name":"Left column","type":"body"},{"name":"Right column","type":"body"}]}
+{"kind":"layout","id":"ly/vul47u58","editable":false,"name":"Title and One Column","type":"tx","placeholders":[{"name":"title","type":"title"},{"name":"body","type":"body"}]}
+{"kind":"layout","id":"ly/1wzqlgf2","editable":false,"name":"Blank","type":"blank"}
+{"kind":"slide","id":"sl/lf5d23","slideIndex":0,"layout":{"id":"ly/1wzqlgf2","name":"Blank"},"title":"YourBuildMart","textShapes":3,"backgroundColor":"rgba(255,255,255,1)"}
+{"kind":"textbox","id":"sh/ylgza9wf","slideIndex":0,"position":{"left":42,"top":43,"width":200,"height":23},"name":"Editable YourBuildMart wordmark","text":"YourBuildMart","geometry":"rect","lineWidth":0,"style":{"fontSize":18,"typeface":"Arial","color":"#262626","bold":true,"italic":true,"alignment":"center"}}
+{"kind":"textbox","id":"sh/knihcje5","slideIndex":0,"position":{"left":20,"top":119,"width":243.46,"height":15},"name":"Editable order number","text":"Order SO-20261029-06403","geometry":"rect","lineWidth":0,"style":{"fontSize":11,"typeface":"Arial","color":"#111111","alignment":"center"}}
+{"kind":"textbox","id":"sh/bip0fexo","slideIndex":0,"position":{"left":20,"top":136,"width":243.46,"height":13},"name":"Editable sample customer ID","text":"Customer ID: CUST-001","geometry":"rect","lineWidth":0,"style":{"fontSize":9.51,"typeface":"Arial","color":"#111111","alignment":"center"}}
+{"kind":"image","id":"im/c3u9onmh","slideIndex":0,"position":{"left":80.53,"top":78,"width":122.4,"height":34},"fit":"contain","name":"","alt":"Editable sample barcode graphic"}
+{"kind":"notes","id":"nt/lf5d23","slideIndex":0,"text":""}
