@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
+import { getPrintLogoSource } from "@/utils/printLogoAsset";
 import { Text } from "@/components/Typography";
 import { packerAppApi } from "@/api/packerAppApi";
-import { packageLabelHtml } from "@/utils/packageLabel";
+import { getPackageLabelLayout, packageLabelHtml, type LabelBox } from "@/utils/packageLabel";
+import { printPackageLabel } from "@/utils/printPackageLabel";
 import {
   DEFAULT_PACKAGE_PRINTER_SETTINGS,
   loadPackagePrinterSettings,
@@ -25,6 +27,7 @@ type Props = {
 };
 
 export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLabelAttached, backendMessage }: Props) {
+  const { width: windowWidth } = useWindowDimensions();
   const [barcodeImage, setBarcodeImage] = useState("");
   const [generating, setGenerating] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -79,10 +82,18 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
   }
 
   const barcodePreview = barcodeImage || null;
-  const previewScale = Math.min(240 / settings.paperWidthMm, 158 / settings.paperHeightMm);
-  const horizontalJustify = settings.horizontalAlign === "left" ? "flex-start" : settings.horizontalAlign === "right" ? "flex-end" : "center";
-  const verticalJustify = settings.verticalAlign === "top" ? "flex-start" : settings.verticalAlign === "bottom" ? "flex-end" : "center";
-
+  const previewMaxWidth = Math.min(320, Math.max(200, windowWidth - 96));
+  const previewScale = Math.min(previewMaxWidth / settings.paperWidthMm, 320 / settings.paperHeightMm);
+  const labelWidthPx = settings.paperWidthMm * previewScale;
+  const labelHeightPx = settings.paperHeightMm * previewScale;
+  const labelLayout = getPackageLabelLayout(settings, orderNumber);
+  const previewBox = (box: LabelBox) => ({
+    position: "absolute" as const,
+    left: box.x * previewScale,
+    top: box.y * previewScale,
+    width: box.width * previewScale,
+    height: box.height * previewScale,
+  });
   async function updateSettings(patch: Partial<PackagePrinterSettings>) {
     const next = normalizePackagePrinterSettings({ ...settingsRef.current, ...patch });
     settingsRef.current = next;
@@ -112,15 +123,17 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
   }
 
   async function openPrintWindow() {
-    if (!barcodePreview || printing) return;
+    if (!barcodePreview || printing || !settingsLoaded) return;
     setPrinting(true);
     setPrintError(null);
     setPrintWindowOpened(false);
     try {
-      await Print.printAsync({
-        html: packageLabelHtml(barcodePreview, orderNumber, settings),
-        ...(Platform.OS === "ios" && selectedPrinter ? { printerUrl: selectedPrinter.url } : {}),
-      });
+      const logoImage = await getPrintLogoSource();
+      await printPackageLabel(
+        packageLabelHtml(barcodePreview, orderNumber, settings, logoImage),
+        settings,
+        Platform.OS === "ios" ? selectedPrinter?.url : undefined,
+      );
       // Android resolves when the print window opens, before the printer finishes.
       setPrintWindowOpened(true);
     } catch (error: any) {
@@ -151,18 +164,31 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator
           >
-            <View style={s.preview}>
+            <View style={[s.preview, { minHeight: Math.max(226, labelHeightPx + 54) }]}>
               {barcodePreview ? (
-                <View style={[s.labelPreview, {
-                  width: settings.paperWidthMm * previewScale,
-                  height: settings.paperHeightMm * previewScale,
-                  padding: settings.marginMm * previewScale,
-                }]}>
-                  <Text style={s.previewCaption}>YOURBUILDMART, PACKING BARCODE</Text>
-                  <View style={{ flex: 1, width: "100%", flexDirection: "row", alignItems: verticalJustify, justifyContent: horizontalJustify, overflow: "hidden" }}>
-                    <Image source={{ uri: barcodePreview }} style={{ width: settings.barcodeWidthMm * previewScale, height: settings.barcodeHeightMm * previewScale }} resizeMode="contain" />
-                  </View>
-                  <Text style={s.previewOrder}>Order {orderNumber}</Text>
+                <View style={[s.labelPreview, { width: labelWidthPx, height: labelHeightPx }]}>
+                  <Image
+                    source={require("../../assets/images/yourbuildmart-wordmark.png")}
+                    style={[previewBox(labelLayout.logo), { tintColor: "#000000" }]}
+                    resizeMode="cover"
+                    accessibilityLabel="YourBuildMart logo in black and white"
+                  />
+                  <Image
+                    source={{ uri: barcodePreview }}
+                    style={previewBox(labelLayout.barcode)}
+                    resizeMode="contain"
+                    accessibilityLabel="Packing barcode"
+                  />
+                  <Text
+                    style={[s.previewOrder, previewBox(labelLayout.order), {
+                      textAlign: settings.horizontalAlign,
+                      fontFamily: Platform.OS === "android" ? "sans-serif" : "Arial",
+                      fontSize: labelLayout.orderFontMm * previewScale,
+                      lineHeight: labelLayout.order.height * previewScale,
+                    }]}
+                    allowFontScaling={false}
+                    numberOfLines={1}
+                  >{labelLayout.orderText}</Text>
                 </View>
               ) : (
                 <>
@@ -197,6 +223,8 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
 
                 <Text style={[s.settingsHeading, s.settingsSectionHeading]}>PAPER SIZE (MM)</Text>
                 <View style={s.presetRow}>
+                  <Pressable onPress={() => void updateSettings(DEFAULT_PACKAGE_PRINTER_SETTINGS)} style={s.presetButton}><Text style={s.presetText}>50 × 25</Text></Pressable>
+                  <Pressable onPress={() => void updateSettings({ paperWidthMm: 50.8, paperHeightMm: 50.8 })} style={s.presetButton}><Text style={s.presetText}>2 × 2 in</Text></Pressable>
                   <Pressable onPress={() => void updateSettings({ paperWidthMm: 75, paperHeightMm: 50 })} style={s.presetButton}><Text style={s.presetText}>75 × 50</Text></Pressable>
                   <Pressable onPress={() => void updateSettings({ paperWidthMm: 100, paperHeightMm: 150 })} style={s.presetButton}><Text style={s.presetText}>100 × 150</Text></Pressable>
                 </View>
@@ -236,10 +264,10 @@ export function PackageLabelModal({ visible, orderId, orderNumber, onClose, onLa
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Print package barcode"
-            accessibilityState={{ disabled: !barcodePreview || printing || generating }}
-            disabled={!barcodePreview || printing || generating}
+            accessibilityState={{ disabled: !barcodePreview || printing || generating || !settingsLoaded }}
+            disabled={!barcodePreview || printing || generating || !settingsLoaded}
             onPress={() => void openPrintWindow()}
-            style={({ pressed }) => [s.printButton, (!barcodePreview || printing || generating) && s.disabled, pressed && barcodePreview && !printing && !generating && { opacity: 0.85 }]}
+            style={({ pressed }) => [s.printButton, (!barcodePreview || printing || generating || !settingsLoaded) && s.disabled, pressed && barcodePreview && !printing && !generating && { opacity: 0.85 }]}
           >
             <Ionicons name={printWindowOpened ? "refresh" : "print-outline"} size={19} color="#FFFFFF" />
             <Text style={s.printButtonText}>{generating ? "Generating barcode…" : printing ? "Opening printer…" : printWindowOpened ? "Reprint Package Barcode" : "Choose Printer & Print"}</Text>
@@ -270,9 +298,8 @@ const s = StyleSheet.create({
   modalScroll: { flexShrink: 1 },
   modalScrollContent: { paddingBottom: 8 },
   preview: { minHeight: 226, alignItems: "center", justifyContent: "center", padding: 12, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 14 },
-  labelPreview: { alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#CBD5E1", overflow: "hidden" },
-  previewCaption: { fontSize: 10, fontWeight: "800", color: "#64748B", marginTop: 5 },
-  previewOrder: { fontSize: 8, color: "#475569", marginTop: 1 },
+  labelPreview: { position: "relative", backgroundColor: "#FFFFFF", overflow: "hidden" },
+  previewOrder: { color: "#000000", fontWeight: "400", includeFontPadding: false, textAlignVertical: "center" },
   placeholder: { fontSize: 12, color: "#64748B", textAlign: "center", marginTop: 9 },
   infoRow: { flexDirection: "row", gap: 8, alignItems: "flex-start", marginTop: 12 },
   infoText: { flex: 1, fontSize: 11, lineHeight: 16, color: "#475569" },
@@ -284,15 +311,15 @@ const s = StyleSheet.create({
   settingsHelp: { fontSize: 11, lineHeight: 16, color: "#64748B", marginTop: 6 },
   settingsAction: { minHeight: 38, justifyContent: "center", alignItems: "center", borderRadius: 9, backgroundColor: "#EFF6FF", marginTop: 7 },
   settingsActionText: { fontSize: 12, fontWeight: "800", color: "#1D4ED8" },
-  presetRow: { flexDirection: "row", gap: 8, marginTop: 6, marginBottom: 6 },
+  presetRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6, marginBottom: 6 },
   presetButton: { minHeight: 34, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#F1F5F9" },
   presetText: { fontSize: 11, fontWeight: "800", color: "#334155" },
   stepperRow: { minHeight: 46, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
   stepperLabel: { flex: 1, flexShrink: 1, fontSize: 13, color: "#334155" },
-  stepperControls: { flexDirection: "row", alignItems: "center", gap: 7 },
+  stepperControls: { flexDirection: "row", alignItems: "center", gap: 7, flexShrink: 0 },
   stepperButton: { width: 34, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: "#F1F5F9" },
   stepperButtonText: { fontSize: 18, fontWeight: "700", color: "#334155" },
-  stepperInput: { width: 68, height: 36, paddingHorizontal: 4, textAlign: "center", textAlignVertical: "center", includeFontPadding: false, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, fontSize: 15, fontWeight: "700", color: "#0F172A", backgroundColor: "#FFFFFF" },
+  stepperInput: { width: 76, minWidth: 76, height: 42, paddingHorizontal: 6, paddingVertical: 4, textAlign: "center", textAlignVertical: "center", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, fontSize: 16, fontWeight: "700", color: "#0F172A", backgroundColor: "#FFFFFF" },
   alignRow: { minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   alignLabel: { fontSize: 12, color: "#334155" },
   alignOptions: { flexDirection: "row", gap: 4 },

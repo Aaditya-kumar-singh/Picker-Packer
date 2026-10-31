@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const STORAGE_KEY = "ybm.package-printer-settings.v1";
+const LABEL_SIZE_MIGRATION_KEY = `${STORAGE_KEY}.50x25-logo-barcode-order.v2`;
 let settingsWriteQueue: Promise<void> = Promise.resolve();
 
 export interface PackagePrinterSettings {
@@ -14,17 +15,17 @@ export interface PackagePrinterSettings {
 }
 
 export const DEFAULT_PACKAGE_PRINTER_SETTINGS: PackagePrinterSettings = {
-  paperWidthMm: 75,
-  paperHeightMm: 50,
-  marginMm: 4,
-  barcodeWidthMm: 31,
-  barcodeHeightMm: 31,
+  paperWidthMm: 50,
+  paperHeightMm: 25,
+  marginMm: 1,
+  barcodeWidthMm: 40,
+  barcodeHeightMm: 11,
   horizontalAlign: "center",
   verticalAlign: "center",
 };
 
 function clamp(value: unknown, fallback: number, min: number, max: number): number {
-  const number = typeof value === "number" ? value : Number(value);
+  const number = value == null || value === "" ? NaN : typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, number));
 }
@@ -32,14 +33,18 @@ function clamp(value: unknown, fallback: number, min: number, max: number): numb
 export function normalizePackagePrinterSettings(value: Partial<PackagePrinterSettings> | null | undefined): PackagePrinterSettings {
   const defaults = DEFAULT_PACKAGE_PRINTER_SETTINGS;
   const paperWidthMm = clamp(value?.paperWidthMm, defaults.paperWidthMm, 30, 300);
-  const paperHeightMm = clamp(value?.paperHeightMm, defaults.paperHeightMm, 30, 300);
+  const paperHeightMm = clamp(value?.paperHeightMm, defaults.paperHeightMm, 15, 300);
   const marginMm = clamp(value?.marginMm, defaults.marginMm, 0, Math.min(paperWidthMm, paperHeightMm) / 4);
+  const contentWidthMm = Math.max(1, paperWidthMm - marginMm * 2);
+  const contentHeightMm = Math.max(1, paperHeightMm - marginMm * 2);
+  const barcodeWidthMm = clamp(value?.barcodeWidthMm, defaults.barcodeWidthMm, 10, contentWidthMm);
+  const barcodeHeightMm = clamp(value?.barcodeHeightMm, defaults.barcodeHeightMm, 2, contentHeightMm);
   return {
     paperWidthMm,
     paperHeightMm,
     marginMm,
-    barcodeWidthMm: clamp(value?.barcodeWidthMm, defaults.barcodeWidthMm, 10, paperWidthMm - marginMm * 2),
-    barcodeHeightMm: clamp(value?.barcodeHeightMm, defaults.barcodeHeightMm, 10, paperHeightMm - marginMm * 2),
+    barcodeWidthMm,
+    barcodeHeightMm,
     horizontalAlign: value?.horizontalAlign === "left" || value?.horizontalAlign === "right" ? value.horizontalAlign : "center",
     verticalAlign: value?.verticalAlign === "top" || value?.verticalAlign === "bottom" ? value.verticalAlign : "center",
   };
@@ -48,7 +53,18 @@ export function normalizePackagePrinterSettings(value: Partial<PackagePrinterSet
 export async function loadPackagePrinterSettings(): Promise<PackagePrinterSettings> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    return normalizePackagePrinterSettings(raw ? JSON.parse(raw) : null);
+    const saved = normalizePackagePrinterSettings(raw ? JSON.parse(raw) : null);
+    const migrated = await AsyncStorage.getItem(LABEL_SIZE_MIGRATION_KEY);
+    if (migrated !== "1") {
+      const labelSettings = normalizePackagePrinterSettings({
+        ...saved,
+        ...DEFAULT_PACKAGE_PRINTER_SETTINGS,
+      });
+      await savePackagePrinterSettings(labelSettings);
+      await AsyncStorage.setItem(LABEL_SIZE_MIGRATION_KEY, "1");
+      return labelSettings;
+    }
+    return saved;
   } catch {
     return DEFAULT_PACKAGE_PRINTER_SETTINGS;
   }
