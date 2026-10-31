@@ -270,11 +270,15 @@ test("OTP request UI state never copies a server-provided OTP or response messag
   assert.doesNotMatch(auth, /developmentOtp/);
 });
 
-test("CI runs automatically only for master changes", () => {
+test("CI validates main and master while releases remain master-only", () => {
   const ci = read(".github/workflows/ci.yml");
-  assert.match(ci, /push:\s+branches: \[master\]/);
-  assert.match(ci, /pull_request:\s+branches: \[master\]/);
-  assert.doesNotMatch(ci, /branches: \[master, aadi\]/);
+  assert.match(ci, /push:\s+branches: \[main, master\]/);
+  assert.match(ci, /pull_request:\s+branches: \[main, master\]/);
+  assert.match(ci, /android-build:\s+name: Compile Android app/);
+  assert.match(ci, /needs: validate/);
+  const release = read(".github/workflows/android-release.yml");
+  assert.match(release, /push:\s+branches:\s+- master/);
+  assert.doesNotMatch(release, /push:\s+branches:\s+- main/);
 });
 
 // Integration tests require the optional standalone reference backend.
